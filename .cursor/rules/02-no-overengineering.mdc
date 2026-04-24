@@ -1,0 +1,17 @@
+# No Overengineering
+
+## Default posture
+- Build the minimum structure needed for the current phase.
+- Avoid abstractions that are not required by the current task.
+- Avoid adding libraries when platform tools are enough.
+- Avoid speculative features, workflows, and integrations.
+
+## Forbidden patterns for this project stage
+- No premature service decomposition.
+- No extra dashboards or pages beyond the requested set.
+- No hidden side systems for alerts, trading, or orchestration.
+- No replacing a simple documented rule with a complex framework.
+
+## Documentation rule
+- Documents should define guardrails clearly and directly.
+- Documents should not imply permission to build more than requested.
