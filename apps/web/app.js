@@ -244,6 +244,22 @@ function conflictLabel(value) {
   }[value] || value || '未知';
 }
 
+function deriveDataQuality(signal) {
+  const snap = signal?.market_snapshot || {};
+  const hasRealPrice = snap.spot_is_real === true && snap.spot_source === 'fmp' && Number.isFinite(Number(snap.spot));
+  const mapIsMock = signal?.fetch_mode === 'mock_scenario';
+  const coherence = hasRealPrice && mapIsMock ? 'mixed' : 'coherent';
+  return {
+    price_source: hasRealPrice ? 'fmp' : safeText(snap.spot_source, 'unknown'),
+    map_source: mapIsMock ? 'mock' : 'real',
+    coherence,
+    executable: coherence !== 'mixed',
+    reason: coherence === 'mixed'
+      ? 'FMP real price is mixed with mock gamma map.'
+      : 'Sources are coherent.'
+  };
+}
+
 function getAction(signal) {
   if (signal?.recommended_action && ACTION_MAP[signal.recommended_action]) return ACTION_MAP[signal.recommended_action];
   if (signal?.conflict?.conflict_level === 'high' || signal?.stale_flags?.any_stale) return ACTION_MAP.no_trade;
@@ -251,7 +267,9 @@ function getAction(signal) {
 }
 
 function hasHardBlock(signal) {
-  return signal?.recommended_action === 'no_trade'
+  const dataQuality = deriveDataQuality(signal);
+  return dataQuality.coherence === 'mixed'
+    || signal?.recommended_action === 'no_trade'
     || signal?.conflict?.conflict_level === 'high'
     || signal?.stale_flags?.any_stale
     || signal?.source_status?.some((s) => s.state === 'down');
@@ -293,6 +311,10 @@ function getStrategyCard(signal, type) {
 }
 
 function strategyState(signal, type) {
+  const dataQuality = deriveDataQuality(signal);
+  if (dataQuality.coherence === 'mixed') {
+    return { text: '禁止', cls: 'block' };
+  }
   if (hasHardBlock(signal)) return { text: '不可执行', cls: 'block' };
   if (type === '铁鹰') {
     if (signal.recommended_action === 'income_ok') return { text: '观察可做', cls: 'go' };
@@ -311,6 +333,7 @@ function strategyState(signal, type) {
 }
 
 function buildTrigger(signal) {
+  if (deriveDataQuality(signal).coherence === 'mixed') return '--';
   const snap = signal.market_snapshot || {};
   if (signal.recommended_action === 'long_on_pullback') return `回踩 ${fmtInt(snap.flip_level)} 上方不破`;
   if (signal.recommended_action === 'short_on_retest') return `反抽 ${fmtInt(snap.call_wall || snap.flip_level)} 不过`;
@@ -320,6 +343,7 @@ function buildTrigger(signal) {
 }
 
 function buildTarget(signal) {
+  if (deriveDataQuality(signal).coherence === 'mixed') return '--';
   const snap = signal.market_snapshot || {};
   if (signal.recommended_action === 'long_on_pullback') return `${fmtInt(snap.call_wall)} / 上方流动性`;
   if (signal.recommended_action === 'short_on_retest') return `${fmtInt(snap.put_wall)} / 下方流动性`;
@@ -328,6 +352,7 @@ function buildTarget(signal) {
 }
 
 function buildInvalidation(signal) {
+  if (deriveDataQuality(signal).coherence === 'mixed') return '--';
   if (signal.plain_language?.invalidation) return signal.plain_language.invalidation;
   const snap = signal.market_snapshot || {};
   if (signal.invalidation_level) return `跌破 / 站回 ${fmtInt(signal.invalidation_level)}`;
@@ -335,6 +360,9 @@ function buildInvalidation(signal) {
 }
 
 function buildAvoid(signal) {
+  if (deriveDataQuality(signal).coherence === 'mixed') {
+    return '禁止单腿 / 垂直 / 铁鹰；等待真实 Gamma 地图或人工输入关键位。';
+  }
   if (signal.plain_language?.avoid) return signal.plain_language.avoid;
   if (Array.isArray(signal.avoid_actions) && signal.avoid_actions.length) return signal.avoid_actions.join(' / ');
   return '不追单，不提前卖波';
@@ -395,6 +423,12 @@ function summarizeEngine(name, engine) {
 
 function renderTopbar(currentPath, currentScenario, signal) {
   const query = window.location.search || '';
+  const dataQuality = deriveDataQuality(signal);
+  const heartbeatLabel = dataQuality.coherence === 'mixed'
+    ? 'MIXED DATA · PRICE REAL · MAP MOCK'
+    : signal.is_mock
+      ? 'MOCK DATA'
+      : 'LIVE';
   return `
     <header class="topbar">
       <div class="brand">
@@ -411,7 +445,7 @@ function renderTopbar(currentPath, currentScenario, signal) {
       </nav>
 
       <div class="system-right">
-        <div class="heartbeat"><i class="heartbeat-dot ${qualityClass(signal)}"></i><span>${escapeHtml(signal.is_mock ? 'MOCK DATA' : 'LIVE')}</span><span>${shortTime(signal.received_at)}</span></div>
+        <div class="heartbeat"><i class="heartbeat-dot ${qualityClass(signal)}"></i><span>${escapeHtml(heartbeatLabel)}</span><span>${shortTime(signal.received_at)}</span></div>
         <select class="scenario-select" id="scenario-select" aria-label="mock scenario">
           ${SCENARIOS.map((item) => `<option value="${item}" ${item === currentScenario ? 'selected' : ''}>${item}</option>`).join('')}
         </select>
@@ -482,12 +516,17 @@ function renderRiskStack(signal) {
 }
 
 function renderCommandHero(signal) {
+  const dataQuality = deriveDataQuality(signal);
   const action = getAction(signal);
   const trigger = buildTrigger(signal);
   const target = buildTarget(signal);
   const invalidation = buildInvalidation(signal);
   const avoid = buildAvoid(signal);
-  const summary = signal.plain_language?.user_action || action.summary;
+  const summary = dataQuality.coherence === 'mixed'
+    ? 'FMP 现价为真实，但 Gamma / Wall / Max Pain 仍为 mock 地图，不能计算距离，不能生成交易指令。'
+    : safeText(signal.plain_language?.user_action, action.summary);
+  const title = dataQuality.coherence === 'mixed' ? '数据混合，禁止执行' : action.title;
+  const planLabel = dataQuality.coherence === 'mixed' ? 'PRICE REAL · MAP MOCK' : action.plan;
 
   return `
     <section class="command-hero">
@@ -497,10 +536,10 @@ function renderCommandHero(signal) {
           <div class="section-label">Current Command</div>
           <div class="permission-badge ${action.badge}">${action.permission}</div>
         </div>
-        <h1 class="command-title">${escapeHtml(action.title)}</h1>
+        <h1 class="command-title">${escapeHtml(title)}</h1>
         <p class="command-subtitle">${escapeHtml(summary)}</p>
         <div class="tag-row">
-          <span class="tag blue">${escapeHtml(action.plan)}</span>
+          <span class="tag blue">${escapeHtml(planLabel)}</span>
           <span class="tag ${chipClassByRisk(signal.event_context?.event_risk)}">${eventRiskLabel(signal.event_context?.event_risk)}</span>
           <span class="tag ${chipClassByRisk(signal.gamma_regime)}">${gammaLabel(signal.gamma_regime)}</span>
           <span class="tag violet">${dealerLabel(signal.uw_context?.dealer_bias || signal.signals?.dealer_behavior)}</span>
@@ -518,17 +557,32 @@ function renderCommandHero(signal) {
 }
 
 function renderStrategyCards(signal) {
+  const dataQuality = deriveDataQuality(signal);
   const strategyTypes = ['单腿', '垂直', '铁鹰'];
   return `
     <section class="grid-3">
       ${strategyTypes.map((type) => {
         const card = getStrategyCard(signal, type);
         const state = strategyState(signal, type);
-        const target = type === '垂直' ? card.target_zone || buildTarget(signal) : card.target_zone || '等待';
-        const entry = type === '垂直' ? card.entry_condition || buildTrigger(signal) : card.entry_condition || buildTrigger(signal);
-        const suitable = card.suitable_when || '只在结构、Gamma、事件风险同时支持时考虑。';
-        const invalidation = card.invalidation || buildInvalidation(signal);
-        const avoid = card.avoid_when || buildAvoid(signal);
+        const target = dataQuality.coherence === 'mixed'
+          ? '--'
+          : type === '垂直'
+            ? card.target_zone || buildTarget(signal)
+            : card.target_zone || '等待';
+        const entry = dataQuality.coherence === 'mixed'
+          ? '--'
+          : type === '垂直'
+            ? card.entry_condition || buildTrigger(signal)
+            : card.entry_condition || buildTrigger(signal);
+        const suitable = dataQuality.coherence === 'mixed'
+          ? '现价真实但地图位 mock，不能计算入场、目标、作废。'
+          : card.suitable_when || '只在结构、Gamma、事件风险同时支持时考虑。';
+        const invalidation = dataQuality.coherence === 'mixed'
+          ? '--'
+          : card.invalidation || buildInvalidation(signal);
+        const avoid = dataQuality.coherence === 'mixed'
+          ? '禁止单腿 / 垂直 / 铁鹰；等待真实 Gamma 地图或人工输入关键位。'
+          : card.avoid_when || buildAvoid(signal);
 
         return `
           <article class="strategy-card ${state.cls}">
@@ -554,12 +608,13 @@ function renderStrategyCards(signal) {
 }
 
 function renderLevelMatrix(signal) {
+  const dataQuality = deriveDataQuality(signal);
   const snap = signal.market_snapshot || {};
   const items = [
     ['SPX', displaySpot(snap), snap.spot_is_real ? `当前现价 · ${snap.spot_source || 'fmp'}` : '当前现价 unavailable'],
-    ['Flip', fmtInt(snap.flip_level), `距离 ${fmt(snap.distance_to_flip, 1)} pt`],
-    ['Call Wall', fmtInt(snap.call_wall), `距离 ${fmt(snap.distance_to_call_wall, 1)} pt`],
-    ['Put Wall', fmtInt(snap.put_wall), `距离 ${fmt(snap.distance_to_put_wall, 1)} pt`],
+    ['Flip', fmtInt(snap.flip_level), dataQuality.coherence === 'mixed' ? '地图未接真实数据' : `距离 ${fmt(snap.distance_to_flip, 1)} pt`],
+    ['Call Wall', fmtInt(snap.call_wall), dataQuality.coherence === 'mixed' ? '地图未接真实数据' : `距离 ${fmt(snap.distance_to_call_wall, 1)} pt`],
+    ['Put Wall', fmtInt(snap.put_wall), dataQuality.coherence === 'mixed' ? '地图未接真实数据' : `距离 ${fmt(snap.distance_to_put_wall, 1)} pt`],
     ['Max Pain', fmtInt(snap.max_pain), '中轴参考'],
     ['Confidence', fmtInt(signal.confidence_score), '指令可信度']
   ];
@@ -620,10 +675,25 @@ function renderHome(signal) {
 }
 
 function renderRadarSummary(signal) {
+  const dataQuality = deriveDataQuality(signal);
   const snap = signal.market_snapshot || {};
   const conflictPoints = signal.conflict?.conflict_points || [];
   return `
     <section class="radar-layout">
+      ${dataQuality.coherence === 'mixed' ? `
+        <article class="radar-card">
+          <div class="radar-title">
+            <h2>Data Quality Guard</h2>
+            <span class="tag amber">PRICE REAL · MAP MOCK</span>
+          </div>
+          <p class="radar-note">FMP 现价真实，但 Gamma / Wall / Max Pain 仍为 mock 地图，不能计算距离，不能生成交易指令。</p>
+          <ul class="alert-list">
+            <li>数据混合，禁止执行</li>
+            <li>等真实 Gamma / UW / Theta 地图接入后再执行</li>
+            <li>不要把 mock 墙位和真实现价混算</li>
+          </ul>
+        </article>
+      ` : ''}
       <article class="radar-card">
         <div class="radar-title">
           <h2>Gamma / Dealer Radar</h2>
@@ -631,10 +701,10 @@ function renderRadarSummary(signal) {
         </div>
         <p class="radar-note">${escapeHtml(safeText(signal.radar_summary?.dealer, safeText(signal.plain_language?.dealer_behavior, '等待 dealer 行为确认。')))}</p>
         <div class="matrix-list">
-          <div class="matrix-item"><div class="matrix-name">现价位置</div><div class="matrix-value">${escapeHtml(displaySpotContext(snap))}</div><div class="matrix-number">${displaySpot(snap)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Flip</div><div class="matrix-value">${fmt(snap.distance_to_flip, 1)} pt</div><div class="matrix-number">${fmtInt(snap.flip_level)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Call Wall</div><div class="matrix-value">${fmt(snap.distance_to_call_wall, 1)} pt</div><div class="matrix-number">${fmtInt(snap.call_wall)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Put Wall</div><div class="matrix-value">${fmt(snap.distance_to_put_wall, 1)} pt</div><div class="matrix-number">${fmtInt(snap.put_wall)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">现价位置</div><div class="matrix-value">${escapeHtml(dataQuality.coherence === 'mixed' ? '地图未接真实数据' : displaySpotContext(snap))}</div><div class="matrix-number">${displaySpot(snap)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Flip</div><div class="matrix-value">${dataQuality.coherence === 'mixed' ? '--' : fmt(snap.distance_to_flip, 1) + ' pt'}</div><div class="matrix-number">${fmtInt(snap.flip_level)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Call Wall</div><div class="matrix-value">${dataQuality.coherence === 'mixed' ? '--' : fmt(snap.distance_to_call_wall, 1) + ' pt'}</div><div class="matrix-number">${fmtInt(snap.call_wall)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Put Wall</div><div class="matrix-value">${dataQuality.coherence === 'mixed' ? '--' : fmt(snap.distance_to_put_wall, 1) + ' pt'}</div><div class="matrix-number">${fmtInt(snap.put_wall)}</div></div>
         </div>
       </article>
 
@@ -669,9 +739,11 @@ function renderRadarSummary(signal) {
           <h2>Signal Conflict</h2>
           <span class="quality-chip ${qualityClass(signal)}">${conflictLabel(signal.conflict?.conflict_level)}</span>
         </div>
-        <p class="radar-note">${escapeHtml(safeText(signal.radar_summary?.plan_alignment, safeText(signal.plain_language?.market_status, '暂无冲突说明。')))}</p>
+        <p class="radar-note">${escapeHtml(dataQuality.coherence === 'mixed' ? 'FMP 现价真实，但 Gamma 地图仍为 mock，禁止执行。' : safeText(signal.radar_summary?.plan_alignment, safeText(signal.plain_language?.market_status, '暂无冲突说明。')))}</p>
         <ul class="alert-list">
-          ${(conflictPoints.length ? conflictPoints : ['没有强冲突，但仍必须等触发。']).map((item) => `<li>${escapeHtml(safeText(item))}</li>`).join('')}
+          ${((dataQuality.coherence === 'mixed'
+            ? ['真实现价与 mock Gamma 地图不一致，禁止执行。', '等待真实 Gamma / UW / Theta 地图接入后再执行。']
+            : (conflictPoints.length ? conflictPoints : ['没有强冲突，但仍必须等触发。']))).map((item) => `<li>${escapeHtml(safeText(item))}</li>`).join('')}
         </ul>
       </article>
     </section>
