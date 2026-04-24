@@ -1,0 +1,164 @@
+{
+  "modules": [
+    {
+      "module": "spx_greek_exposure",
+      "priority": "S",
+      "status": "approved",
+      "final_candidate_urls": [
+        {
+          "url": "https://unusualwhales.com/stock/SPX/greek-exposure",
+          "page_type": "data_page",
+          "login_required": "unknown",
+          "usable_for_dom_reader": "true",
+          "confidence": 0.9,
+          "reason": "URL 与标题都直接指向 SPX Greek Exposure 主页面，后续最适合人工登录后做 DOM 定位。"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPX/greek-exposure?tab=Gamma",
+          "page_type": "data_page",
+          "login_required": "unknown",
+          "usable_for_dom_reader": "true",
+          "confidence": 0.9,
+          "reason": "同一主页面的 Gamma 视图，适合优先确认 GEX 面板和分 tab DOM 是否稳定。"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPX/greek-exposure?type=exposure&greek=gamma",
+          "page_type": "data_page",
+          "login_required": "unknown",
+          "usable_for_dom_reader": "true",
+          "confidence": 0.9,
+          "reason": "查询参数更明确地锚定 gamma exposure 视图，可作为 DOM Reader 的备用入口。"
+        }
+      ],
+      "next_step": "先人工登录 UW，确认 SPX Greek Exposure 页面是否稳定显示 net_gex、net_dex、net_vanna、net_charm 与 strike/expiry 视图。"
+    },
+    {
+      "module": "spy_darkpool_offlit",
+      "priority": "S",
+      "status": "needs_manual_browser_discovery",
+      "final_candidate_urls": [
+        {
+          "url": "https://unusualwhales.com/dark-pool-flow",
+          "page_type": "data_page",
+          "login_required": "unknown",
+          "usable_for_dom_reader": "unknown",
+          "confidence": 0.58,
+          "reason": "比 API 文档和 marketing 落地页更像真实产品入口，但仍需人工登录确认是否能看到 SPY dark pool / off-exchange 数据。"
+        },
+        {
+          "url": "https://unusualwhales.com/lp/dark-pool-scanner",
+          "page_type": "landing_page",
+          "login_required": "false",
+          "usable_for_dom_reader": "false",
+          "confidence": 0.59,
+          "reason": "这是营销落地页，不是后续 DOM Reader 应该读取的数据页。"
+        },
+        {
+          "url": "https://unusualwhales.com/lp/real-time-dark-pool-feed-access",
+          "page_type": "landing_page",
+          "login_required": "false",
+          "usable_for_dom_reader": "false",
+          "confidence": 0.54,
+          "reason": "页面用途偏产品介绍和转化，不适合作为数据采集入口。"
+        }
+      ],
+      "next_step": "需要人工登录 UW 浏览器后重新定位真正的 SPY dark pool / off-lit 数据页，再决定 Reader 入口。"
+    },
+    {
+      "module": "options_flow_alerts",
+      "priority": "S",
+      "status": "partial",
+      "final_candidate_urls": [
+        {
+          "url": "https://unusualwhales.com/flow/overview",
+          "page_type": "data_page",
+          "login_required": "unknown",
+          "usable_for_dom_reader": "true",
+          "confidence": 0.66,
+          "reason": "这是最像真实 flow 总览的数据页面入口，适合后续 DOM Reader 优先人工确认。"
+        },
+        {
+          "url": "https://unusualwhales.com/option-flow-alerts",
+          "page_type": "landing_page",
+          "login_required": "unknown",
+          "usable_for_dom_reader": "false",
+          "confidence": 0.66,
+          "reason": "标题与路径都明确指向 flow alerts 产品入口，但更像产品页而不是稳定读数页。"
+        },
+        {
+          "url": "https://docs.unusualwhales.com/features/2-options-flow",
+          "page_type": "docs",
+          "login_required": "false",
+          "usable_for_dom_reader": "false",
+          "confidence": 0.67,
+          "reason": "这是公开功能文档，适合补字段定义和列解释，不适合直接做 DOM 数据读取。"
+        }
+      ],
+      "next_step": "先用 docs 页面整理字段定义，再人工登录确认 flow/overview 和 option-flow-alerts 的 DOM 稳定性。"
+    },
+    {
+      "module": "nope",
+      "priority": "A_phase_2",
+      "status": "partial",
+      "final_candidate_urls": [
+        {
+          "url": "https://unusualwhales.com/stock/SPX/nope",
+          "page_type": "data_page",
+          "login_required": "unknown",
+          "usable_for_dom_reader": "unknown",
+          "confidence": 0.65,
+          "reason": "虽然不在原始 top 结果里，但路径直接命中 SPX NOPE，更符合后续指数级读取目标。"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPY/nope",
+          "page_type": "data_page",
+          "login_required": "unknown",
+          "usable_for_dom_reader": "unknown",
+          "confidence": 0.65,
+          "reason": "作为 SPY 对照页值得保留，但仍需人工确认页面是否展示 NOPE/COPE/flow ratio 的核心字段。"
+        },
+        {
+          "url": "https://unusualwhales.com/news/nope-a-primer",
+          "page_type": "docs",
+          "login_required": "false",
+          "usable_for_dom_reader": "false",
+          "confidence": 0.68,
+          "reason": "这篇 primer 能确认 NOPE 的公开定义，但不是最终 Reader 应读取的数据页。"
+        }
+      ],
+      "next_step": "人工登录后先核实 SPX/SPY NOPE 页面是否能看到 NOPE、call delta、put delta、stock volume，以及 divergence / overheat 相关线索。"
+    },
+    {
+      "module": "volatility_iv",
+      "priority": "A_phase_2",
+      "status": "partial",
+      "final_candidate_urls": [
+        {
+          "url": "https://unusualwhales.com/stock/SPX/volatility",
+          "page_type": "data_page",
+          "login_required": "unknown",
+          "usable_for_dom_reader": "true",
+          "confidence": 0.87,
+          "reason": "与目标最贴近，Brave 摘要已暴露 IV rank、implied volatility、realized volatility 等核心线索。"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/XSP/volatility",
+          "page_type": "data_page",
+          "login_required": "unknown",
+          "usable_for_dom_reader": "true",
+          "confidence": 0.87,
+          "reason": "XSP 是 SPX 相关替代入口，适合在 SPX 主页 DOM 不稳定时作为辅助候选。"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPY/volatility",
+          "page_type": "data_page",
+          "login_required": "unknown",
+          "usable_for_dom_reader": "true",
+          "confidence": 0.87,
+          "reason": "Brave 摘要显示该页覆盖 IV Rank、IV Percentile、Implied/Realized Volatility，可作为波动模块对照页。"
+        }
+      ],
+      "next_step": "人工登录后确认 volatility 页是否还包含 term structure、volatility statistics、skew/kurtosis/volatility surfaces 等分区。"
+    }
+  ]
+}
