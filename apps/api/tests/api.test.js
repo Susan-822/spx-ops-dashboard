@@ -157,8 +157,12 @@ test('frontend serves only dashboard and radar routes as user-visible pages', as
 
     const dashboardHtml = await dashboard.text();
     const radarHtml = await radar.text();
-    assert.equal(dashboardHtml.includes('/radar'), true);
-    assert.equal(radarHtml.includes('/radar'), true);
+    assert.equal(dashboardHtml.includes('/app.js'), true);
+    assert.equal(radarHtml.includes('/app.js'), true);
+
+    const signalResponse = await fetch(`${baseUrl}/signals/current?scenario=breakout_pullback_pending`);
+    const signalJson = await signalResponse.json();
+    assert.equal(Boolean(signalJson.radar_summary), true);
   } finally {
     server.close();
   }
