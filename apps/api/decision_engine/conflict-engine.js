@@ -6,18 +6,83 @@ const WEIGHTS = Object.freeze({
 });
 
 function classifySignal(signal) {
-  if (['bullish_pullback', 'long_pullback_ready', 'bullish_probe', 'bullish_flow'].includes(signal)) {
-    return 'bullish';
+  if (
+    [
+      'bullish_pullback',
+      'long_pullback_ready',
+      'bullish_probe',
+      'bullish_flow',
+      'income_supportive',
+      'range_hold'
+    ].includes(signal)
+  ) {
+    return 'positive';
   }
 
   if (['bearish_pressure', 'short_retest_ready', 'bearish_flow', 'event_risk_high'].includes(signal)) {
-    return 'bearish';
+    return 'negative';
   }
 
   return 'neutral';
 }
 
-export function runConflictEngine({ theta_signal, tv_signal, uw_signal, fmp_signal, stale_flags }) {
+function baseConfidenceFromAgreement(count) {
+  if (count >= 4) {
+    return 92;
+  }
+  if (count === 3) {
+    return 80;
+  }
+  if (count === 2) {
+    return 70;
+  }
+  if (count === 1) {
+    return 62;
+  }
+  return 50;
+}
+
+function clampConfidence(value) {
+  return Math.max(35, Math.min(92, value));
+}
+
+function describeTheta(signal) {
+  if (signal === 'bearish_pressure') {
+    return 'ThetaData 偏空';
+  }
+  if (signal === 'income_supportive') {
+    return 'ThetaData 偏向区间收敛';
+  }
+  if (signal === 'bullish_pullback') {
+    return 'ThetaData 偏多';
+  }
+  return 'ThetaData 暂无明显方向';
+}
+
+function describeTradingView(signal) {
+  if (signal === 'long_pullback_ready') {
+    return 'TradingView 出现回踩做多结构';
+  }
+  if (signal === 'short_retest_ready') {
+    return 'TradingView 出现反抽做空结构';
+  }
+  if (signal === 'bullish_probe') {
+    return 'TradingView 只有上破试探，还没确认';
+  }
+  if (signal === 'range_hold') {
+    return 'TradingView 仍在区间结构中';
+  }
+  return 'TradingView 仍未确认方向';
+}
+
+export function runConflictEngine({
+  theta_signal,
+  tv_signal,
+  uw_signal,
+  fmp_signal,
+  stale_flags,
+  tv_confirmation
+}) {
   const directions = {
     theta: stale_flags.theta ? 'neutral' : classifySignal(theta_signal),
     tradingview: stale_flags.tradingview ? 'neutral' : classifySignal(tv_signal),
@@ -25,42 +90,52 @@ export function runConflictEngine({ theta_signal, tv_signal, uw_signal, fmp_sign
     fmp: stale_flags.fmp ? 'neutral' : classifySignal(fmp_signal)
   };
 
-  const bullishWeight = Object.entries(directions).reduce(
-    (sum, [source, direction]) => sum + (direction === 'bullish' ? WEIGHTS[source] : 0),
-    0
-  );
-  const bearishWeight = Object.entries(directions).reduce(
-    (sum, [source, direction]) => sum + (direction === 'bearish' ? WEIGHTS[source] : 0),
-    0
-  );
+  const counts = {
+    positive: Object.values(directions).filter((value) => value === 'positive').length,
+    negative: Object.values(directions).filter((value) => value === 'negative').length
+  };
+  const agreementCount = Math.max(counts.positive, counts.negative);
+  let adjusted_confidence = baseConfidenceFromAgreement(agreementCount);
 
+  const conflict_points = [];
   const thetaTvConflict =
     directions.theta !== 'neutral' &&
     directions.tradingview !== 'neutral' &&
     directions.theta !== directions.tradingview;
 
-  let conflict_points = Math.round(Math.min(bullishWeight, bearishWeight) * 100);
   if (thetaTvConflict) {
-    conflict_points += 25;
+    conflict_points.push(`${describeTheta(theta_signal)}，但 ${describeTradingView(tv_signal)}`);
   }
 
-  const stalePenalty = Object.values(stale_flags).filter(Boolean).length > 0 ? 20 : 0;
-  const adjusted_confidence = Math.max(0, 85 - conflict_points - stalePenalty);
+  if (directions.uw === 'positive' && tv_confirmation !== 'confirmed') {
+    conflict_points.push('UW 偏多但价格未确认');
+  }
+
+  if (counts.positive > 0 && counts.negative > 0 && !thetaTvConflict) {
+    conflict_points.push('多空来源不一致，先等主导方向更清晰');
+  }
 
   let conflict_level = 'low';
-  if (conflict_points >= 35) {
+  if (thetaTvConflict || conflict_points.length >= 2) {
     conflict_level = 'high';
-  } else if (conflict_points >= 15) {
+    adjusted_confidence -= 15;
+  } else if (conflict_points.length === 1) {
     conflict_level = 'medium';
+    adjusted_confidence -= 6;
+  }
+
+  if (stale_flags.any_stale) {
+    adjusted_confidence -= 12;
   }
 
   return {
-    has_conflict: conflict_points > 0,
+    has_conflict: conflict_points.length > 0,
     conflict_level,
     conflict_points,
-    adjusted_confidence,
+    adjusted_confidence: clampConfidence(adjusted_confidence),
     theta_tv_conflict: thetaTvConflict,
     weights: WEIGHTS,
-    directions
+    directions,
+    agreement_count: agreementCount
   };
 }

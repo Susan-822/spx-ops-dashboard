@@ -30,8 +30,10 @@ function renderSourceStatus(signal) {
     return `
       <section class="${staleClass}">
         <h4>${item.source}</h4>
+        <p>fetch_mode: ${item.fetch_mode}</p>
         <p>last_updated: ${item.last_updated}</p>
-        <p>stale: ${item.stale}</p>
+        <p>latency_ms: ${item.latency_ms}</p>
+        <p>stale_reason: ${item.stale_reason || 'none'}</p>
         <p>${item.message}</p>
       </section>
     `;
@@ -41,12 +43,22 @@ function renderSourceStatus(signal) {
 function renderStrategyCards(signal) {
   return signal.strategy_cards.map((card) => `
     <section class="card strategy-card">
-      <h4>${card.title}</h4>
-      <p class="strategy-action">${card.action}</p>
-      <p>${card.thesis}</p>
-      <p>confidence: ${card.confidence_score}</p>
+      <h4>${card.strategy_name}</h4>
+      <p><strong>suitable_when:</strong> ${card.suitable_when}</p>
+      <p><strong>entry_condition:</strong> ${card.entry_condition}</p>
+      <p><strong>target_zone:</strong> ${card.target_zone}</p>
+      <p><strong>invalidation:</strong> ${card.invalidation}</p>
+      <p><strong>avoid_when:</strong> ${card.avoid_when}</p>
     </section>
   `).join('');
+}
+
+function renderConflictPoints(points) {
+  if (!points.length) {
+    return '<p>none</p>';
+  }
+
+  return `<ul>${points.map((point) => `<li>${point}</li>`).join('')}</ul>`;
 }
 
 function renderDashboard(signal) {
@@ -64,6 +76,9 @@ function renderDashboard(signal) {
           <h1>总判断条</h1>
           <p class="hero-status">${signal.plain_language.market_status}</p>
           <p class="hero-meta">scenario: ${signal.scenario}</p>
+          <p class="hero-meta">data_timestamp: ${signal.data_timestamp}</p>
+          <p class="hero-meta">received_at: ${signal.received_at}</p>
+          <p class="hero-meta">latency_ms: ${signal.latency_ms}</p>
         </div>
         <section class="action-card">
           <p class="eyebrow">你的动作</p>
@@ -96,12 +111,13 @@ function renderDashboard(signal) {
         <section class="card">
           <h3>conflict</h3>
           <p>level: ${signal.conflict.conflict_level}</p>
-          <p>points: ${signal.conflict.conflict_points}</p>
-          <p>theta_tv_conflict: ${signal.conflict.theta_tv_conflict}</p>
+          <p>has_conflict: ${signal.conflict.has_conflict}</p>
+          ${renderConflictPoints(signal.conflict.conflict_points)}
         </section>
         <section class="card">
           <h3>stale_flags</h3>
           <div class="pre">${JSON.stringify(signal.stale_flags, null, 2)}</div>
+          <p><strong>stale_reason:</strong> ${signal.stale_reason.join(' | ') || 'none'}</p>
         </section>
       </section>
 

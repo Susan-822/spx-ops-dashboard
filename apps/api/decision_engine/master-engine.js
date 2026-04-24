@@ -9,28 +9,65 @@ import { runConflictEngine } from './conflict-engine.js';
 import { runActionEngine } from './action-engine.js';
 import { runPlainLanguageEngine } from './plain-language-engine.js';
 
-function createStrategyCards({ normalized, action, volatility, conflict, eventRisk }) {
+function buildStrategyCards({ normalized, action, volatility, marketRegime }) {
+  const bullTarget = `${normalized.max_pain} -> ${normalized.call_wall}`;
+  const bearTarget = `${normalized.put_wall} -> ${normalized.max_pain}`;
+  const ironRange = `${normalized.put_wall} - ${normalized.call_wall}`;
+
   return [
     {
-      title: '主策略',
-      action: action.recommended_action,
-      thesis: normalized.plain_thesis,
-      confidence_score: action.confidence_score
+      strategy_name: '单腿',
+      suitable_when: action.recommended_action === 'long_on_pullback' || action.recommended_action === 'short_on_retest'
+        ? '方向已经被确认，且回踩/反抽位置清晰。'
+        : '仅在强确认趋势里才考虑，当前不是优先方案。',
+      entry_condition: action.recommended_action === 'long_on_pullback'
+        ? `价格回踩不破 flip ${normalized.flip_level}`
+        : action.recommended_action === 'short_on_retest'
+          ? `价格反抽不过 call_wall ${normalized.call_wall}`
+          : '等待结构确认后再决定。',
+      target_zone: action.recommended_action === 'short_on_retest' ? bearTarget : bullTarget,
+      invalidation: action.invalidation_level,
+      avoid_when: '数据 stale、冲突过高、或事件风险抬升时不要做。'
     },
     {
-      title: '波动率约束',
-      action: volatility.short_vol_allowed ? 'short_vol_allowed' : 'short_vol_blocked',
-      thesis: volatility.income_allowed_reason,
-      confidence_score: action.confidence_score
+      strategy_name: '看涨价差',
+      suitable_when: normalized.gamma_regime === 'positive'
+        ? '正 Gamma 且价格回踩后仍守住关键位。'
+        : '只有当结构明确转强后才考虑。',
+      entry_condition: `回踩 flip ${normalized.flip_level} 上方并重新企稳。`,
+      target_zone: bullTarget,
+      invalidation: `跌破 put_wall ${normalized.put_wall}`,
+      avoid_when: '负 Gamma 扩张或 UW/价格不同步时不要提前做。'
     },
     {
-      title: '风险闸门',
-      action: conflict.conflict_level === 'high' ? 'conflict_wait' : eventRisk.risk_gate,
-      thesis:
-        conflict.conflict_level === 'high'
-          ? 'Theta 与结构存在明显冲突，优先等待。'
-          : eventRisk.event_note,
-      confidence_score: Math.max(20, action.confidence_score - 10)
+      strategy_name: '看跌价差',
+      suitable_when: normalized.gamma_regime === 'negative'
+        ? '负 Gamma 且价格反抽不过关键压力。'
+        : '只有在结构明确转弱时才考虑。',
+      entry_condition: `反抽不过 call_wall ${normalized.call_wall} 或 flip ${normalized.flip_level}`,
+      target_zone: bearTarget,
+      invalidation: `重新站回 call_wall ${normalized.call_wall}`,
+      avoid_when: '正 Gamma 护盘或主力明显承接时避免。'
+    },
+    {
+      strategy_name: '铁鹰',
+      suitable_when: action.recommended_action === 'income_ok'
+        ? '正 Gamma、IV 回落、无事件风险，且区间还在。'
+        : '当前不满足安全卖波动率窗口。',
+      entry_condition: `仅在价格继续围绕 max_pain ${normalized.max_pain} 附近钉住时考虑。`,
+      target_zone: ironRange,
+      invalidation: '事件风险升高、价格离开区间、或 IV 重新抬头。',
+      avoid_when: '事件日前、数据过期时、或冲突升高时禁止提前做。'
+    },
+    {
+      strategy_name: '观望',
+      suitable_when: action.recommended_action === 'wait' || action.recommended_action === 'no_trade'
+        ? '当前最优解就是少动。'
+        : '即使有计划动作，也应先等更好位置。',
+      entry_condition: '不满足结构、确认、或风险条件时直接空仓。',
+      target_zone: marketRegime.market_state === 'flip_chop' ? '等待离开 flip 区域' : '等待更优位置',
+      invalidation: '当冲突下降、结构确认、且数据新鲜时再重新评估。',
+      avoid_when: '不要因为无聊交易，尤其不要在中间区域逆势硬做。'
     }
   ];
 }
@@ -47,12 +84,12 @@ export function runMasterEngine(normalized) {
     tv_signal: priceStructure.price_signal,
     uw_signal: uwFlow.uw_signal,
     fmp_signal: normalized.fmp_signal,
-    stale_flags: normalized.stale_flags
+    stale_flags: normalized.stale_flags,
+    tv_confirmation: priceStructure.confirmation_status
   });
   const action = runActionEngine({
     normalized,
     marketRegime,
-    gammaWall,
     volatility,
     priceStructure,
     uwFlow,
@@ -79,7 +116,12 @@ export function runMasterEngine(normalized) {
 
   return createNormalizedSignal({
     timestamp: normalized.timestamp,
+    data_timestamp: normalized.data_timestamp,
+    received_at: normalized.received_at,
     generated_at: new Date().toISOString(),
+    latency_ms: normalized.latency_ms,
+    stale_reason: normalized.stale_reason,
+    fetch_mode: normalized.fetch_mode,
     is_mock: true,
     scenario: normalized.scenario,
     symbol: normalized.symbol,
@@ -130,12 +172,11 @@ export function runMasterEngine(normalized) {
     avoid_actions: action.avoid_actions,
     invalidation_level: action.invalidation_level,
     confidence_score: action.confidence_score,
-    strategy_cards: createStrategyCards({
+    strategy_cards: buildStrategyCards({
       normalized,
       action,
       volatility,
-      conflict,
-      eventRisk
+      marketRegime
     }),
     engines: {
       market_regime: marketRegime,
