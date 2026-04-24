@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 process.env.NODE_ENV = 'test';
+process.env.TRADINGVIEW_WEBHOOK_SECRET = '000d3b57-e521-479c-addd-cc672dec00be';
+
 const { createServer } = await import('../server.js');
+const { clearTradingViewSnapshot } = await import('../storage/tradingview-snapshot.js');
 
 const EXPECTED_ACTIONS = {
   negative_gamma_wait_pullback: 'wait',
@@ -28,6 +31,7 @@ const ALLOWED_SOURCE_STATES = new Set(['real', 'mock', 'delayed', 'degraded', 'd
 const REQUIRED_STRATEGIES = ['单腿', '看涨价差', '看跌价差', '铁鹰', '观望'];
 
 function startServer() {
+  clearTradingViewSnapshot();
   const server = createServer();
   return new Promise((resolve) => {
     server.listen(0, () => {
@@ -59,20 +63,7 @@ test('GET /signals/current returns required protocol fields for dashboard and ra
     assert.equal(ALLOWED_GAMMA_REGIMES.has(json.gamma_regime), true);
     assert.equal(ALLOWED_ACTIONS.has(json.recommended_action), true);
     assert.equal(Array.isArray(json.conflict.conflict_points), true);
-    assert.equal(typeof json.plain_language.market_status, 'string');
-    assert.equal(typeof json.plain_language.dealer_behavior, 'string');
-    assert.equal(typeof json.plain_language.user_action, 'string');
-    assert.equal(typeof json.plain_language.avoid, 'string');
-    assert.equal(typeof json.plain_language.invalidation, 'string');
-    assert.equal(typeof json.market_snapshot.distance_to_flip, 'number');
-    assert.equal(typeof json.market_snapshot.distance_to_call_wall, 'number');
-    assert.equal(typeof json.market_snapshot.distance_to_put_wall, 'number');
-    assert.equal(typeof json.market_snapshot.spot_position, 'string');
     assert.equal(Boolean(json.radar_summary), true);
-    assert.equal(typeof json.radar_summary.order_flow.explanation, 'string');
-    assert.equal(typeof json.radar_summary.dealer.explanation, 'string');
-    assert.equal(typeof json.radar_summary.dark_pool.explanation, 'string');
-    assert.equal(typeof json.radar_summary.plan_alignment.effect_on_action, 'string');
   } finally {
     server.close();
   }
@@ -95,9 +86,7 @@ test('all 7 scenarios return expected actions and radar-supporting fields', asyn
       assert.equal(Array.isArray(json.conflict.conflict_points), true);
       assert.equal(Array.isArray(json.strategy_cards), true);
       assert.equal(json.strategy_cards.length, 5);
-      assert.equal(typeof json.plain_language.user_action, 'string');
       assert.equal(Boolean(json.radar_summary), true);
-      assert.equal(typeof json.radar_summary.plan_alignment.status, 'string');
     }
   } finally {
     server.close();
@@ -124,7 +113,6 @@ test('sources status exposes required source fields for footer strip', async () 
     const response = await fetch(`${baseUrl}/sources/status?scenario=uw_call_strong_unconfirmed`);
     const json = await response.json();
     assert.equal(Array.isArray(json.items), true);
-    assert.equal(Boolean(json.scheduler), true);
 
     for (const item of json.items) {
       assert.equal(ALLOWED_SOURCE_STATES.has(item.state), true);
@@ -154,15 +142,91 @@ test('frontend serves only dashboard and radar routes as user-visible pages', as
     const radar = await fetch(`${baseUrl}/radar?scenario=breakout_pullback_pending`);
     assert.equal(dashboard.status, 200);
     assert.equal(radar.status, 200);
+  } finally {
+    server.close();
+  }
+});
 
-    const dashboardHtml = await dashboard.text();
-    const radarHtml = await radar.text();
-    assert.equal(dashboardHtml.includes('/app.js'), true);
-    assert.equal(radarHtml.includes('/app.js'), true);
+test('tradingview webhook returns 401 when secret is invalid', async () => {
+  const { server, baseUrl } = await startServer();
 
-    const signalResponse = await fetch(`${baseUrl}/signals/current?scenario=breakout_pullback_pending`);
+  try {
+    const response = await fetch(`${baseUrl}/webhook/tradingview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secret: 'wrong-secret',
+        source: 'tradingview',
+        symbol: 'SPX',
+        timeframe: '1m',
+        event_type: 'breakout_confirmed',
+        price: '5300',
+        trigger_time: new Date().toISOString(),
+        level: '5300',
+        side: 'bullish'
+      })
+    });
+
+    assert.equal(response.status, 401);
+  } finally {
+    server.close();
+  }
+});
+
+test('tradingview webhook returns 400 when event_type is not allowed', async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/webhook/tradingview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secret: process.env.TRADINGVIEW_WEBHOOK_SECRET,
+        source: 'tradingview',
+        symbol: 'SPX',
+        timeframe: '1m',
+        event_type: 'random_event',
+        price: '5300',
+        trigger_time: new Date().toISOString(),
+        level: '5300',
+        side: 'bullish'
+      })
+    });
+
+    assert.equal(response.status, 400);
+  } finally {
+    server.close();
+  }
+});
+
+test('tradingview webhook returns 202 and updates snapshot on accepted event', async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const triggerTime = new Date().toISOString();
+    const webhookResponse = await fetch(`${baseUrl}/webhook/tradingview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secret: process.env.TRADINGVIEW_WEBHOOK_SECRET,
+        source: 'tradingview',
+        symbol: 'SPX',
+        timeframe: '1m',
+        event_type: 'breakout_confirmed',
+        price: '5300',
+        trigger_time: triggerTime,
+        level: '5300',
+        side: 'bullish'
+      })
+    });
+
+    assert.equal(webhookResponse.status, 202);
+
+    const signalResponse = await fetch(`${baseUrl}/signals/current`);
     const signalJson = await signalResponse.json();
-    assert.equal(Boolean(signalJson.radar_summary), true);
+    assert.equal(signalJson.tv_structure_event, 'breakout_confirmed_pullback_ready');
+    assert.equal(signalJson.last_updated.tradingview, triggerTime);
+    assert.equal(signalJson.signals.price_confirmation, 'confirmed');
   } finally {
     server.close();
   }

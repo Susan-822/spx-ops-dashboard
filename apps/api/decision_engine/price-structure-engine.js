@@ -20,6 +20,11 @@ export function runPriceStructureEngine({ tv_structure_event }) {
         price_signal: 'range_hold',
         confirmation_status: 'confirmed'
       };
+    case 'structure_invalidated':
+      return {
+        price_signal: 'wait_reset',
+        confirmation_status: 'invalidated'
+      };
     case 'pullback_not_confirmed':
     default:
       return {

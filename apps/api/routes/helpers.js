@@ -1,7 +1,26 @@
+import crypto from 'node:crypto';
+
 export function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(payload, null, 2));
 }
+
+export function safeEqual(left, right) {
+  if (typeof left !== 'string' || typeof right !== 'string') {
+    return false;
+  }
+
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+export const secureCompare = safeEqual;
 
 export async function readJsonBody(req) {
   const chunks = [];

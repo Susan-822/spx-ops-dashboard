@@ -2,8 +2,12 @@ import { getCurrentSignal } from '../decision_engine/current-signal.js';
 import { getScenarioNames } from '../decision_engine/mock-scenarios.js';
 import { createSchedulerState } from '../scheduler/index.js';
 import { createStorageState } from '../storage/index.js';
+import {
+  getAcceptedTradingViewEvents,
+  updateTradingViewSnapshot
+} from '../storage/tradingview-snapshot.js';
 import { getRecentLogs } from '../logs/index.js';
-import { sendJson, readJsonBody } from './helpers.js';
+import { sendJson, readJsonBody, secureCompare } from './helpers.js';
 
 export async function handleApiRoute(req, res) {
   const url = new URL(req.url, 'http://localhost');
@@ -75,12 +79,42 @@ export async function handleApiRoute(req, res) {
 
   if (req.method === 'POST' && url.pathname === '/webhook/tradingview') {
     const body = await readJsonBody(req);
+    const expectedSecret = process.env.TRADINGVIEW_WEBHOOK_SECRET || '';
+    const providedSecret = typeof body.secret === 'string' ? body.secret : '';
+
+    if (!secureCompare(providedSecret, expectedSecret)) {
+      return sendJson(res, 401, {
+        accepted: false,
+        message: 'Invalid TradingView webhook secret.',
+        is_mock: true
+      });
+    }
+
+    const acceptedEvents = getAcceptedTradingViewEvents();
+    if (typeof body.event_type !== 'string' || !acceptedEvents.includes(body.event_type)) {
+      return sendJson(res, 400, {
+        accepted: false,
+        message: 'Unsupported TradingView event_type.',
+        accepted_event_types: acceptedEvents,
+        is_mock: true
+      });
+    }
+
+    updateTradingViewSnapshot({
+      source: 'tradingview',
+      symbol: typeof body.symbol === 'string' ? body.symbol : 'SPX',
+      timeframe: typeof body.timeframe === 'string' ? body.timeframe : '1m',
+      event_type: body.event_type,
+      price: body.price,
+      trigger_time: typeof body.trigger_time === 'string' ? body.trigger_time : new Date().toISOString(),
+      level: body.level,
+      side: typeof body.side === 'string' ? body.side : 'neutral'
+    });
+
     return sendJson(res, 202, {
       accepted: true,
-      path: url.pathname,
-      received: body,
-      message: 'TradingView remains disconnected in mock closed-loop mode.',
-      is_mock: true
+      message: 'TradingView event accepted.',
+      is_mock: false
     });
   }
 

@@ -15,6 +15,55 @@ const contentTypes = {
   '.json': 'application/json; charset=utf-8'
 };
 
+const BASIC_AUTH_USER = process.env.BASIC_AUTH_USER || 'spx';
+const BASIC_AUTH_PASSWORD = process.env.BASIC_AUTH_PASSWORD || '';
+
+function isAuthExempt(pathname) {
+  return pathname === '/health' || pathname === '/webhook/tradingview';
+}
+
+function parseBasicAuth(authorizationHeader) {
+  if (!authorizationHeader || !authorizationHeader.startsWith('Basic ')) {
+    return null;
+  }
+
+  try {
+    const decoded = Buffer.from(authorizationHeader.slice(6), 'base64').toString('utf8');
+    const separator = decoded.indexOf(':');
+    if (separator === -1) {
+      return null;
+    }
+
+    return {
+      username: decoded.slice(0, separator),
+      password: decoded.slice(separator + 1)
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isAuthorized(req) {
+  if (!BASIC_AUTH_PASSWORD) {
+    return true;
+  }
+
+  const credentials = parseBasicAuth(req.headers.authorization);
+  if (!credentials) {
+    return false;
+  }
+
+  return credentials.username === BASIC_AUTH_USER && credentials.password === BASIC_AUTH_PASSWORD;
+}
+
+function sendUnauthorized(res) {
+  res.writeHead(401, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'WWW-Authenticate': 'Basic realm="SPX Ops Dashboard"'
+  });
+  res.end('Authentication required.');
+}
+
 async function serveStatic(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const pathname = url.pathname;
@@ -35,6 +84,11 @@ async function serveStatic(req, res) {
 
 export function createServer() {
   return http.createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    if (!isAuthExempt(url.pathname) && !isAuthorized(req)) {
+      return sendUnauthorized(res);
+    }
+
     const handled = await handleApiRoute(req, res);
     if (handled !== false) {
       return;
