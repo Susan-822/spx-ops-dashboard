@@ -1,82 +1,114 @@
-import { createSourceStatus } from '../../../packages/shared/src/source-status.js';
+import { createSourceStatus, SOURCE_STATE } from '../../../packages/shared/src/source-status.js';
+import { getSourcePolicy } from '../scheduler/refresh-policy.js';
 
-const STALE_WINDOW_MS = 5 * 60 * 1000;
-
-function isStale(timestamp, lastUpdated) {
-  const now = new Date(timestamp).getTime();
-  const then = new Date(lastUpdated).getTime();
-  return Number.isFinite(now) && Number.isFinite(then) ? now - then > STALE_WINDOW_MS : true;
+function evaluateSourceState({ policy, is_mock, latencyMs }) {
+  if (latencyMs >= policy.down_threshold_ms) {
+    return SOURCE_STATE.DOWN;
+  }
+  if (latencyMs >= policy.stale_threshold_ms) {
+    return SOURCE_STATE.DELAYED;
+  }
+  if (is_mock) {
+    return SOURCE_STATE.MOCK;
+  }
+  return SOURCE_STATE.REAL;
 }
 
-function createStaleReason(source, stale, latencyMs) {
+function createStaleReason(source, stale, latencyMs, thresholdMs) {
   if (!stale) {
     return '';
   }
 
-  return `${source} 数据超过 5 分钟未更新，当前延迟约 ${latencyMs}ms。`;
+  return `${source} 超过 stale_threshold ${thresholdMs}ms，当前延迟约 ${latencyMs}ms。`;
 }
 
-function createSourceEntry({ source, timestamp, last_updated, stale }) {
+function createSourceEntry({ source, timestamp, last_updated, degraded = false }) {
+  const policy = getSourcePolicy(source);
   const latencyMs = Math.max(0, new Date(timestamp).getTime() - new Date(last_updated).getTime());
-  const staleReason = createStaleReason(source, stale, latencyMs);
+  const stale = latencyMs >= policy.stale_threshold_ms;
+  const state = degraded
+    ? SOURCE_STATE.DEGRADED
+    : evaluateSourceState({ policy, is_mock: true, latencyMs });
+  const staleReason = createStaleReason(source, stale, latencyMs, policy.stale_threshold_ms);
 
   return createSourceStatus({
     source,
     configured: false,
-    available: !stale,
+    available: state !== SOURCE_STATE.DOWN,
     is_mock: true,
-    fetch_mode: 'mock_scenario',
+    fetch_mode: policy.fetch_mode,
     stale,
+    state,
     last_updated,
     data_timestamp: last_updated,
     received_at: timestamp,
     latency_ms: latencyMs,
     stale_reason: staleReason,
-    message: stale
-      ? `${source} mock 数据已过期，本轮不能直接参与动作判断。`
-      : `${source} mock 数据已接收，可进入 mock engine 链路。`
+    refresh_interval_ms: policy.default_refresh_ms,
+    stale_threshold_ms: policy.stale_threshold_ms,
+    down_threshold_ms: policy.down_threshold_ms,
+    event_triggers: policy.event_triggers,
+    message: degraded
+      ? `${source} 当前处于 degraded 模式，结论只能降权参考。`
+      : stale
+        ? `${source} 当前已 delayed，不能直接主导动作。`
+        : `${source} mock 数据已接收，当前可作为 fallback 进入引擎。`
   });
 }
 
 export function normalizeMockScenario(rawScenario) {
   const receivedAt = new Date().toISOString();
-  const stale_flags = {
-    theta: isStale(receivedAt, rawScenario.last_updated.theta),
-    tradingview: isStale(receivedAt, rawScenario.last_updated.tradingview),
-    uw: isStale(receivedAt, rawScenario.last_updated.uw),
-    fmp: isStale(receivedAt, rawScenario.last_updated.fmp)
-  };
-
-  stale_flags.any_stale = Object.values(stale_flags).some(Boolean);
 
   const source_status = [
     createSourceEntry({
       source: 'theta',
       timestamp: receivedAt,
-      last_updated: rawScenario.last_updated.theta,
-      stale: stale_flags.theta
+      last_updated: rawScenario.last_updated.theta
     }),
     createSourceEntry({
       source: 'tradingview',
       timestamp: receivedAt,
-      last_updated: rawScenario.last_updated.tradingview,
-      stale: stale_flags.tradingview
-    }),
-    createSourceEntry({
-      source: 'uw',
-      timestamp: receivedAt,
-      last_updated: rawScenario.last_updated.uw,
-      stale: stale_flags.uw
+      last_updated: rawScenario.last_updated.tradingview
     }),
     createSourceEntry({
       source: 'fmp',
       timestamp: receivedAt,
+      last_updated: rawScenario.last_updated.fmp
+    }),
+    createSourceEntry({
+      source: 'uw_dom',
+      timestamp: receivedAt,
+      last_updated: rawScenario.last_updated.uw,
+      degraded: rawScenario.uw_fetch_path === 'screenshot'
+    }),
+    createSourceEntry({
+      source: 'uw_screenshot',
+      timestamp: receivedAt,
+      last_updated: rawScenario.last_updated.uw,
+      degraded: rawScenario.uw_fetch_path !== 'screenshot'
+    }),
+    createSourceEntry({
+      source: 'dashboard',
+      timestamp: receivedAt,
+      last_updated: receivedAt
+    }),
+    createSourceEntry({
+      source: 'telegram',
+      timestamp: receivedAt,
       last_updated: rawScenario.last_updated.fmp,
-      stale: stale_flags.fmp
+      degraded: true
     })
   ];
 
-  const stale_reason = source_status.filter((item) => item.stale).map((item) => item.stale_reason);
+  const stale_flags = {
+    theta: source_status.find((item) => item.source === 'theta')?.stale ?? true,
+    tradingview: source_status.find((item) => item.source === 'tradingview')?.stale ?? true,
+    uw: source_status.find((item) => item.source === 'uw_dom')?.stale ?? true,
+    fmp: source_status.find((item) => item.source === 'fmp')?.stale ?? true
+  };
+  stale_flags.any_stale = Object.values(stale_flags).some(Boolean);
+
+  const stale_reason = source_status.filter((item) => item.stale_reason).map((item) => item.stale_reason);
   const latency_ms = source_status.reduce((max, item) => Math.max(max, item.latency_ms), 0);
 
   return {
@@ -90,7 +122,7 @@ export function normalizeMockScenario(rawScenario) {
     is_mock: true,
     symbol: rawScenario.symbol,
     timeframe: rawScenario.timeframe,
-    plain_thesis: `Scenario ${rawScenario.scenario} drives the full mock master-engine loop.`,
+    plain_thesis: `Scenario ${rawScenario.scenario} drives the intraday command-center mock loop.`,
     last_updated: rawScenario.last_updated,
     stale_flags,
     source_status,
@@ -104,6 +136,7 @@ export function normalizeMockScenario(rawScenario) {
     uw_flow_bias: rawScenario.uw_flow_bias,
     uw_dark_pool_bias: rawScenario.uw_dark_pool_bias,
     uw_dealer_bias: rawScenario.uw_dealer_bias,
+    uw_fetch_path: rawScenario.uw_fetch_path,
     advanced_greeks: rawScenario.advanced_greeks,
     event_risk: rawScenario.event_risk,
     event_note: rawScenario.event_note,

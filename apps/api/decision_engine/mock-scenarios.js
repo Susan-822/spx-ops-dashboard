@@ -11,6 +11,7 @@ function createScenario(definition) {
     timeframe: '1D',
     is_mock: true,
     fetch_mode: 'mock_scenario',
+    uw_fetch_path: definition.uw_fetch_path ?? 'dom',
     last_updated: {
       theta: isoMinutesAgo(definition.last_updated_minutes?.theta ?? 1),
       tradingview: isoMinutesAgo(definition.last_updated_minutes?.tradingview ?? 1),
@@ -39,6 +40,7 @@ const SCENARIO_DEFINITIONS = Object.freeze({
     uw_flow_bias: 'bullish',
     uw_dark_pool_bias: 'neutral',
     uw_dealer_bias: 'defensive',
+    uw_fetch_path: 'dom',
     advanced_greeks: {
       vanna: 'negative',
       charm: 'negative'
@@ -61,6 +63,7 @@ const SCENARIO_DEFINITIONS = Object.freeze({
     uw_flow_bias: 'neutral',
     uw_dark_pool_bias: 'neutral',
     uw_dealer_bias: 'stabilizing',
+    uw_fetch_path: 'dom',
     advanced_greeks: {
       vanna: 'positive',
       charm: 'positive'
@@ -83,6 +86,7 @@ const SCENARIO_DEFINITIONS = Object.freeze({
     uw_flow_bias: 'bullish',
     uw_dark_pool_bias: 'neutral',
     uw_dealer_bias: 'supportive',
+    uw_fetch_path: 'dom',
     advanced_greeks: {
       vanna: 'positive',
       charm: 'flat'
@@ -105,6 +109,7 @@ const SCENARIO_DEFINITIONS = Object.freeze({
     uw_flow_bias: 'bullish',
     uw_dark_pool_bias: 'bullish',
     uw_dealer_bias: 'supportive',
+    uw_fetch_path: 'dom',
     advanced_greeks: {
       vanna: 'positive',
       charm: 'positive'
@@ -133,6 +138,7 @@ const SCENARIO_DEFINITIONS = Object.freeze({
     uw_flow_bias: 'neutral',
     uw_dark_pool_bias: 'neutral',
     uw_dealer_bias: 'stabilizing',
+    uw_fetch_path: 'dom',
     advanced_greeks: {
       vanna: 'positive',
       charm: 'positive'
@@ -155,6 +161,7 @@ const SCENARIO_DEFINITIONS = Object.freeze({
     uw_flow_bias: 'bullish',
     uw_dark_pool_bias: 'bullish',
     uw_dealer_bias: 'supportive',
+    uw_fetch_path: 'screenshot',
     advanced_greeks: {
       vanna: 'positive',
       charm: 'positive'
@@ -177,6 +184,7 @@ const SCENARIO_DEFINITIONS = Object.freeze({
     uw_flow_bias: 'bullish',
     uw_dark_pool_bias: 'bullish',
     uw_dealer_bias: 'supportive',
+    uw_fetch_path: 'dom',
     advanced_greeks: {
       vanna: 'positive',
       charm: 'positive'

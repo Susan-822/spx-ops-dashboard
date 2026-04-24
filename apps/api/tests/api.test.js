@@ -24,6 +24,7 @@ const ALLOWED_MARKET_STATES = new Set([
 
 const ALLOWED_GAMMA_REGIMES = new Set(['positive', 'negative', 'critical', 'unknown']);
 const ALLOWED_ACTIONS = new Set(['wait', 'long_on_pullback', 'short_on_retest', 'income_ok', 'no_trade']);
+const ALLOWED_SOURCE_STATES = new Set(['real', 'mock', 'delayed', 'degraded', 'down']);
 const REQUIRED_STRATEGIES = ['单腿', '看涨价差', '看跌价差', '铁鹰', '观望'];
 
 function startServer() {
@@ -153,6 +154,36 @@ test('conflict output uses reason arrays instead of numeric points', async () =>
     assert.equal(Array.isArray(json.conflict.conflict_points), true);
     assert.equal(json.conflict.conflict_points.length > 0, true);
     assert.equal(typeof json.conflict.conflict_points[0], 'string');
+  } finally {
+    server.close();
+  }
+});
+
+test('sources status exposes refresh and state metadata for command center footer', async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/sources/status?scenario=uw_call_strong_unconfirmed`);
+    const json = await response.json();
+    assert.equal(Array.isArray(json.items), true);
+    assert.equal(Boolean(json.scheduler), true);
+    assert.equal(Array.isArray(json.scheduler.jobs), true);
+    assert.equal(json.items.length >= 7, true);
+
+    for (const item of json.items) {
+      assert.equal(ALLOWED_SOURCE_STATES.has(item.state), true);
+      assert.equal(typeof item.fetch_mode, 'string');
+      assert.equal(typeof item.latency_ms, 'number');
+      assert.equal(typeof item.refresh_interval_ms, 'number');
+      assert.equal(typeof item.stale_threshold_ms, 'number');
+      assert.equal(typeof item.down_threshold_ms, 'number');
+      assert.equal(Array.isArray(item.event_triggers), true);
+    }
+
+    const uwDom = json.items.find((item) => item.source === 'uw_dom');
+    const uwScreenshot = json.items.find((item) => item.source === 'uw_screenshot');
+    assert.equal(uwDom.state, 'degraded');
+    assert.equal(uwScreenshot.state, 'mock');
   } finally {
     server.close();
   }

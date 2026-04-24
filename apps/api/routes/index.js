@@ -1,6 +1,5 @@
 import { getCurrentSignal } from '../decision_engine/current-signal.js';
 import { getScenarioNames } from '../decision_engine/mock-scenarios.js';
-import { getTelegramSnapshot } from '../adapters/telegram/index.js';
 import { createSchedulerState } from '../scheduler/index.js';
 import { createStorageState } from '../storage/index.js';
 import { getRecentLogs } from '../logs/index.js';
@@ -25,6 +24,8 @@ export async function handleApiRoute(req, res) {
     return sendJson(res, 200, {
       items: signal.source_status,
       stale_flags: signal.stale_flags,
+      stale_reason: signal.stale_reason,
+      scheduler: createSchedulerState(),
       scenario: signal.scenario,
       is_mock: true
     });
@@ -88,7 +89,7 @@ export async function handleApiRoute(req, res) {
     return sendJson(res, 202, {
       accepted: true,
       path: url.pathname,
-      message: 'UW ingestion remains disabled in mock closed-loop mode.',
+      message: 'UW manual screenshot upload is scaffolded as the third-priority fallback path.',
       received: body,
       is_mock: true
     });
@@ -99,7 +100,7 @@ export async function handleApiRoute(req, res) {
     return sendJson(res, 202, {
       accepted: true,
       path: url.pathname,
-      message: 'UW DOM parsing remains disabled in mock closed-loop mode.',
+      message: 'UW DOM reading is the first-priority design path, but still mock-only in this phase.',
       received: body,
       is_mock: true
     });
@@ -107,11 +108,10 @@ export async function handleApiRoute(req, res) {
 
   if (req.method === 'POST' && url.pathname === '/alerts/test') {
     const body = await readJsonBody(req);
-    const telegram = await getTelegramSnapshot();
     return sendJson(res, 202, {
       accepted: true,
       path: url.pathname,
-      channel: telegram,
+      message: 'Telegram remains event-triggered only in mock mode.',
       received: body,
       is_mock: true
     });
