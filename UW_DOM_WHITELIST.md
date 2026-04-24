@@ -72,7 +72,7 @@ Required visible fields for first DOM POC:
 - `status`: `approved_for_dom_poc`
 - `reason`: SPX Greek Exposure 主页面是当前最明确、最稳定、最贴近 Gamma / Dealer 地图目标的数据页。
 - `required_visible_fields`: `GEX, DEX, Vanna, Charm, Gamma by strike, Expiry breakdown, zero gamma / flip, last update`
-- `next_action`: 登录 UW 后先确认主页面的 summary 区和 strike / expiry 结构是否稳定可见。
+- `next_action`: 登录 UW 后先确认主页面的 summary 区和 strike / expiry 结构稳定可见。
 
 #### 2) `https://unusualwhales.com/stock/SPX/greek-exposure?tab=Gamma`
 
@@ -84,7 +84,7 @@ Required visible fields for first DOM POC:
 - `status`: `approved_for_dom_poc`
 - `reason`: Gamma tab 能更直接聚焦 GEX 和 gamma by strike，是首批 DOM POC 的高价值子视图。
 - `required_visible_fields`: `GEX, Gamma by strike, zero gamma / flip, last update`
-- `next_action`: 登录后确认 tab 切换是否保留稳定 DOM，避免 selector 因前端 tab 状态变化而失效。
+- `next_action`: 登录后确认 tab 切换能保留稳定 DOM，避免 selector 因前端 tab 状态变化而失效。
 
 #### 3) `https://unusualwhales.com/stock/SPX/greek-exposure?type=exposure&greek=gamma`
 
@@ -96,7 +96,7 @@ Required visible fields for first DOM POC:
 - `status`: `approved_for_dom_poc`
 - `reason`: 参数化 gamma 视图最适合做固定入口的 DOM POC 备用页。
 - `required_visible_fields`: `GEX, Gamma by strike, Expiry breakdown, zero gamma / flip, last update`
-- `next_action`: 登录后确认 query 视图是否直达目标模块，以及是否和主页面复用同一 DOM 结构。
+- `next_action`: 登录后确认 query 视图可直达目标模块，并确认其与主页面复用同一 DOM 结构。
 
 ---
 
@@ -123,9 +123,9 @@ Required visible fields:
 - `login_required`: `unknown`
 - `usable_for_dom_reader`: `true`
 - `status`: `needs_manual_login_confirmation`
-- `reason`: SPX volatility 页面质量高，但 `Term Structure` 是否同页可见还需要登录态确认。
+- `reason`: SPX volatility 页面质量高，但 `Term Structure` 的同页可见性还需要登录态确认。
 - `required_visible_fields`: `IV Rank, IV Percentile, Implied Volatility, Realized Volatility, Term Structure, Volatility Statistics`
-- `next_action`: 登录后确认 SPX volatility 页面上是否同时存在 term structure 与 volatility statistics 分区。
+- `next_action`: 登录后确认 SPX volatility 页面上同时存在 term structure 与 volatility statistics 分区。
 
 #### 2) `https://unusualwhales.com/stock/XSP/volatility`
 
@@ -137,7 +137,7 @@ Required visible fields:
 - `status`: `needs_manual_login_confirmation`
 - `reason`: XSP 可作为 SPX 的备用波动率入口，但字段覆盖仍需在登录页逐项核实。
 - `required_visible_fields`: `IV Rank, IV Percentile, Implied Volatility, Realized Volatility, Term Structure, Volatility Statistics`
-- `next_action`: 登录后检查 XSP 页面是否与 SPX volatility 共享同类布局与字段分区。
+- `next_action`: 登录后检查 XSP 页面与 SPX volatility 共享同类布局与字段分区。
 
 #### 3) `https://unusualwhales.com/stock/SPY/volatility`
 
@@ -149,7 +149,7 @@ Required visible fields:
 - `status`: `needs_manual_login_confirmation`
 - `reason`: SPY volatility 适合做对照页，但还未最终确认 term structure 和统计区块在公开路径下的可见性。
 - `required_visible_fields`: `IV Rank, IV Percentile, Implied Volatility, Realized Volatility, Term Structure, Volatility Statistics`
-- `next_action`: 登录后确认 SPY volatility 是否能作为 SPX volatility 的 DOM 对照模板。
+- `next_action`: 登录后确认 SPY volatility 可作为 SPX volatility 的 DOM 对照模板。
 
 ### module: `options_flow_alerts`
 
@@ -170,9 +170,9 @@ Required visible fields:
 - `login_required`: `unknown`
 - `usable_for_dom_reader`: `true`
 - `status`: `needs_manual_login_confirmation`
-- `reason`: 这是最接近市场级 Flow 总览页的候选，但仍需登录后确认是否真能稳定聚焦 SPX / SPY / QQQ。
+- `reason`: 这是最接近市场级 Flow 总览页的候选，但仍需登录后确认其能稳定聚焦 SPX / SPY / QQQ。
 - `required_visible_fields`: `premium, ask side, bid side, volume, open interest, IV, repeated hits / sweep / floor / multileg`
-- `next_action`: 登录后先确认 flow/overview 是否是市场级 flow 主入口，以及目标列是否默认可见。
+- `next_action`: 登录后先确认 flow/overview 是市场级 flow 主入口，并检查目标列默认可见。
 
 ### module: `spy_darkpool_offlit`
 
@@ -192,9 +192,9 @@ Required visible fields:
 - `login_required`: `unknown`
 - `usable_for_dom_reader`: `unknown`
 - `status`: `needs_manual_login_confirmation`
-- `reason`: 名称最接近真实暗池流页面，但目前仍未确认其是否提供 SPY 专属 dark pool / off-lit 数据区。
+- `reason`: 名称最接近真实暗池流页面，但目前仍未确认其提供 SPY 专属 dark pool / off-lit 数据区。
 - `required_visible_fields`: `dark pool price levels, support / resistance, off-lit ratio, recent large prints, last update`
-- `next_action`: 登录后人工确认 dark-pool-flow 是否可切换到 SPY，并暴露价位层与 off-lit 结构。
+- `next_action`: 登录后人工确认 dark-pool-flow 可切换到 SPY，并暴露价位层与 off-lit 结构。
 
 ### module: `nope`
 
@@ -215,9 +215,9 @@ Required visible fields:
 - `login_required`: `unknown`
 - `usable_for_dom_reader`: `unknown`
 - `status`: `needs_manual_login_confirmation`
-- `reason`: SPX NOPE 页面路径成立，但核心字段是否齐全只能在登录后人工确认。
+- `reason`: SPX NOPE 页面路径成立，但核心字段齐全度只能在登录后人工确认。
 - `required_visible_fields`: `NOPE, Net Options Pricing Effect, call delta, put delta, stock volume, divergence / overheat`
-- `next_action`: 登录后先验证 SPX/nope 页面是否存在数值型 NOPE、call delta、put delta 与 stock volume 区块。
+- `next_action`: 登录后先验证 SPX/nope 页面存在数值型 NOPE、call delta、put delta 与 stock volume 区块。
 
 #### 7) `https://unusualwhales.com/stock/SPY/nope`
 
@@ -229,7 +229,7 @@ Required visible fields:
 - `status`: `needs_manual_login_confirmation`
 - `reason`: SPY NOPE 可作为 SPX 的对照页，但字段完整性仍未确认。
 - `required_visible_fields`: `NOPE, Net Options Pricing Effect, call delta, put delta, stock volume, divergence / overheat`
-- `next_action`: 登录后确认 SPY/nope 页面是否与 SPX/nope 共用同类结构和字段面板。
+- `next_action`: 登录后确认 SPY/nope 页面与 SPX/nope 共用同类结构和字段面板。
 
 ---
 
