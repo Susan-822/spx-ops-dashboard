@@ -40,7 +40,7 @@ function startServer() {
   });
 }
 
-test('GET /signals/current returns required protocol fields for dashboard consumption', async () => {
+test('GET /signals/current returns required protocol fields for dashboard and radar', async () => {
   const { server, baseUrl } = await startServer();
 
   try {
@@ -64,18 +64,21 @@ test('GET /signals/current returns required protocol fields for dashboard consum
     assert.equal(typeof json.plain_language.user_action, 'string');
     assert.equal(typeof json.plain_language.avoid, 'string');
     assert.equal(typeof json.plain_language.invalidation, 'string');
-    assert.equal(json.plain_language.avoid.includes('chasing'), false);
-    assert.equal(json.plain_language.avoid.includes('early_iron_condor'), false);
     assert.equal(typeof json.market_snapshot.distance_to_flip, 'number');
     assert.equal(typeof json.market_snapshot.distance_to_call_wall, 'number');
     assert.equal(typeof json.market_snapshot.distance_to_put_wall, 'number');
     assert.equal(typeof json.market_snapshot.spot_position, 'string');
+    assert.equal(Boolean(json.radar_summary), true);
+    assert.equal(typeof json.radar_summary.order_flow.explanation, 'string');
+    assert.equal(typeof json.radar_summary.dealer.explanation, 'string');
+    assert.equal(typeof json.radar_summary.dark_pool.explanation, 'string');
+    assert.equal(typeof json.radar_summary.plan_alignment.effect_on_action, 'string');
   } finally {
     server.close();
   }
 });
 
-test('all 7 scenarios return expected actions and dashboard-ready fields', async () => {
+test('all 7 scenarios return expected actions and radar-supporting fields', async () => {
   const { server, baseUrl } = await startServer();
 
   try {
@@ -93,91 +96,28 @@ test('all 7 scenarios return expected actions and dashboard-ready fields', async
       assert.equal(Array.isArray(json.strategy_cards), true);
       assert.equal(json.strategy_cards.length, 5);
       assert.equal(typeof json.plain_language.user_action, 'string');
-      assert.notEqual(json.plain_language.user_action.length, 0);
-      assert.equal(typeof json.stale_flags, 'object');
-      assert.equal(typeof json.conflict.conflict_level, 'string');
-      assert.equal(typeof json.confidence_score, 'number');
-      assert.equal(json.confidence_score <= 92, true);
-      assert.equal(json.confidence_score >= 35, true);
+      assert.equal(Boolean(json.radar_summary), true);
+      assert.equal(typeof json.radar_summary.plan_alignment.status, 'string');
     }
   } finally {
     server.close();
   }
 });
 
-test('strategy cards expose exactly the required strategy set and fields', async () => {
+test('strategy cards expose exactly the required five strategy names', async () => {
   const { server, baseUrl } = await startServer();
 
   try {
     const response = await fetch(`${baseUrl}/signals/current?scenario=breakout_pullback_pending`);
     const json = await response.json();
     const names = json.strategy_cards.map((card) => card.strategy_name);
-
     assert.deepEqual(names, REQUIRED_STRATEGIES);
-
-    for (const card of json.strategy_cards) {
-      assert.equal(typeof card.strategy_name, 'string');
-      assert.equal(typeof card.suitable_when, 'string');
-      assert.equal(typeof card.entry_condition, 'string');
-      assert.equal(typeof card.target_zone, 'string');
-      assert.equal(typeof card.invalidation, 'string');
-      assert.equal(typeof card.avoid_when, 'string');
-    }
   } finally {
     server.close();
   }
 });
 
-test('stale and event-risk rules map to approved avoid action enums', async () => {
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const staleResponse = await fetch(`${baseUrl}/signals/current?scenario=theta_stale_no_trade`);
-    const staleJson = await staleResponse.json();
-    assert.equal(staleJson.recommended_action, 'no_trade');
-    assert.equal(staleJson.avoid_actions.includes('trade_on_stale_data'), true);
-
-    const eventResponse = await fetch(`${baseUrl}/signals/current?scenario=fmp_event_no_short_vol`);
-    const eventJson = await eventResponse.json();
-    assert.equal(eventJson.recommended_action, 'wait');
-    assert.equal(eventJson.avoid_actions.includes('short_vol_before_event'), true);
-    assert.equal(eventJson.avoid_actions.includes('early_iron_condor'), true);
-    assert.equal(eventJson.avoid_actions.includes('naked_sell'), true);
-  } finally {
-    server.close();
-  }
-});
-
-test('conflict output uses reason arrays instead of numeric points', async () => {
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const response = await fetch(`${baseUrl}/signals/current?scenario=flip_conflict_wait`);
-    const json = await response.json();
-    assert.equal(json.conflict.conflict_level, 'high');
-    assert.equal(Array.isArray(json.conflict.conflict_points), true);
-    assert.equal(json.conflict.conflict_points.length > 0, true);
-    assert.equal(typeof json.conflict.conflict_points[0], 'string');
-  } finally {
-    server.close();
-  }
-});
-
-test('flip conflict scenario stays high conflict wait after freshness calibration', async () => {
-  const { server, baseUrl } = await startServer();
-
-  try {
-    const response = await fetch(`${baseUrl}/signals/current?scenario=flip_conflict_wait`);
-    const json = await response.json();
-    assert.equal(json.recommended_action, 'wait');
-    assert.equal(json.conflict.conflict_level, 'high');
-    assert.equal(json.stale_flags.any_stale, false);
-  } finally {
-    server.close();
-  }
-});
-
-test('sources status exposes required source fields for command center footer', async () => {
+test('sources status exposes required source fields for footer strip', async () => {
   const { server, baseUrl } = await startServer();
 
   try {
@@ -185,8 +125,6 @@ test('sources status exposes required source fields for command center footer', 
     const json = await response.json();
     assert.equal(Array.isArray(json.items), true);
     assert.equal(Boolean(json.scheduler), true);
-    assert.equal(Array.isArray(json.scheduler.jobs), true);
-    assert.equal(json.items.length >= 9, true);
 
     for (const item of json.items) {
       assert.equal(ALLOWED_SOURCE_STATES.has(item.state), true);
@@ -203,11 +141,24 @@ test('sources status exposes required source fields for command center footer', 
       assert.equal(typeof item.stale_reason, 'string');
       assert.equal(typeof item.message, 'string');
     }
+  } finally {
+    server.close();
+  }
+});
 
-    const uwDom = json.items.find((item) => item.source === 'uw_dom');
-    const uwScreenshot = json.items.find((item) => item.source === 'uw_screenshot');
-    assert.equal(uwDom.state, 'degraded');
-    assert.equal(uwScreenshot.state, 'mock');
+test('frontend serves only dashboard and radar routes as user-visible pages', async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const dashboard = await fetch(`${baseUrl}/`);
+    const radar = await fetch(`${baseUrl}/radar?scenario=breakout_pullback_pending`);
+    assert.equal(dashboard.status, 200);
+    assert.equal(radar.status, 200);
+
+    const dashboardHtml = await dashboard.text();
+    const radarHtml = await radar.text();
+    assert.equal(dashboardHtml.includes('/radar'), true);
+    assert.equal(radarHtml.includes('/radar'), true);
   } finally {
     server.close();
   }

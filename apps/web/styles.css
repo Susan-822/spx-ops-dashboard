@@ -33,10 +33,10 @@ a {
   padding: 24px;
 }
 
+.site-nav,
 .top-command-bar,
 .hero,
 .card,
-.action-card,
 .scenario-strip,
 .market-card,
 .risk-card {
@@ -46,13 +46,67 @@ a {
   box-shadow: 0 8px 24px rgba(15, 98, 254, 0.08);
 }
 
+.site-nav,
 .hero,
-.scenario-strip,
 .card,
-.action-card,
 .market-card,
-.risk-card {
-  padding: 24px;
+.risk-card,
+.radar-header {
+  padding: 20px 24px;
+}
+
+.site-nav {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.brand {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.page-links,
+.scenario-links,
+.status-strip,
+.chip-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.page-links a,
+.scenario-link,
+.strip-item,
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #c6dcf8;
+  background: #edf5ff;
+  font-size: 15px;
+}
+
+.page-links a.active,
+.scenario-link.active {
+  background: #0f62fe;
+  border-color: #0f62fe;
+  color: #ffffff;
+}
+
+.compact {
+  justify-content: flex-end;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #5f7e99;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 13px;
 }
 
 .top-command-bar {
@@ -67,14 +121,6 @@ a {
 
 .hero-inline {
   display: block;
-}
-
-.eyebrow {
-  margin: 0 0 8px;
-  color: #5f7e99;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 13px;
 }
 
 h1 {
@@ -92,12 +138,7 @@ h4 {
 }
 
 .hero-status,
-.action-copy,
 .card p,
-.chip,
-.scenario-link,
-.status-pill,
-.strip-item,
 li {
   font-size: 18px;
   line-height: 1.5;
@@ -120,25 +161,31 @@ li {
   color: #111827;
 }
 
-.spot-sub {
+.spot-sub,
+.mini-value,
+.radar-header h1 {
   color: #0f62fe;
 }
 
 .primary-action {
-  font-size: 42px;
+  font-size: 44px;
   color: #0f62fe;
   margin-bottom: 14px;
 }
 
-.risk-value {
-  font-size: 46px;
-  color: #0f62fe;
+.risk-value,
+.mini-value {
+  font-size: 40px;
 }
 
 .grid {
   display: grid;
   gap: 18px;
   margin-top: 18px;
+}
+
+.dashboard-core {
+  grid-template-columns: 1.3fr 1fr;
 }
 
 .two-up {
@@ -149,40 +196,12 @@ li {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.chip-wrap,
-.scenario-links,
-.status-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.chip,
-.scenario-link,
-.status-pill,
-.strip-item {
-  display: inline-flex;
-  align-items: center;
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid #c6dcf8;
-  background: #edf5ff;
-}
-
-.scenario-link.active {
-  background: #0f62fe;
-  border-color: #0f62fe;
-  color: #ffffff;
-}
-
-.pre {
-  white-space: pre-wrap;
-  word-break: break-word;
-  background: #f4f9ff;
-  border: 1px solid #d8e8fb;
-  border-radius: 12px;
-  padding: 16px;
-  color: #39546b;
+.action-card-large,
+.keymap-card,
+.support-card,
+.footer-status-card,
+.radar-summary-card {
+  border-width: 2px;
 }
 
 .conflict-banner,
@@ -207,75 +226,27 @@ li {
   color: #51606e;
 }
 
-.emphasis-card {
-  border-width: 2px;
-}
-
-.status-grid,
-.mini-grid {
-  margin-top: 18px;
-}
-
-.status-card,
-.mini-card {
+.mini-card,
+.strategy-card,
+.status-card {
   background: #fbfdff;
   border: 1px solid #d8e8fb;
   border-radius: 14px;
   padding: 18px;
 }
 
-.mini-value {
-  font-size: 32px;
-  font-weight: 700;
-  color: #0f62fe;
-}
-
-.status-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-
-.state-real {
-  background: #e9f7ee;
-  border-color: #8cc9a0;
-  color: #217346;
-}
-
-.state-mock {
+.strip-item {
   background: #edf5ff;
-  border-color: #98bdf5;
-  color: #0f62fe;
 }
 
-.state-delayed {
-  background: #f5f5f5;
-  border-color: #c7ccd2;
-  color: #6b7280;
-}
-
-.state-degraded {
-  background: #eef2f7;
-  border-color: #b9c3cf;
-  color: #526173;
-}
-
-.state-down {
-  background: #f2f4f7;
-  border-color: #aeb7c1;
-  color: #4b5563;
-}
-
-.stale {
+.strip-stale {
   background: #f2f4f7;
   border-color: #d7dce2;
   color: #7b8794;
 }
 
-.strip-alert {
-  border-color: #9aa8b5;
-  background: #f2f4f7;
+.radar-grid .card {
+  min-height: 320px;
 }
 
 ul {
@@ -284,15 +255,22 @@ ul {
 }
 
 @media (max-width: 1080px) {
+  .site-nav,
   .top-command-bar,
+  .dashboard-core,
   .two-up,
   .three-up {
     grid-template-columns: 1fr;
   }
 
+  .compact {
+    justify-content: flex-start;
+  }
+
   .primary-action,
   .spot-value,
-  .risk-value {
-    font-size: 36px;
+  .risk-value,
+  .mini-value {
+    font-size: 34px;
   }
 }
