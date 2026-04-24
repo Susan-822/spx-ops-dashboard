@@ -242,7 +242,7 @@ Reason: 这些页面证明了 `/stock/<ticker>/nope` 路径模式存在，但不
    - `confidence`: `0.87`
    - `reason`: SPY 波动率页摘要同样完整，适合对照 SPX 页确认同类 DOM 结构。
 
-**next step:** 先在登录页面确认 `term structure` 与 IV/realized volatility 是否同页展示，再决定能不能直接接 SPX 单页。
+**next step:** 先在登录页面确认 `term structure` 与 IV/realized volatility` 是否位于同一页面，再决定能不能直接接 SPX 单页。
 
 ---
 
