@@ -11,15 +11,14 @@ import { getRecentLogs } from '../logs/index.js';
 import { sendJson, readJsonBody, secureCompare } from './helpers.js';
 
 function buildTelegramTestText(body = {}) {
-  const custom = typeof body.message === 'string' && body.message.trim() ? body.message.trim() : null;
-  if (custom) {
-    return custom;
-  }
-
   return [
-    'SPX Ops Lab 测试提醒',
-    '当前链路：Telegram 推送已打通。',
-    '说明：这是中文测试消息，不代表真实交易指令。'
+    '【SPX 指挥台】',
+    '状态：测试',
+    '动作：这是一条 Telegram 云端测试提醒',
+    '触发：Render 后端',
+    '作废：无',
+    '禁做：无',
+    '原因：验证 Telegram 通知通道'
   ].join('\n');
 }
 
@@ -136,7 +135,7 @@ export async function handleApiRoute(req, res) {
     const body = await readJsonBody(req);
     try {
       const result = await sendTelegramTestMessage(buildTelegramTestText(body));
-      return sendJson(res, result.is_mock ? 503 : 202, {
+      return sendJson(res, result.is_mock ? 503 : 200, {
         accepted: !result.is_mock,
         message: result.message,
         is_mock: result.is_mock
