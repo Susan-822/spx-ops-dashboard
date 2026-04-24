@@ -91,7 +91,7 @@ export async function handleApiRoute(req, res) {
         }
       ],
       scheduler: createSchedulerState(),
-      storage: createStorageState(),
+      storage: await createStorageState(),
       is_mock: true
     });
   }
@@ -126,13 +126,19 @@ export async function handleApiRoute(req, res) {
       });
     }
 
-    updateTradingViewSnapshot({
+    await updateTradingViewSnapshot({
       source: 'tradingview',
       symbol: typeof body.symbol === 'string' ? body.symbol : 'SPX',
       timeframe: typeof body.timeframe === 'string' ? body.timeframe : '1m',
       event_type: body.event_type,
-      price: body.price,
+      price: typeof body.price === 'number' ? body.price : Number(body.price),
       trigger_time: typeof body.trigger_time === 'string' ? body.trigger_time : new Date().toISOString(),
+      invalidation_level:
+        typeof body.invalidation_level === 'number'
+          ? body.invalidation_level
+          : typeof body.level === 'number'
+            ? body.level
+            : Number(body.invalidation_level ?? body.level),
       level: body.level,
       side: typeof body.side === 'string' ? body.side : 'neutral'
     });

@@ -1,8 +1,10 @@
 import { createSourceStatus, SOURCE_STATE } from '../../../packages/shared/src/source-status.js';
 import { getSourcePolicy } from '../scheduler/refresh-policy.js';
+import { mapTradingViewEventToStructure } from '../storage/tradingview-snapshot.js';
 
 const FMP_ABNORMAL_SOURCE_MESSAGE = 'FMP 数据异常，事件风险不可确认。';
 const FMP_ABNORMAL_EVENT_NOTE = 'FMP 数据异常，事件风险不可确认，降低交易权限，不提前卖波。';
+const TV_STALE_NOTE = '最近一次 TradingView 结构事件已超过新鲜窗口，仍保留展示，但不作为新触发。';
 
 function evaluateSourceState({ policy, is_mock, latencyMs }) {
   if (latencyMs >= policy.down_threshold_ms) {
@@ -127,7 +129,15 @@ function createSourceEntryFromSnapshot({
     policy,
     available: snapshot?.available ?? true
   });
+  const normalizedState =
+    source === 'tradingview' && state === SOURCE_STATE.DOWN && stale
+      ? SOURCE_STATE.DELAYED
+      : state;
   const staleReason = snapshot?.stale_reason || createStaleReason(source, stale, latencyMs, policy.stale_threshold_ms);
+  const tradingviewMessage =
+    source === 'tradingview' && stale
+      ? '最近一次 TradingView 事件已 stale，仍保留展示。'
+      : null;
   const isFmpAbnormal = source === 'fmp_event' && isFmpAbnormalState({
     configured: snapshot?.configured ?? false,
     is_mock: snapshot?.is_mock ?? true,
@@ -147,11 +157,11 @@ function createSourceEntryFromSnapshot({
   return createSourceStatus({
     source,
     configured: snapshot?.configured ?? false,
-    available: snapshot?.available ?? state !== SOURCE_STATE.DOWN,
+    available: snapshot?.available ?? normalizedState !== SOURCE_STATE.DOWN,
     is_mock: snapshot?.is_mock ?? true,
     fetch_mode: snapshot?.fetch_mode ?? policy.fetch_mode,
     stale,
-    state,
+    state: normalizedState,
     last_updated: lastUpdated,
     data_timestamp: snapshot?.data_timestamp ?? lastUpdated,
     received_at: snapshot?.received_at ?? timestamp,
@@ -161,16 +171,19 @@ function createSourceEntryFromSnapshot({
     stale_threshold_ms: policy.stale_threshold_ms,
     down_threshold_ms: policy.down_threshold_ms,
     event_triggers: policy.event_triggers,
-    message: isFmpAbnormal
-      ? FMP_ABNORMAL_SOURCE_MESSAGE
-      : isFmpPriceAbnormal
-        ? 'FMP SPX price unavailable'
-      : snapshot?.message
-        || (degraded
-          ? `${source} 当前处于 degraded 模式，结论只能降权参考。`
-          : stale
-            ? `${source} 当前已 delayed，不能直接主导动作。`
-            : `${source} 数据已接收。`)
+    message: tradingviewMessage
+      || (isFmpAbnormal
+        ? FMP_ABNORMAL_SOURCE_MESSAGE
+        : isFmpPriceAbnormal
+          ? 'FMP SPX price unavailable'
+          : source === 'tradingview' && stale
+            ? '最近一次 TradingView 事件已 stale，仍保留展示。'
+            : snapshot?.message
+              || (degraded
+                ? `${source} 当前处于 degraded 模式，结论只能降权参考。`
+                : stale
+                  ? `${source} 当前已 delayed，不能直接主导动作。`
+                  : `${source} 数据已接收。`))
   });
 }
 
@@ -231,6 +244,30 @@ function deriveSpotContext(rawScenario) {
   };
 }
 
+function deriveTradingViewContext(rawScenario) {
+  const snapshot = rawScenario.tradingview_snapshot;
+  if (!snapshot) {
+    return {
+      tv_structure_event: rawScenario.tv_structure_event,
+      tradingview_note: '',
+      tradingview_last_updated: rawScenario.last_updated.tradingview
+    };
+  }
+
+  return {
+    tv_structure_event: snapshot.tv_structure_event || mapTradingViewEventToStructure(snapshot.event_type) || rawScenario.tv_structure_event,
+    tradingview_note: snapshot.stale ? TV_STALE_NOTE : `最近 TV 事件：${snapshot.event_type || 'unknown_event'}。`,
+    tradingview_last_updated: snapshot.last_updated || snapshot.received_at || rawScenario.last_updated.tradingview
+  };
+}
+
+function appendUniqueNote(notes, note) {
+  if (!note) {
+    return notes;
+  }
+  return notes.includes(note) ? notes : [...notes, note];
+}
+
 export function normalizeMockScenario(rawScenario) {
   const receivedAt = new Date().toISOString();
 
@@ -285,6 +322,16 @@ export function normalizeMockScenario(rawScenario) {
     })
   ];
 
+  const tradingviewIndex = source_status.findIndex((item) => item.source === 'tradingview');
+  if (tradingviewIndex >= 0 && rawScenario.tradingview_snapshot) {
+    source_status[tradingviewIndex] = createSourceEntryFromSnapshot({
+      source: 'tradingview',
+      timestamp: receivedAt,
+      snapshot: rawScenario.tradingview_snapshot,
+      fallbackLastUpdated: rawScenario.last_updated.tradingview
+    });
+  }
+
   const fmpIndex = source_status.findIndex((item) => item.source === 'fmp_event');
   if (fmpIndex >= 0 && rawScenario.fmp_event_snapshot) {
     source_status[fmpIndex] = createSourceEntryFromSnapshot({
@@ -324,6 +371,8 @@ export function normalizeMockScenario(rawScenario) {
   const fmpStatus = source_status.find((item) => item.source === 'fmp_event');
   const eventContext = deriveEventContext(rawScenario, fmpStatus);
   const spotContext = deriveSpotContext(rawScenario);
+  const tradingViewContext = deriveTradingViewContext(rawScenario);
+  const notes = appendUniqueNote([], tradingViewContext.tradingview_note);
 
   return {
     scenario: rawScenario.scenario,
@@ -362,6 +411,8 @@ export function normalizeMockScenario(rawScenario) {
     trade_permission_adjustment: eventContext.trade_permission_adjustment,
     fmp_signal: rawScenario.fmp_signal,
     theta_signal: rawScenario.theta_signal,
-    tv_structure_event: rawScenario.tv_structure_event
+    tv_structure_event: tradingViewContext.tv_structure_event,
+    tradingview_note: tradingViewContext.tradingview_note,
+    notes
   };
 }

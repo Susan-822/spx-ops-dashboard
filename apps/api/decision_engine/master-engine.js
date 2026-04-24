@@ -359,6 +359,10 @@ export function runMasterEngine(normalized) {
       action
     },
     notes: [
+      normalized.tv_last_event_note
+        || normalized.tradingview_note
+        || normalized.tradingview_snapshot?.message
+        || '最近没有新的 TradingView 结构事件。',
       'Mock master-engine closed loop only.',
       'No real API integration is active.',
       'No automatic order placement exists.'

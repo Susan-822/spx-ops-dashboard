@@ -11,5 +11,8 @@
     "dev": "node apps/api/server.js",
     "start": "node apps/api/server.js",
     "test": "node --test apps/api/tests/api.test.js"
+  },
+  "dependencies": {
+    "redis": "^5.12.1"
   }
 }

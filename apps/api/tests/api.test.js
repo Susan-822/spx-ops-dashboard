@@ -1,13 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
 
 process.env.NODE_ENV = 'test';
 process.env.TRADINGVIEW_WEBHOOK_SECRET = '000d3b57-e521-479c-addd-cc672dec00be';
+process.env.STATE_STORE = 'memory';
 
 const { createServer } = await import('../server.js');
 const { clearTradingViewSnapshot } = await import('../storage/tradingview-snapshot.js');
 const { getCurrentSignal } = await import('../decision_engine/current-signal.js');
 const { buildAlertMessage } = await import('../alerts/build-alert-message.js');
+const { resetTvSnapshotStoreForTests } = await import('../state/tvSnapshotStore.js');
 
 const EXPECTED_ACTIONS = {
   negative_gamma_wait_pullback: 'wait',
@@ -44,6 +48,17 @@ function startServer() {
       });
     });
   });
+}
+
+async function resetTvStateEnv(overrides = {}) {
+  delete process.env.REDIS_URL;
+  delete process.env.TV_SNAPSHOT_FILE;
+  delete process.env.TV_SNAPSHOT_TTL_SECONDS;
+  delete process.env.TV_SNAPSHOT_STALE_SECONDS;
+  process.env.STATE_STORE = 'memory';
+  Object.assign(process.env, overrides);
+  await clearTradingViewSnapshot();
+  await resetTvSnapshotStoreForTests();
 }
 
 test('GET /signals/current returns required protocol fields for dashboard and radar', async () => {
@@ -202,6 +217,7 @@ test('tradingview webhook returns 400 when event_type is not allowed', async () 
 });
 
 test('tradingview webhook returns 202 and updates snapshot on accepted event', async () => {
+  await resetTvStateEnv();
   const { server, baseUrl } = await startServer();
 
   try {
@@ -229,6 +245,120 @@ test('tradingview webhook returns 202 and updates snapshot on accepted event', a
     assert.equal(signalJson.tv_structure_event, 'breakout_confirmed_pullback_ready');
     assert.equal(signalJson.last_updated.tradingview, triggerTime);
     assert.equal(signalJson.signals.price_confirmation, 'confirmed');
+    assert.match(signalJson.plain_language.market_status, /TradingView|价格|回踩|突破|结构/);
+    assert.equal(
+      signalJson.notes.some((note) => note.includes('最近 TV 事件：breakout_confirmed。')),
+      true
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('TradingView snapshot persists in file mode across store reset and is still readable', async () => {
+  const filePath = path.join(os.tmpdir(), `tv-snapshot-${Date.now()}.json`);
+  await resetTvStateEnv({
+    STATE_STORE: 'file',
+    TV_SNAPSHOT_FILE: filePath,
+    TV_SNAPSHOT_TTL_SECONDS: '21600',
+    TV_SNAPSHOT_STALE_SECONDS: '900'
+  });
+
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const triggerTime = new Date().toISOString();
+    const webhookResponse = await fetch(`${baseUrl}/webhook/tradingview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secret: process.env.TRADINGVIEW_WEBHOOK_SECRET,
+        source: 'tradingview',
+        symbol: 'SPX',
+        timeframe: '3m',
+        event_type: 'breakdown_confirmed',
+        price: 5291.5,
+        trigger_time: triggerTime,
+        invalidation_level: 5305.25,
+        side: 'bearish'
+      })
+    });
+
+    assert.equal(webhookResponse.status, 202);
+
+    const firstSignal = await fetch(`${baseUrl}/signals/current`);
+    const firstJson = await firstSignal.json();
+    assert.equal(firstJson.tv_structure_event, 'breakdown_confirmed');
+    assert.equal(firstJson.signals.tv_signal, 'short_retest_ready');
+    assert.equal(firstJson.signals.price_confirmation, 'confirmed');
+
+    const tradingviewStatus = firstJson.source_status.find((item) => item.source === 'tradingview');
+    assert.ok(tradingviewStatus);
+    assert.equal(tradingviewStatus.state, 'real');
+    assert.equal(tradingviewStatus.stale, false);
+
+    await resetTvSnapshotStoreForTests();
+
+    const secondSignal = await fetch(`${baseUrl}/signals/current`);
+    const secondJson = await secondSignal.json();
+    assert.equal(secondJson.tv_structure_event, 'breakdown_confirmed');
+    assert.equal(secondJson.signals.tv_signal, 'short_retest_ready');
+    assert.equal(secondJson.signals.price_confirmation, 'confirmed');
+    assert.equal(
+      secondJson.notes.some((note) => note.includes('最近 TV 事件：breakdown_confirmed。')),
+      true
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('stale TradingView snapshot remains visible but is marked stale in source status', async () => {
+  const filePath = path.join(os.tmpdir(), `tv-snapshot-stale-${Date.now()}.json`);
+  await resetTvStateEnv({
+    STATE_STORE: 'file',
+    TV_SNAPSHOT_FILE: filePath,
+    TV_SNAPSHOT_TTL_SECONDS: '21600',
+    TV_SNAPSHOT_STALE_SECONDS: '900'
+  });
+
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const staleTriggerTime = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const webhookResponse = await fetch(`${baseUrl}/webhook/tradingview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secret: process.env.TRADINGVIEW_WEBHOOK_SECRET,
+        source: 'tradingview',
+        symbol: 'SPX',
+        timeframe: '1m',
+        event_type: 'pullback_holding',
+        price: 5310,
+        trigger_time: staleTriggerTime,
+        invalidation_level: 5298,
+        side: 'bullish'
+      })
+    });
+
+    assert.equal(webhookResponse.status, 202);
+
+    const signalResponse = await fetch(`${baseUrl}/signals/current`);
+    const signalJson = await signalResponse.json();
+
+    assert.equal(signalJson.tv_structure_event, 'breakout_confirmed_pullback_ready');
+    assert.equal(signalJson.signals.tv_signal, 'long_pullback_ready');
+
+    const tradingviewStatus = signalJson.source_status.find((item) => item.source === 'tradingview');
+    assert.ok(tradingviewStatus);
+    assert.equal(tradingviewStatus.stale, true);
+    assert.equal(tradingviewStatus.state, 'delayed');
+    assert.match(tradingviewStatus.message, /stale|陈旧|最近一次 TV 事件/i);
+    assert.equal(
+      signalJson.notes.some((note) => note.includes('最近 TV 事件：pullback_holding。')),
+      true
+    );
   } finally {
     server.close();
   }

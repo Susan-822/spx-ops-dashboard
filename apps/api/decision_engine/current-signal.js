@@ -27,14 +27,20 @@ function applyTradingViewSnapshot(baseScenario, snapshot) {
     return baseScenario;
   }
 
+  const mappedStructure = snapshot.tv_structure_event || baseScenario.tv_structure_event;
+  const triggerTimestamp = snapshot.last_updated || snapshot.received_at || baseScenario.last_updated.tradingview;
+
   return {
     ...baseScenario,
     timeframe: snapshot.timeframe || baseScenario.timeframe,
     last_updated: {
       ...baseScenario.last_updated,
-      tradingview: snapshot.last_updated || baseScenario.last_updated.tradingview
+      tradingview: triggerTimestamp
     },
-    tv_structure_event: snapshot.tv_structure_event || baseScenario.tv_structure_event,
+    tv_structure_event: mappedStructure,
+    tv_last_event_note: snapshot.status === 'stale'
+      ? `最近 TradingView 事件 ${snapshot.event_type || mappedStructure} 已 stale，仅作参考。`
+      : `最近 TradingView 事件：${snapshot.event_type || mappedStructure}。`,
     tradingview_snapshot: snapshot
   };
 }
@@ -101,7 +107,7 @@ function applyFmpPriceSnapshot(baseScenario, snapshot) {
 
 export async function getCurrentSignal(requestedScenario, options = {}) {
   const scenario = getMockScenario(requestedScenario);
-  const snapshot = getTradingViewSnapshot();
+  const snapshot = await getTradingViewSnapshot();
   const fmpSnapshot = await getFmpSnapshot(options.fmp);
   const enrichedScenario = applyFmpPriceSnapshot(
     applyFmpEventSnapshot(
