@@ -32,7 +32,7 @@ function deriveRiskLevel(signal) {
 function buildPlanChips(signal) {
   return [
     `市场状态：${signal.plain_language.market_status}`,
-    `主力行为：${signal.plain_language.dealer_behavior}`,
+    `做市商：${signal.plain_language.dealer_behavior}`,
     `禁做：${signal.plain_language.avoid}`
   ];
 }
@@ -51,13 +51,16 @@ function renderTopNav(currentPath, currentScenario) {
     <header class="site-nav">
       <div class="brand">SPX 盘中指挥台</div>
       <nav class="page-links">
-        <a class="${currentPath === '/' ? 'active' : ''}" href="/${window.location.search}">指令页</a>
-        <a class="${currentPath === '/radar' ? 'active' : ''}" href="/radar${window.location.search}">资金雷达</a>
+        <a class="${currentPath === '/' ? 'active' : ''}" href="/${window.location.search}">主操作页</a>
+        <a class="${currentPath === '/radar' ? 'active' : ''}" href="/radar${window.location.search}">辅助雷达页</a>
       </nav>
-      <div class="scenario-links compact">${SCENARIOS.map((scenario) => {
-        const activeClass = scenario === currentScenario ? 'scenario-link active' : 'scenario-link';
-        return `<a class="${activeClass}" href="${currentPath}?scenario=${scenario}">${scenario}</a>`;
-      }).join('')}</div>
+      <div class="dev-tools compact">
+        <span class="dev-label">开发模式</span>
+        <div class="scenario-links">${SCENARIOS.map((scenario) => {
+          const activeClass = scenario === currentScenario ? 'scenario-link active' : 'scenario-link';
+          return `<a class="${activeClass}" href="${currentPath}?scenario=${scenario}">${scenario}</a>`;
+        }).join('')}</div>
+      </div>
     </header>
   `;
 }
@@ -100,9 +103,9 @@ function renderDashboardPage(signal) {
 
     <section class="top-command-bar">
       <section class="market-card">
-        <p class="eyebrow">当前价</p>
+        <p class="eyebrow">现价</p>
         <div class="spot-value">${signal.market_snapshot.spot}</div>
-        <p class="spot-sub">Gamma：${signal.gamma_regime}</p>
+        <p class="spot-sub">Gamma 环境：${signal.gamma_regime}</p>
       </section>
 
       <section class="hero hero-inline">
@@ -120,30 +123,30 @@ function renderDashboardPage(signal) {
 
     <section class="grid dashboard-core">
       <section class="card action-card-large">
-        <p class="eyebrow">你的动作</p>
+        <p class="eyebrow">当前动作</p>
         <div class="primary-action">${signal.recommended_action}</div>
         <p><strong>入场条件：</strong>${signal.strategy_cards[0]?.entry_condition ?? '等待更清晰的确认。'}</p>
         <p><strong>禁做：</strong>${signal.plain_language.avoid}</p>
-        <p><strong>失效：</strong>${signal.plain_language.invalidation}</p>
+        <p><strong>失效条件：</strong>${signal.plain_language.invalidation}</p>
       </section>
 
       <section class="card keymap-card">
         <h3>关键位地图</h3>
-        <p>spot: ${signal.market_snapshot.spot}</p>
-        <p>flip_level: ${signal.market_snapshot.flip_level}</p>
-        <p>call_wall: ${signal.market_snapshot.call_wall}</p>
-        <p>put_wall: ${signal.market_snapshot.put_wall}</p>
-        <p>max_pain: ${signal.market_snapshot.max_pain}</p>
-        <p>distance_to_flip: ${signal.market_snapshot.distance_to_flip}</p>
-        <p>distance_to_call_wall: ${signal.market_snapshot.distance_to_call_wall}</p>
-        <p>distance_to_put_wall: ${signal.market_snapshot.distance_to_put_wall}</p>
-        <p>spot_position: ${signal.market_snapshot.spot_position}</p>
+        <p>现价：${signal.market_snapshot.spot}</p>
+        <p>Flip：${signal.market_snapshot.flip_level}</p>
+        <p>Call Wall：${signal.market_snapshot.call_wall}</p>
+        <p>Put Wall：${signal.market_snapshot.put_wall}</p>
+        <p>Max Pain：${signal.market_snapshot.max_pain}</p>
+        <p>距 Flip：${signal.market_snapshot.distance_to_flip}</p>
+        <p>距 Call Wall：${signal.market_snapshot.distance_to_call_wall}</p>
+        <p>距 Put Wall：${signal.market_snapshot.distance_to_put_wall}</p>
+        <p>当前位置：${signal.market_snapshot.spot_position}</p>
       </section>
     </section>
 
     <section class="grid three-up mini-grid">
       <section class="card mini-card">
-        <h4>主力行为</h4>
+        <h4>做市商</h4>
         <p class="mini-value">${signal.plain_language.dealer_behavior}</p>
       </section>
       <section class="card mini-card">
@@ -169,7 +172,7 @@ function renderDashboardPage(signal) {
     </section>
 
     <section class="card footer-status-card">
-      <h3>数据源状态小条</h3>
+      <h3>数据源状态</h3>
       <div class="status-strip">
         ${renderSourceStatusStrip(signal)}
       </div>
@@ -202,13 +205,13 @@ function renderRadarPage(signal) {
       </section>
 
       <section class="card">
-        <h3>做市商 / Dealer</h3>
+        <h3>做市商</h3>
         <p>Gamma：${radar.dealer.gamma_bias}</p>
         <p>Vanna：${radar.dealer.vanna_bias}</p>
-        <p>Charm：${radar.dealer.charm_bias}</p>
+        <p>Charm 偏向：${radar.dealer.charm_bias}</p>
         <p>Vomma 风险：${radar.dealer.vomma_risk}</p>
         <p>Speed 风险：${radar.dealer.speed_risk}</p>
-        <p>Color：${radar.dealer.color_decay}</p>
+        <p>Gamma 衰减：${radar.dealer.color_decay}</p>
         <p><strong>综合：</strong>${radar.dealer.dealer_behavior}</p>
         <p>${radar.dealer.explanation}</p>
       </section>
@@ -220,7 +223,7 @@ function renderRadarPage(signal) {
         <p>下方承接：${radar.dark_pool.support_below}</p>
         <p>上方压力：${radar.dark_pool.resistance_above}</p>
         <p>关键暗池价位：${radar.dark_pool.key_levels.join(' / ')}</p>
-        <p>距当前 spot：${radar.dark_pool.distance_to_spot.join(' / ')}</p>
+        <p>距当前现价：${radar.dark_pool.distance_to_spot.join(' / ')}</p>
         <p><strong>暗池偏向：</strong>${radar.dark_pool.dark_pool_bias}</p>
         <p>${radar.dark_pool.explanation}</p>
       </section>
