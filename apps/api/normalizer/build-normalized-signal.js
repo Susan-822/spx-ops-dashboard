@@ -21,6 +21,19 @@ function createStaleReason(source, stale, latencyMs, thresholdMs) {
   return `${source} 超过 stale_threshold ${thresholdMs}ms，当前延迟约 ${latencyMs}ms。`;
 }
 
+function pickSourceState({ degraded, is_mock, latencyMs, policy, explicitState, available = true }) {
+  if (explicitState) {
+    return explicitState;
+  }
+  if (!available) {
+    return SOURCE_STATE.DOWN;
+  }
+  if (degraded) {
+    return SOURCE_STATE.DEGRADED;
+  }
+  return evaluateSourceState({ policy, is_mock, latencyMs });
+}
+
 function createSourceEntry({ source, timestamp, last_updated, degraded = false }) {
   const policy = getSourcePolicy(source);
   const latencyMs = Math.max(0, new Date(timestamp).getTime() - new Date(last_updated).getTime());
@@ -52,6 +65,55 @@ function createSourceEntry({ source, timestamp, last_updated, degraded = false }
       : stale
         ? `${source} 当前已 delayed，不能直接主导动作。`
         : `${source} mock 数据已接收，当前可作为 fallback 进入引擎。`
+  });
+}
+
+function createSourceEntryFromSnapshot({
+  source,
+  timestamp,
+  snapshot,
+  fallbackLastUpdated,
+  degraded = false
+}) {
+  const policy = getSourcePolicy(source);
+  const lastUpdated = snapshot?.last_updated || snapshot?.data_timestamp || fallbackLastUpdated || timestamp;
+  const latencyMs = typeof snapshot?.latency_ms === 'number'
+    ? snapshot.latency_ms
+    : Math.max(0, new Date(timestamp).getTime() - new Date(lastUpdated).getTime());
+  const stale = latencyMs >= policy.stale_threshold_ms;
+  const isFallbackMock = Boolean(snapshot?.is_mock) && Boolean(snapshot?.fallback_reason);
+  const state = pickSourceState({
+    degraded: degraded || isFallbackMock,
+    is_mock: snapshot?.is_mock ?? true,
+    latencyMs,
+    policy,
+    available: snapshot?.available ?? true
+  });
+  const staleReason = snapshot?.stale_reason || createStaleReason(source, stale, latencyMs, policy.stale_threshold_ms);
+
+  return createSourceStatus({
+    source,
+    configured: snapshot?.configured ?? false,
+    available: snapshot?.available ?? state !== SOURCE_STATE.DOWN,
+    is_mock: snapshot?.is_mock ?? true,
+    fetch_mode: snapshot?.fetch_mode ?? policy.fetch_mode,
+    stale,
+    state,
+    last_updated: lastUpdated,
+    data_timestamp: snapshot?.data_timestamp ?? lastUpdated,
+    received_at: snapshot?.received_at ?? timestamp,
+    latency_ms: latencyMs,
+    stale_reason: staleReason,
+    refresh_interval_ms: policy.default_refresh_ms,
+    stale_threshold_ms: policy.stale_threshold_ms,
+    down_threshold_ms: policy.down_threshold_ms,
+    event_triggers: policy.event_triggers,
+    message: snapshot?.message
+      || (degraded
+        ? `${source} 当前处于 degraded 模式，结论只能降权参考。`
+        : stale
+          ? `${source} 当前已 delayed，不能直接主导动作。`
+          : `${source} 数据已接收。`)
   });
 }
 
@@ -108,6 +170,16 @@ export function normalizeMockScenario(rawScenario) {
       degraded: true
     })
   ];
+
+  const fmpIndex = source_status.findIndex((item) => item.source === 'fmp');
+  if (fmpIndex >= 0 && rawScenario.fmp_snapshot) {
+    source_status[fmpIndex] = createSourceEntryFromSnapshot({
+      source: 'fmp',
+      timestamp: receivedAt,
+      snapshot: rawScenario.fmp_snapshot,
+      fallbackLastUpdated: rawScenario.last_updated.fmp
+    });
+  }
 
   const stale_flags = {
     theta: source_status.find((item) => item.source === 'theta_core')?.stale ?? true,

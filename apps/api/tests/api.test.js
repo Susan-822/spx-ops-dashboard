@@ -6,6 +6,8 @@ process.env.TRADINGVIEW_WEBHOOK_SECRET = '000d3b57-e521-479c-addd-cc672dec00be';
 
 const { createServer } = await import('../server.js');
 const { clearTradingViewSnapshot } = await import('../storage/tradingview-snapshot.js');
+const { getCurrentSignal } = await import('../decision_engine/current-signal.js');
+const { buildAlertMessage } = await import('../alerts/build-alert-message.js');
 
 const EXPECTED_ACTIONS = {
   negative_gamma_wait_pullback: 'wait',
@@ -244,4 +246,112 @@ test('health endpoint still exposes all seven scenarios', async () => {
   } finally {
     server.close();
   }
+});
+
+test('FMP high-risk event updates event_context and keeps source_status.fmp real', async () => {
+  process.env.FMP_API_KEY = 'test-key';
+
+  const signal = await getCurrentSignal('positive_gamma_income_watch', {
+    fmp: {
+      now: new Date('2026-04-24T12:00:00.000Z'),
+      fetchImpl: async () => ({
+        ok: true,
+        async json() {
+          return [
+            {
+              date: '2026-04-24T13:30:00.000Z',
+              country: 'US',
+              event: 'Non-Farm Payrolls',
+              impact: 'High'
+            }
+          ];
+        }
+      })
+    }
+  });
+
+  assert.equal(signal.event_context.event_risk, 'high');
+  assert.match(signal.event_context.event_note, /FMP 检测到/);
+  assert.equal(signal.recommended_action, 'wait');
+
+  const fmpStatus = signal.source_status.find((item) => item.source === 'fmp');
+  assert.ok(fmpStatus);
+  assert.equal(fmpStatus.is_mock, false);
+  assert.equal(fmpStatus.state, 'real');
+  assert.equal(fmpStatus.fetch_mode, 'low_frequency_poll');
+
+  delete process.env.FMP_API_KEY;
+});
+
+test('FMP fallback preserves schema but marks source_status.fmp degraded mock', async () => {
+  process.env.FMP_API_KEY = 'test-key';
+
+  const signal = await getCurrentSignal('breakout_pullback_pending', {
+    fmp: {
+      fetchImpl: async () => {
+        throw new Error('network unavailable');
+      }
+    }
+  });
+
+  assert.equal(signal.schema_version, '0.4.0');
+  assert.equal(signal.event_context.event_risk, 'low');
+  assert.equal(typeof signal.event_context.event_note, 'string');
+
+  const fmpStatus = signal.source_status.find((item) => item.source === 'fmp');
+  assert.ok(fmpStatus);
+  assert.equal(fmpStatus.is_mock, true);
+  assert.equal(fmpStatus.state, 'degraded');
+  assert.equal(fmpStatus.configured, true);
+  assert.match(fmpStatus.message, /mock fallback/);
+
+  delete process.env.FMP_API_KEY;
+});
+
+test('buildAlertMessage renders Chinese premarket warning for FMP risk gate', async () => {
+  process.env.FMP_API_KEY = 'test-key';
+
+  const signal = await getCurrentSignal('positive_gamma_income_watch', {
+    fmp: {
+      now: new Date('2026-04-24T08:00:00.000Z'),
+      fetchImpl: async () => ({
+        ok: true,
+        async json() {
+          return [
+            {
+              date: '2026-04-24T10:00:00.000Z',
+              country: 'US',
+              event: 'CPI',
+              impact: 'High'
+            }
+          ];
+        }
+      })
+    }
+  });
+
+  const message = buildAlertMessage({
+    signal,
+    body: { session: 'premarket' }
+  });
+
+  assert.match(message, /状态：盘前提醒/);
+  assert.match(message, /动作：先等待/);
+  assert.match(message, /原因：FMP 检测到/);
+  assert.match(message, /不要提前铁鹰/);
+
+  delete process.env.FMP_API_KEY;
+});
+
+test('buildAlertMessage renders Chinese intraday reminder from current signal', async () => {
+  const signal = await getCurrentSignal('breakout_pullback_pending');
+  const message = buildAlertMessage({
+    signal,
+    body: { session: 'intraday' }
+  });
+
+  assert.match(message, /状态：盘中提醒/);
+  assert.match(message, /动作：等回踩不破关键位，再考虑偏多/);
+  assert.match(message, /触发：SPX/);
+  assert.match(message, /作废：回踩跌破 put_wall/);
 });
