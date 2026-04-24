@@ -70,6 +70,34 @@ function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
+function safeText(value, fallback = '--') {
+  if (value == null) return fallback;
+  if (typeof value === 'string') return value || fallback;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+
+  if (Array.isArray(value)) {
+    const text = value.map((item) => safeText(item, '')).filter(Boolean).join('；');
+    return text || fallback;
+  }
+
+  if (typeof value === 'object') {
+    return (
+      value.plain_chinese ||
+      value.summary ||
+      value.text ||
+      value.note ||
+      value.message ||
+      value.output ||
+      value.state ||
+      value.label ||
+      value.status ||
+      fallback
+    );
+  }
+
+  return fallback;
+}
+
 function fmt(value, digits = 2) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '--';
@@ -312,6 +340,59 @@ function buildAvoid(signal) {
   return '不追单，不提前卖波';
 }
 
+function summarizeEngine(name, engine) {
+  const directText = safeText(
+    engine?.output
+    || engine?.state
+    || engine?.summary
+    || engine?.plain_chinese
+    || engine?.note
+    || engine?.message,
+    ''
+  );
+  if (directText) {
+    return directText;
+  }
+
+  switch (name) {
+    case 'market_regime':
+      return marketStateLabel(engine?.market_state);
+    case 'gamma_wall':
+      if (engine?.wall_position === 'above_call_wall') return '价格已到 Call Wall 上方，关注上方压力。';
+      if (engine?.wall_position === 'below_put_wall') return '价格已到 Put Wall 下方，关注下方支撑。';
+      if (engine?.wall_position === 'below_flip') return '现价在 Flip 下方，偏弱。';
+      if (engine?.wall_position === 'above_flip') return '现价在 Flip 上方，偏强。';
+      return '墙位压力/支撑摘要';
+    case 'volatility':
+      if (engine?.vol_state === 'expanding') return '波动扩张';
+      if (engine?.vol_state === 'contained') return '波动收缩';
+      if (engine?.vol_state === 'event_loaded') return '禁止卖波';
+      return '波动状态待确认';
+    case 'price_structure':
+      if (engine?.confirmation_status === 'confirmed' && engine?.price_signal === 'long_pullback_ready') return '突破确认，等回踩。';
+      if (engine?.confirmation_status === 'confirmed' && engine?.price_signal === 'short_retest_ready') return '跌破确认，等反抽。';
+      if (engine?.price_signal === 'structure_invalidated') return '结构失效';
+      return '等回踩确认';
+    case 'uw_dealer_flow':
+      if (engine?.uw_signal === 'bullish_flow') return 'UW 偏多';
+      if (engine?.uw_signal === 'bearish_flow') return 'UW 偏空';
+      return 'UW 混合';
+    case 'event_risk':
+      if (engine?.risk_gate === 'blocked') return '高风险';
+      if (engine?.risk_gate === 'caution') return '中风险';
+      if (safeText(engine?.event_note, '')?.includes('FMP 异常')) return 'FMP 异常';
+      return '低风险';
+    case 'conflict':
+      return engine?.has_conflict ? '有冲突' : '无明显冲突';
+    case 'action':
+      if (engine?.recommended_action === 'no_trade') return '禁做';
+      if (engine?.recommended_action === 'income_ok') return '可做';
+      return '等确认';
+    default:
+      return '--';
+  }
+}
+
 function renderTopbar(currentPath, currentScenario, signal) {
   const query = window.location.search || '';
   return `
@@ -548,7 +629,7 @@ function renderRadarSummary(signal) {
           <h2>Gamma / Dealer Radar</h2>
           <span class="tag ${chipClassByRisk(signal.gamma_regime)}">${gammaLabel(signal.gamma_regime)}</span>
         </div>
-        <p class="radar-note">${escapeHtml(signal.radar_summary?.dealer || signal.plain_language?.dealer_behavior || '等待 dealer 行为确认。')}</p>
+        <p class="radar-note">${escapeHtml(safeText(signal.radar_summary?.dealer, safeText(signal.plain_language?.dealer_behavior, '等待 dealer 行为确认。')))}</p>
         <div class="matrix-list">
           <div class="matrix-item"><div class="matrix-name">现价位置</div><div class="matrix-value">${escapeHtml(displaySpotContext(snap))}</div><div class="matrix-number">${displaySpot(snap)}</div></div>
           <div class="matrix-item"><div class="matrix-name">Flip</div><div class="matrix-value">${fmt(snap.distance_to_flip, 1)} pt</div><div class="matrix-number">${fmtInt(snap.flip_level)}</div></div>
@@ -562,7 +643,7 @@ function renderRadarSummary(signal) {
           <h2>Flow / UW Radar</h2>
           <span class="tag violet">${dealerLabel(signal.uw_context?.dealer_bias)}</span>
         </div>
-        <p class="radar-note">${escapeHtml(signal.radar_summary?.order_flow || 'UW 只作为辅助情报，不直接替代价格确认。')}</p>
+        <p class="radar-note">${escapeHtml(safeText(signal.radar_summary?.order_flow, 'UW 只作为辅助情报，不直接替代价格确认。'))}</p>
         <div class="tag-row">
           <span class="tag blue">Flow ${flowLabel(signal.uw_context?.flow_bias)}</span>
           <span class="tag green">Dark Pool ${darkPoolLabel(signal.uw_context?.dark_pool_bias)}</span>
@@ -576,7 +657,7 @@ function renderRadarSummary(signal) {
           <h2>Event Risk</h2>
           <span class="tag ${chipClassByRisk(signal.event_context?.event_risk)}">${eventRiskLabel(signal.event_context?.event_risk)}</span>
         </div>
-        <p class="radar-note">${escapeHtml(signal.event_context?.event_note || '无重大事件风险。')}</p>
+        <p class="radar-note">${escapeHtml(safeText(signal.event_context?.event_note, '无重大事件风险。'))}</p>
         <div class="matrix-list">
           <div class="matrix-item"><div class="matrix-name">卖波许可</div><div class="matrix-value">${signal.event_context?.event_risk === 'high' ? '禁止提前铁鹰 / 裸卖' : '仅在波动回落后评估'}</div><div class="matrix-number">FMP</div></div>
           <div class="matrix-item"><div class="matrix-name">主操作页影响</div><div class="matrix-value">${escapeHtml(getAction(signal).title)}</div><div class="matrix-number">${getAction(signal).permission}</div></div>
@@ -588,9 +669,9 @@ function renderRadarSummary(signal) {
           <h2>Signal Conflict</h2>
           <span class="quality-chip ${qualityClass(signal)}">${conflictLabel(signal.conflict?.conflict_level)}</span>
         </div>
-        <p class="radar-note">${escapeHtml(signal.radar_summary?.plan_alignment || signal.plain_language?.market_status || '暂无冲突说明。')}</p>
+        <p class="radar-note">${escapeHtml(safeText(signal.radar_summary?.plan_alignment, safeText(signal.plain_language?.market_status, '暂无冲突说明。')))}</p>
         <ul class="alert-list">
-          ${(conflictPoints.length ? conflictPoints : ['没有强冲突，但仍必须等触发。']).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+          ${(conflictPoints.length ? conflictPoints : ['没有强冲突，但仍必须等触发。']).map((item) => `<li>${escapeHtml(safeText(item))}</li>`).join('')}
         </ul>
       </article>
     </section>
@@ -600,7 +681,7 @@ function renderRadarSummary(signal) {
 function renderEngineMatrix(signal) {
   const engines = signal.engines || {};
   const rows = Object.entries(engines).map(([name, engine]) => {
-    const output = typeof engine === 'object' ? engine.output || engine.state || JSON.stringify(engine) : engine;
+    const output = summarizeEngine(name, engine);
     const weight = typeof engine === 'object' && engine.weight != null ? fmtInt(Number(engine.weight) * 100) + '%' : '--';
     return `
       <div class="matrix-item">
@@ -623,7 +704,7 @@ function renderEngineMatrix(signal) {
           ${(signal.notes || []).map((note, index) => `
             <div class="matrix-item">
               <div class="matrix-name">NOTE ${index + 1}</div>
-              <div class="matrix-value">${escapeHtml(note)}</div>
+              <div class="matrix-value">${escapeHtml(safeText(note))}</div>
               <div class="matrix-number">LOG</div>
             </div>
           `).join('') || '<div class="matrix-item"><div class="matrix-value">No notes</div></div>'}
