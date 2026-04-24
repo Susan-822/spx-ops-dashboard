@@ -43,6 +43,106 @@ function money(value) {
   return `$${Number(value).toFixed(1)}m`;
 }
 
+function fmtNumber(v) {
+  if (v === undefined || v === null || v === "") return "--";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return String(v);
+  return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+function timeOnly(v) {
+  if (!v) return "--";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "--";
+  return d.toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+function flowBiasText(v) {
+  const map = {
+    call_strong: "Call 强，但仍等价格确认",
+    put_strong: "Put 强，但不能直接追空",
+    mixed: "多空混乱，降低等级",
+    neutral: "中性，暂无强方向",
+  };
+  return map[v] || "订单流不明确";
+}
+
+function dealerBehaviorText(v) {
+  const map = {
+    control_vol: "控波，偏磨盘",
+    release_vol: "放波，容易走大",
+    sweep_up: "扫空，向上挤压",
+    sweep_down: "扫多，向下挤压",
+    hedge: "对冲为主",
+    unclear: "做市商不清楚",
+  };
+  return map[v] || "做市商不清楚";
+}
+
+function darkPoolBiasText(v) {
+  const map = {
+    support_below: "下方有承接",
+    resistance_above: "上方有压力",
+    accumulation: "偏吸筹",
+    distribution: "偏派发",
+    unclear: "暗池不明显",
+  };
+  return map[v] || "暗池不明显";
+}
+
+function planBadge(status) {
+  if (String(status).includes("支持")) return "支持 / 等确认";
+  if (String(status).includes("冲突")) return "冲突 / 降级";
+  return "数据辅助";
+}
+
+function yn(v) {
+  if (v === true) return "有";
+  if (v === false) return "无";
+  return v || "不明显";
+}
+
+function mockRadar() {
+  return {
+    order_flow: {
+      call_buy_premium: 4.2,
+      call_sell_premium: 1.2,
+      put_buy_premium: 4.4,
+      put_sell_premium: 1.1,
+      zero_dte_call_buy_premium: 0.8,
+      zero_dte_put_buy_premium: 0.7,
+      flow_bias: "put_strong",
+      flow_quality: "ask-side / sweep",
+      aggressor: "ask-side / sweep",
+      explanation: "资金偏空，但价格未确认，不追。",
+    },
+    dealer: {
+      gamma_bias: "negative",
+      vanna_bias: "negative",
+      charm_bias: "negative",
+      vomma_risk: "高",
+      speed_risk: "高",
+      color_decay: "不明显",
+      dealer_behavior: "release_vol",
+      explanation: "Gamma 偏负，Speed / Vomma 风险高，容易放大波动，禁止提前铁鹰 / 裸卖。",
+    },
+    dark_pool: {
+      support_below: "不明显",
+      resistance_above: "不明显",
+      key_levels: [5225, 5275, 5320],
+      distance_to_spot: [27, 23, 68],
+      dark_pool_bias: "unclear",
+      explanation: "暗池没有形成足够支撑或压力，不能单独作为入场理由。",
+    },
+    plan_alignment: {
+      status: "部分支持，等确认",
+      support_reason: "资金偏向与主计划部分一致。",
+      conflict_reason: "价格未确认，不能把资金偏向直接翻译成行动。",
+      effect_on_action: "资金雷达只支持等待，不支持直接追单。",
+    },
+  };
+}
+
 function shortTime(value) {
   try {
     return new Date(value).toLocaleTimeString('zh-CN', {
