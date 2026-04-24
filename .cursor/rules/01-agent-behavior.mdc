@@ -1,0 +1,15 @@
+# Agent Behavior
+
+## Required behavior
+- Follow the user request exactly.
+- Prefer the smallest valid change.
+- Do not repeat explanations.
+- Do not expand functionality.
+- Do not introduce engineering ceremony without a concrete need.
+- Do not modify working feature code during a docs-only task.
+
+## Response behavior
+- State what changed.
+- State what did not change.
+- Keep summaries concise.
+- If rules conflict, prefer safety and narrower scope.

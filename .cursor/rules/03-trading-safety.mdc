@@ -1,0 +1,17 @@
+# Trading Safety
+
+## Phase 1 safety rules
+- No automatic order placement.
+- No broker connectivity to IBKR.
+- No execution engine.
+- No live trade submission path.
+
+## Recommendation safety
+- Recommendations must degrade safely.
+- If data is stale, incomplete, or conflicting, `recommended_action` must be `wait` or `no_trade`.
+- Mock data must be labeled with `is_mock=true` and must never be mistaken for live trading data.
+
+## Source safety
+- ThetaData access must be selective and layered.
+- UW interpretation must go through the Semantic Mapper.
+- Frontend is display-only and must not parse raw UW HTML.

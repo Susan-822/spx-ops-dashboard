@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: spxopslab
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    domains:
+      - spxopslab.store
+      - www.spxopslab.store
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: PORT
+        value: 10000
+      - key: APP_BASIC_AUTH_USER
+        sync: false
+      - key: APP_BASIC_AUTH_PASSWORD
+        sync: false
+      - key: TRADINGVIEW_WEBHOOK_SECRET
+        sync: false
