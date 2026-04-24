@@ -8,6 +8,15 @@ const SCENARIOS = [
   'breakout_pullback_pending'
 ];
 
+async function loadSignal() {
+  const query = window.location.search || '';
+  const response = await fetch(`/signals/current${query}`);
+  if (!response.ok) {
+    throw new Error(`无法读取 /signals/current：${response.status}`);
+  }
+  return response.json();
+}
+
 function sanitizeText(text) {
   if (text === undefined || text === null) {
     return '';
