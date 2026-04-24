@@ -22,6 +22,18 @@ function buildTelegramTestText(body = {}) {
   ].join('\n');
 }
 
+function buildTradingViewWebhookText(body = {}) {
+  return [
+    '【SPX 指挥台】',
+    '状态：TradingView 触发',
+    `动作：收到 ${body.event_type || 'unknown_event'} 结构信号`,
+    `触发：${body.symbol || 'SPX'} ${body.timeframe || '1m'}`,
+    `作废：若价格重新失守 ${body.level || body.price || '关键位'}，重新评估`,
+    '禁做：不要直接追单，先看 /signals/current',
+    '原因：验证 webhook → signals/current → Telegram 链路'
+  ].join('\n');
+}
+
 export async function handleApiRoute(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const scenario = url.searchParams.get('scenario');
@@ -122,6 +134,11 @@ export async function handleApiRoute(req, res) {
       trigger_time: typeof body.trigger_time === 'string' ? body.trigger_time : new Date().toISOString(),
       level: body.level,
       side: typeof body.side === 'string' ? body.side : 'neutral'
+    });
+
+    // Fire-and-forget Telegram notification so the webhook stays fast.
+    sendTelegramTestMessage(buildTradingViewWebhookText(body)).catch((error) => {
+      console.error('TradingView webhook Telegram notify failed:', error.message);
     });
 
     return sendJson(res, 202, {
