@@ -6,8 +6,8 @@ This repo can be deployed to Render with the included `render.yaml`.
 
 Required environment variables in Render:
 
-- `DASHBOARD_USERNAME`
-- `DASHBOARD_PASSWORD`
+- `APP_BASIC_AUTH_USER`
+- `APP_BASIC_AUTH_PASSWORD`
 - `TRADINGVIEW_WEBHOOK_SECRET`
 
 Recommended domains:

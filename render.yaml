@@ -16,8 +16,8 @@ services:
       - key: PORT
         value: 10000
       - key: APP_BASIC_AUTH_USER
-        value: admin
-      - key: APP_BASIC_AUTH_PASS
+        sync: false
+      - key: APP_BASIC_AUTH_PASSWORD
         sync: false
       - key: TRADINGVIEW_WEBHOOK_SECRET
         sync: false

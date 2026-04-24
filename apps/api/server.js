@@ -15,8 +15,8 @@ const contentTypes = {
   '.json': 'application/json; charset=utf-8'
 };
 
-const BASIC_AUTH_USER = process.env.BASIC_AUTH_USER || 'spx';
-const BASIC_AUTH_PASSWORD = process.env.BASIC_AUTH_PASSWORD || '';
+const BASIC_AUTH_USER = process.env.APP_BASIC_AUTH_USER || 'spx';
+const BASIC_AUTH_PASSWORD = process.env.APP_BASIC_AUTH_PASSWORD || '';
 
 function isAuthExempt(pathname) {
   return pathname === '/health' || pathname === '/webhook/tradingview';
