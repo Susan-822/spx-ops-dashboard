@@ -8,6 +8,7 @@ import {
 } from '../storage/tradingview-snapshot.js';
 import { sendTelegramTestMessage } from '../adapters/telegram/index.js';
 import { getRecentLogs } from '../logs/index.js';
+import { buildAlertMessage } from '../alerts/build-alert-message.js';
 import { sendJson, readJsonBody, secureCompare } from './helpers.js';
 
 function buildTelegramTestText(body = {}) {
@@ -169,11 +170,27 @@ export async function handleApiRoute(req, res) {
   if (req.method === 'POST' && url.pathname === '/alerts/test') {
     const body = await readJsonBody(req);
     try {
-      const result = await sendTelegramTestMessage(buildTelegramTestText(body));
+      const session =
+        typeof body.session === 'string'
+          ? body.session
+          : typeof url.searchParams.get('session') === 'string'
+            ? url.searchParams.get('session')
+            : 'intraday';
+      const signal = await getCurrentSignal(scenario);
+      const alertText = buildAlertMessage({
+        signal,
+        body: {
+          ...body,
+          session
+        }
+      });
+      const result = await sendTelegramTestMessage(alertText);
       return sendJson(res, result.is_mock ? 503 : 202, {
         accepted: !result.is_mock,
         message: result.message,
-        is_mock: result.is_mock
+        is_mock: result.is_mock,
+        session,
+        scenario: signal.scenario
       });
     } catch (error) {
       return sendJson(res, 502, {
