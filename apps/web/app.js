@@ -19,6 +19,38 @@ function stateLabel(state) {
   return labels[state] ?? state;
 }
 
+function deriveRiskLevel(signal) {
+  if (signal.recommended_action === 'no_trade' || signal.conflict.conflict_level === 'high' || signal.stale_flags.any_stale) {
+    return '高';
+  }
+  if (signal.conflict.conflict_level === 'medium' || signal.event_context.event_risk === 'high') {
+    return '中';
+  }
+  return '低';
+}
+
+function buildPlanChips(signal) {
+  const mainPlan = signal.recommended_action === 'long_on_pullback'
+    ? '主计划：回踩不破再多'
+    : signal.recommended_action === 'short_on_retest'
+      ? '主计划：反抽受阻再空'
+      : signal.recommended_action === 'income_ok'
+        ? '主计划：观察收入型机会'
+        : '主计划：观望';
+
+  const rhythm = signal.market_state === 'negative_gamma_expand'
+    ? '节奏：快进快出'
+    : signal.market_state === 'flip_chop'
+      ? '节奏：先等离开中间区'
+      : '节奏：按确认节奏执行';
+
+  const avoid = signal.avoid_actions.length > 0
+    ? `禁做：${signal.avoid_actions[0]}`
+    : '禁做：无';
+
+  return [mainPlan, rhythm, avoid];
+}
+
 async function loadSignal() {
   const query = window.location.search || '';
   const response = await fetch(`/signals/current${query}`);
@@ -71,7 +103,6 @@ function renderConflictPoints(points) {
   if (!points.length) {
     return '<p>当前没有明显逻辑冲突。</p>';
   }
-
   return `<ul>${points.map((point) => `<li>${point}</li>`).join('')}</ul>`;
 }
 
@@ -84,6 +115,49 @@ function renderStatusStrip(signal) {
   `).join('');
 }
 
+function renderMiniCards(signal) {
+  const cards = [
+    {
+      title: '波动启动灯',
+      value: signal.engines.volatility.vol_state,
+      note: signal.gamma_regime === 'negative' ? '波动更容易放大，别追。' : '波动相对可控，但仍需确认。'
+    },
+    {
+      title: '做市商敞口',
+      value: signal.market_state,
+      note: signal.plain_language.dealer_behavior
+    },
+    {
+      title: 'Spot Gamma',
+      value: signal.gamma_regime,
+      note: `Flip ${signal.market_snapshot.flip_level}`
+    },
+    {
+      title: '主力流向',
+      value: signal.signals.uw_signal,
+      note: signal.uw_context.flow_bias
+    },
+    {
+      title: '事件',
+      value: signal.event_context.event_risk,
+      note: signal.event_context.event_note
+    },
+    {
+      title: '系统状态',
+      value: signal.source_status.some((item) => item.state === 'down') ? '异常' : '正常',
+      note: signal.source_status.filter((item) => item.state !== 'mock').map((item) => `${item.source}:${item.state}`).join(' / ') || '当前均为 mock fallback'
+    }
+  ];
+
+  return cards.map((card) => `
+    <section class="card mini-card">
+      <h4>${card.title}</h4>
+      <p class="mini-value">${card.value}</p>
+      <p>${card.note}</p>
+    </section>
+  `).join('');
+}
+
 function renderDashboard(signal) {
   const root = document.getElementById('app');
   const conflictBanner = signal.conflict.conflict_level === 'high'
@@ -92,30 +166,34 @@ function renderDashboard(signal) {
   const noTradeBanner = signal.recommended_action === 'no_trade'
     ? '<div class="no-trade-banner">当前不交易，先解决数据或信号质量问题</div>'
     : '';
+  const riskLevel = deriveRiskLevel(signal);
+  const planChips = buildPlanChips(signal);
 
   root.innerHTML = `
     <main class="shell">
       ${conflictBanner}
       ${noTradeBanner}
 
-      <header class="hero">
-        <section>
-          <p class="eyebrow">SPX / SPY / ES 0DTE intraday command center</p>
-          <h1>盘中总判断</h1>
-          <p class="hero-status">${signal.plain_language.market_status}</p>
-          <div class="hero-meta-group">
-            <span>scenario: ${signal.scenario}</span>
-            <span>data_timestamp: ${signal.data_timestamp}</span>
-            <span>received_at: ${signal.received_at}</span>
-            <span>latency_ms: ${signal.latency_ms}</span>
+      <header class="top-command-bar">
+        <section class="market-card">
+          <p class="eyebrow">SPX 现价</p>
+          <div class="spot-value">${signal.market_snapshot.spot}</div>
+          <p class="spot-sub">Gamma: ${signal.gamma_regime}</p>
+        </section>
+
+        <section class="hero hero-inline">
+          <div>
+            <p class="eyebrow">当前指令</p>
+            <h1>${signal.plain_language.user_action}</h1>
+            <p class="hero-status">${signal.plain_language.market_status}</p>
+            <div class="chip-wrap">${planChips.map((chip) => `<span class="chip">${chip}</span>`).join('')}</div>
           </div>
         </section>
 
-        <section class="action-card">
-          <p class="eyebrow">你的动作</p>
-          <div class="primary-action">${signal.recommended_action}</div>
-          <p class="action-copy">${signal.plain_language.user_action}</p>
-          <p class="confidence">confidence ${signal.confidence_score}</p>
+        <section class="risk-card">
+          <p class="eyebrow">风险等级</p>
+          <div class="risk-value">${riskLevel}</div>
+          <p>${signal.conflict.conflict_level} conflict / confidence ${signal.confidence_score}</p>
         </section>
       </header>
 
@@ -125,10 +203,11 @@ function renderDashboard(signal) {
       </section>
 
       <section class="grid three-up">
-        <section class="card">
-          <h3>为什么</h3>
-          <p>${signal.plain_language.dealer_behavior}</p>
-          <p>${signal.plain_language.avoid}</p>
+        <section class="card emphasis-card">
+          <h3>你的动作</h3>
+          <div class="primary-action">${signal.recommended_action}</div>
+          <p class="action-copy">${signal.plain_language.user_action}</p>
+          <p class="confidence">confidence ${signal.confidence_score}</p>
         </section>
         <section class="card emphasis-card">
           <h3>禁做事项</h3>
@@ -143,19 +222,25 @@ function renderDashboard(signal) {
         </section>
       </section>
 
+      <section class="grid three-up mini-grid">
+        ${renderMiniCards(signal)}
+      </section>
+
       <section class="grid two-up">
-        <section class="card">
-          <h3>Gamma 环境</h3>
-          <p>market_state: ${signal.market_state}</p>
-          <p>gamma_regime: ${signal.gamma_regime}</p>
-          <p>spot / flip: ${signal.market_snapshot.spot} / ${signal.market_snapshot.flip_level}</p>
-          <p>call / put / max pain: ${signal.market_snapshot.call_wall} / ${signal.market_snapshot.put_wall} / ${signal.market_snapshot.max_pain}</p>
-        </section>
         <section class="card">
           <h3>冲突与陈旧</h3>
           <p>conflict_level: ${signal.conflict.conflict_level}</p>
           ${renderConflictPoints(signal.conflict.conflict_points)}
           <div class="pre">${JSON.stringify(signal.stale_flags, null, 2)}</div>
+        </section>
+        <section class="card">
+          <h3>关键位地图</h3>
+          <p>spot / flip: ${signal.market_snapshot.spot} / ${signal.market_snapshot.flip_level}</p>
+          <p>call wall: ${signal.market_snapshot.call_wall}</p>
+          <p>put wall: ${signal.market_snapshot.put_wall}</p>
+          <p>max pain: ${signal.market_snapshot.max_pain}</p>
+          <p>data_timestamp: ${signal.data_timestamp}</p>
+          <p>received_at: ${signal.received_at}</p>
         </section>
       </section>
 

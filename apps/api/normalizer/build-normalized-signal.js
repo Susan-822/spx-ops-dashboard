@@ -18,7 +18,6 @@ function createStaleReason(source, stale, latencyMs, thresholdMs) {
   if (!stale) {
     return '';
   }
-
   return `${source} 超过 stale_threshold ${thresholdMs}ms，当前延迟约 ${latencyMs}ms。`;
 }
 
@@ -61,14 +60,24 @@ export function normalizeMockScenario(rawScenario) {
 
   const source_status = [
     createSourceEntry({
-      source: 'theta',
+      source: 'dashboard',
       timestamp: receivedAt,
-      last_updated: rawScenario.last_updated.theta
+      last_updated: receivedAt
     }),
     createSourceEntry({
       source: 'tradingview',
       timestamp: receivedAt,
       last_updated: rawScenario.last_updated.tradingview
+    }),
+    createSourceEntry({
+      source: 'theta_core',
+      timestamp: receivedAt,
+      last_updated: rawScenario.last_updated.theta
+    }),
+    createSourceEntry({
+      source: 'theta_full_chain',
+      timestamp: receivedAt,
+      last_updated: rawScenario.last_updated.theta_full_chain ?? rawScenario.last_updated.theta
     }),
     createSourceEntry({
       source: 'fmp',
@@ -88,9 +97,9 @@ export function normalizeMockScenario(rawScenario) {
       degraded: rawScenario.uw_fetch_path !== 'screenshot'
     }),
     createSourceEntry({
-      source: 'dashboard',
+      source: 'scheduler_health',
       timestamp: receivedAt,
-      last_updated: receivedAt
+      last_updated: rawScenario.last_updated.scheduler_health ?? rawScenario.last_updated.tradingview
     }),
     createSourceEntry({
       source: 'telegram',
@@ -101,7 +110,7 @@ export function normalizeMockScenario(rawScenario) {
   ];
 
   const stale_flags = {
-    theta: source_status.find((item) => item.source === 'theta')?.stale ?? true,
+    theta: source_status.find((item) => item.source === 'theta_core')?.stale ?? true,
     tradingview: source_status.find((item) => item.source === 'tradingview')?.stale ?? true,
     uw: source_status.find((item) => item.source === 'uw_dom')?.stale ?? true,
     fmp: source_status.find((item) => item.source === 'fmp')?.stale ?? true

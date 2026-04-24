@@ -28,15 +28,18 @@ a {
 }
 
 .shell {
-  max-width: 1260px;
+  max-width: 1320px;
   margin: 0 auto;
   padding: 24px;
 }
 
+.top-command-bar,
 .hero,
 .card,
 .action-card,
-.scenario-strip {
+.scenario-strip,
+.market-card,
+.risk-card {
   background: #ffffff;
   border: 1px solid #d8e8fb;
   border-radius: 18px;
@@ -46,15 +49,24 @@ a {
 .hero,
 .scenario-strip,
 .card,
-.action-card {
+.action-card,
+.market-card,
+.risk-card {
   padding: 24px;
 }
 
-.hero {
+.top-command-bar {
   display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 20px;
-  align-items: stretch;
+  grid-template-columns: 0.9fr 2fr 0.8fr;
+  gap: 18px;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.hero-inline {
+  display: block;
 }
 
 .eyebrow {
@@ -66,7 +78,7 @@ a {
 }
 
 h1 {
-  font-size: 42px;
+  font-size: 34px;
   margin-bottom: 12px;
 }
 
@@ -91,25 +103,36 @@ li {
   line-height: 1.5;
 }
 
-.hero-meta-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  color: #6d8398;
-  font-size: 15px;
-}
-
 .muted,
 .confidence {
   color: #6d8398;
 }
 
-.primary-action {
-  font-size: 46px;
-  line-height: 1.1;
+.spot-value,
+.primary-action,
+.risk-value {
   font-weight: 700;
+  line-height: 1.1;
+}
+
+.spot-value {
+  font-size: 56px;
+  color: #111827;
+}
+
+.spot-sub {
+  color: #0f62fe;
+}
+
+.primary-action {
+  font-size: 42px;
   color: #0f62fe;
   margin-bottom: 14px;
+}
+
+.risk-value {
+  font-size: 46px;
+  color: #0f62fe;
 }
 
 .grid {
@@ -188,15 +211,23 @@ li {
   border-width: 2px;
 }
 
-.status-grid {
+.status-grid,
+.mini-grid {
   margin-top: 18px;
 }
 
-.status-card {
+.status-card,
+.mini-card {
   background: #fbfdff;
   border: 1px solid #d8e8fb;
   border-radius: 14px;
   padding: 18px;
+}
+
+.mini-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: #0f62fe;
 }
 
 .status-head {
@@ -252,14 +283,16 @@ ul {
   margin: 0;
 }
 
-@media (max-width: 1024px) {
-  .hero,
+@media (max-width: 1080px) {
+  .top-command-bar,
   .two-up,
   .three-up {
     grid-template-columns: 1fr;
   }
 
-  .primary-action {
-    font-size: 38px;
+  .primary-action,
+  .spot-value,
+  .risk-value {
+    font-size: 36px;
   }
 }

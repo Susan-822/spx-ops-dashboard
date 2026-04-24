@@ -2,14 +2,12 @@ function isoMinutesAgo(minutes) {
   return new Date(Date.now() - minutes * 60 * 1000).toISOString();
 }
 
+function isoSecondsAgo(seconds) {
+  return new Date(Date.now() - seconds * 1000).toISOString();
+}
+
 function createScenario(definition) {
   const timestamp = new Date().toISOString();
-  const defaultAges = {
-    theta: 0.25,
-    tradingview: 0.5,
-    uw: 1.5,
-    fmp: 5
-  };
 
   return {
     timestamp,
@@ -19,10 +17,12 @@ function createScenario(definition) {
     fetch_mode: 'mock_scenario',
     uw_fetch_path: definition.uw_fetch_path ?? 'dom',
     last_updated: {
-      theta: isoMinutesAgo(definition.last_updated_minutes?.theta ?? defaultAges.theta),
-      tradingview: isoMinutesAgo(definition.last_updated_minutes?.tradingview ?? defaultAges.tradingview),
-      uw: isoMinutesAgo(definition.last_updated_minutes?.uw ?? defaultAges.uw),
-      fmp: isoMinutesAgo(definition.last_updated_minutes?.fmp ?? defaultAges.fmp)
+      theta: isoSecondsAgo(definition.last_updated_seconds?.theta ?? 15),
+      theta_full_chain: isoMinutesAgo(definition.last_updated_minutes?.theta_full_chain ?? 3),
+      tradingview: isoSecondsAgo(definition.last_updated_seconds?.tradingview ?? 30),
+      uw: isoSecondsAgo(definition.last_updated_seconds?.uw ?? 90),
+      fmp: isoSecondsAgo(definition.last_updated_seconds?.fmp ?? 120),
+      scheduler_health: isoSecondsAgo(definition.last_updated_seconds?.scheduler_health ?? 30)
     },
     ...definition
   };
@@ -120,11 +120,8 @@ const SCENARIO_DEFINITIONS = Object.freeze({
       vanna: 'positive',
       charm: 'positive'
     },
-    last_updated_minutes: {
-      theta: 20,
-      tradingview: 1,
-      uw: 1,
-      fmp: 1
+    last_updated_seconds: {
+      theta: 70
     }
   },
   fmp_event_no_short_vol: {
