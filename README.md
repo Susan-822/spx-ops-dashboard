@@ -9,6 +9,9 @@ Required environment variables in Render:
 - `APP_BASIC_AUTH_USER`
 - `APP_BASIC_AUTH_PASSWORD`
 - `TRADINGVIEW_WEBHOOK_SECRET`
+- `TELEGRAM_ENABLED`
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
 
 Recommended domains:
 
@@ -26,3 +29,7 @@ Frontend data endpoint:
 TradingView ingress:
 
 - `POST /webhook/tradingview`
+
+Telegram test ingress:
+
+- `POST /telegram/test`

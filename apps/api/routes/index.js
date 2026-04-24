@@ -6,8 +6,22 @@ import {
   getAcceptedTradingViewEvents,
   updateTradingViewSnapshot
 } from '../storage/tradingview-snapshot.js';
+import { sendTelegramTestMessage } from '../adapters/telegram/index.js';
 import { getRecentLogs } from '../logs/index.js';
 import { sendJson, readJsonBody, secureCompare } from './helpers.js';
+
+function buildTelegramTestText(body = {}) {
+  const custom = typeof body.message === 'string' && body.message.trim() ? body.message.trim() : null;
+  if (custom) {
+    return custom;
+  }
+
+  return [
+    'SPX Ops Lab 测试提醒',
+    '当前链路：Telegram 推送已打通。',
+    '说明：这是中文测试消息，不代表真实交易指令。'
+  ].join('\n');
+}
 
 export async function handleApiRoute(req, res) {
   const url = new URL(req.url, 'http://localhost');
@@ -118,6 +132,42 @@ export async function handleApiRoute(req, res) {
     });
   }
 
+  if (req.method === 'POST' && url.pathname === '/telegram/test') {
+    const body = await readJsonBody(req);
+    try {
+      const result = await sendTelegramTestMessage(buildTelegramTestText(body));
+      return sendJson(res, result.is_mock ? 503 : 202, {
+        accepted: !result.is_mock,
+        message: result.message,
+        is_mock: result.is_mock
+      });
+    } catch (error) {
+      return sendJson(res, 502, {
+        accepted: false,
+        message: error.message,
+        is_mock: false
+      });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/alerts/test') {
+    const body = await readJsonBody(req);
+    try {
+      const result = await sendTelegramTestMessage(buildTelegramTestText(body));
+      return sendJson(res, result.is_mock ? 503 : 202, {
+        accepted: !result.is_mock,
+        message: result.message,
+        is_mock: result.is_mock
+      });
+    } catch (error) {
+      return sendJson(res, 502, {
+        accepted: false,
+        message: error.message,
+        is_mock: false
+      });
+    }
+  }
+
   if (req.method === 'POST' && url.pathname === '/uw/upload-screenshot') {
     const body = await readJsonBody(req);
     return sendJson(res, 202, {
@@ -135,17 +185,6 @@ export async function handleApiRoute(req, res) {
       accepted: true,
       path: url.pathname,
       message: 'UW DOM reading is the first-priority design path, but still mock-only in this phase.',
-      received: body,
-      is_mock: true
-    });
-  }
-
-  if (req.method === 'POST' && url.pathname === '/alerts/test') {
-    const body = await readJsonBody(req);
-    return sendJson(res, 202, {
-      accepted: true,
-      path: url.pathname,
-      message: 'Telegram remains event-triggered only in mock mode.',
       received: body,
       is_mock: true
     });
