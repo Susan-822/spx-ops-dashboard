@@ -64,6 +64,12 @@ test('GET /signals/current returns required protocol fields for dashboard consum
     assert.equal(typeof json.plain_language.user_action, 'string');
     assert.equal(typeof json.plain_language.avoid, 'string');
     assert.equal(typeof json.plain_language.invalidation, 'string');
+    assert.equal(json.plain_language.avoid.includes('chasing'), false);
+    assert.equal(json.plain_language.avoid.includes('early_iron_condor'), false);
+    assert.equal(typeof json.market_snapshot.distance_to_flip, 'number');
+    assert.equal(typeof json.market_snapshot.distance_to_call_wall, 'number');
+    assert.equal(typeof json.market_snapshot.distance_to_put_wall, 'number');
+    assert.equal(typeof json.market_snapshot.spot_position, 'string');
   } finally {
     server.close();
   }
@@ -85,7 +91,7 @@ test('all 7 scenarios return expected actions and dashboard-ready fields', async
       assert.equal(ALLOWED_ACTIONS.has(json.recommended_action), true);
       assert.equal(Array.isArray(json.conflict.conflict_points), true);
       assert.equal(Array.isArray(json.strategy_cards), true);
-      assert.equal(json.strategy_cards.length >= 5, true);
+      assert.equal(json.strategy_cards.length, 5);
       assert.equal(typeof json.plain_language.user_action, 'string');
       assert.notEqual(json.plain_language.user_action.length, 0);
       assert.equal(typeof json.stale_flags, 'object');
@@ -99,7 +105,7 @@ test('all 7 scenarios return expected actions and dashboard-ready fields', async
   }
 });
 
-test('strategy cards expose the required strategy set and fields', async () => {
+test('strategy cards expose exactly the required strategy set and fields', async () => {
   const { server, baseUrl } = await startServer();
 
   try {
@@ -107,9 +113,7 @@ test('strategy cards expose the required strategy set and fields', async () => {
     const json = await response.json();
     const names = json.strategy_cards.map((card) => card.strategy_name);
 
-    for (const required of REQUIRED_STRATEGIES) {
-      assert.equal(names.includes(required), true);
-    }
+    assert.deepEqual(names, REQUIRED_STRATEGIES);
 
     for (const card of json.strategy_cards) {
       assert.equal(typeof card.strategy_name, 'string');
@@ -167,13 +171,13 @@ test('flip conflict scenario stays high conflict wait after freshness calibratio
     const json = await response.json();
     assert.equal(json.recommended_action, 'wait');
     assert.equal(json.conflict.conflict_level, 'high');
-    assert.equal(json.stale_flags.theta, false);
+    assert.equal(json.stale_flags.any_stale, false);
   } finally {
     server.close();
   }
 });
 
-test('sources status exposes refresh and state metadata for command center footer', async () => {
+test('sources status exposes required source fields for command center footer', async () => {
   const { server, baseUrl } = await startServer();
 
   try {
@@ -182,16 +186,22 @@ test('sources status exposes refresh and state metadata for command center foote
     assert.equal(Array.isArray(json.items), true);
     assert.equal(Boolean(json.scheduler), true);
     assert.equal(Array.isArray(json.scheduler.jobs), true);
-    assert.equal(json.items.length >= 7, true);
+    assert.equal(json.items.length >= 9, true);
 
     for (const item of json.items) {
       assert.equal(ALLOWED_SOURCE_STATES.has(item.state), true);
+      assert.equal(typeof item.source, 'string');
+      assert.equal(typeof item.configured, 'boolean');
+      assert.equal(typeof item.available, 'boolean');
+      assert.equal(typeof item.is_mock, 'boolean');
       assert.equal(typeof item.fetch_mode, 'string');
+      assert.equal(typeof item.last_updated, 'string');
+      assert.equal(typeof item.data_timestamp, 'string');
+      assert.equal(typeof item.received_at, 'string');
       assert.equal(typeof item.latency_ms, 'number');
-      assert.equal(typeof item.refresh_interval_ms, 'number');
-      assert.equal(typeof item.stale_threshold_ms, 'number');
-      assert.equal(typeof item.down_threshold_ms, 'number');
-      assert.equal(Array.isArray(item.event_triggers), true);
+      assert.equal(typeof item.stale, 'boolean');
+      assert.equal(typeof item.stale_reason, 'string');
+      assert.equal(typeof item.message, 'string');
     }
 
     const uwDom = json.items.find((item) => item.source === 'uw_dom');

@@ -136,7 +136,11 @@ export function runMasterEngine(normalized) {
       flip_level: normalized.flip_level,
       call_wall: normalized.call_wall,
       put_wall: normalized.put_wall,
-      max_pain: normalized.max_pain
+      max_pain: normalized.max_pain,
+      distance_to_flip: gammaWall.distance_to_flip,
+      distance_to_call_wall: gammaWall.distance_to_call_wall,
+      distance_to_put_wall: gammaWall.distance_to_put_wall,
+      spot_position: gammaWall.wall_position
     },
     uw_context: {
       flow_bias: normalized.uw_flow_bias,

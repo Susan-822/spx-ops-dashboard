@@ -14,7 +14,7 @@ Each source should resolve into one of these states:
 ## Refresh matrix
 | Source | Fetch mode | Default refresh | Event triggers | stale_threshold | down_threshold |
 |---|---|---:|---|---:|---:|
-| Dashboard `/signals/current` | `light_poll` | 5s | visibility change / scenario change / manual refresh | 15s | 60s |
+| Dashboard `/signals/current` | `light_poll` / 轻量轮询 | 5s | visibility change / scenario change / manual refresh | 15s | 60s |
 | TradingView | `webhook_event` | no polling | breakout / breakdown / pullback / invalidation webhook | event-driven freshness | 15m |
 | ThetaData core summary | `layered_poll` | 30s | near flip / near wall / manual refresh | 30s | 5m |
 | ThetaData full chain | `layered_scan` | 2-5m (current default 3m) | home needs recalc / manual refresh | 5m | 15m |

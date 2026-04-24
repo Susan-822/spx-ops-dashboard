@@ -34,7 +34,11 @@ export function createNormalizedSignal(partial = {}) {
       flip_level: partial.market_snapshot?.flip_level ?? null,
       call_wall: partial.market_snapshot?.call_wall ?? null,
       put_wall: partial.market_snapshot?.put_wall ?? null,
-      max_pain: partial.market_snapshot?.max_pain ?? null
+      max_pain: partial.market_snapshot?.max_pain ?? null,
+      distance_to_flip: partial.market_snapshot?.distance_to_flip ?? null,
+      distance_to_call_wall: partial.market_snapshot?.distance_to_call_wall ?? null,
+      distance_to_put_wall: partial.market_snapshot?.distance_to_put_wall ?? null,
+      spot_position: partial.market_snapshot?.spot_position ?? 'unknown'
     },
     uw_context: {
       flow_bias: partial.uw_context?.flow_bias ?? 'neutral',

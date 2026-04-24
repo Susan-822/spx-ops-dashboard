@@ -1,5 +1,14 @@
 import { ACTIONS } from '../../../packages/shared/src/action-enum.js';
 
+const AVOID_TEXT = Object.freeze({
+  chasing: '不追高',
+  early_iron_condor: '不提前铁鹰',
+  naked_sell: '不裸卖',
+  middle_zone_countertrend: '不在中间区域逆势抢单',
+  short_vol_before_event: '事件前不卖波动率',
+  trade_on_stale_data: '不用陈旧数据下判断'
+});
+
 function marketStatusText({ normalized, marketRegime, priceStructure, eventRisk, conflict, stale_flags }) {
   if (stale_flags.any_stale) {
     return '关键数据已经过期，这一轮判断只可参考，不能直接执行。';
@@ -77,6 +86,10 @@ function userActionText({ recommended_action, conflict, stale_flags, priceStruct
 }
 
 export function runPlainLanguageEngine({ recommended_action, conflict, stale_flags, engines }) {
+  const avoidText = engines.action.avoid_actions
+    .map((item) => AVOID_TEXT[item])
+    .filter(Boolean);
+
   return {
     market_status: marketStatusText({
       normalized: engines.normalized,
@@ -96,8 +109,8 @@ export function runPlainLanguageEngine({ recommended_action, conflict, stale_fla
       stale_flags,
       priceStructure: engines.priceStructure
     }),
-    avoid: engines.action.avoid_actions.length > 0
-      ? `避免：${engines.action.avoid_actions.join(' / ')}`
+    avoid: avoidText.length > 0
+      ? `${Array.from(new Set(avoidText)).join('；')}。`
       : '当前没有额外禁做事项。',
     invalidation: engines.action.invalidation_level
   };
