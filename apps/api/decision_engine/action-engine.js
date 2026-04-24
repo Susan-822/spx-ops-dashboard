@@ -25,6 +25,10 @@ export function runActionEngine({
     avoid.add('income_ok');
     avoid.add('iron_condor');
     avoid.add('naked_sell');
+    avoid.add('aggressive_dip_buy');
+  }
+  if (normalized.gamma_regime === 'negative_gamma') {
+    confidence -= 12;
   }
   if (priceStructure.confirmation_status === 'confirmed') {
     confidence += 8;
@@ -75,6 +79,9 @@ export function runActionEngine({
   }
   if (recommended_action !== ACTIONS.LONG_ON_PULLBACK) {
     avoid.add('blind_breakout_chase');
+  }
+  if (recommended_action === ACTIONS.WAIT && normalized.gamma_regime === 'negative_gamma') {
+    confidence = Math.min(confidence, 58);
   }
 
   let invalidation_level = `失守 flip ${normalized.flip_level}`;

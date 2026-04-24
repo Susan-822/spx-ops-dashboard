@@ -37,6 +37,19 @@ test('GET /signals/current returns the default mock master-engine payload', asyn
   }
 });
 
+test('negative gamma pullback scenario stays wait with moderated confidence', async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/signals/current?scenario=negative_gamma_wait_pullback`);
+    const json = await response.json();
+    assert.equal(json.recommended_action, 'wait');
+    assert.ok(json.confidence_score < 65);
+  } finally {
+    server.close();
+  }
+});
+
 test('theta stale scenario degrades to no_trade', async () => {
   const { server, baseUrl } = await startServer();
 
