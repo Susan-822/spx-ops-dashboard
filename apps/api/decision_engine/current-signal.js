@@ -39,7 +39,7 @@ function applyTradingViewSnapshot(baseScenario, snapshot) {
   };
 }
 
-function applyFmpSnapshot(baseScenario, snapshot) {
+function applyFmpEventSnapshot(baseScenario, snapshot) {
   if (!snapshot) {
     return baseScenario;
   }
@@ -52,7 +52,7 @@ function applyFmpSnapshot(baseScenario, snapshot) {
       ...baseScenario.last_updated,
       fmp: snapshot.last_updated || snapshot.data_timestamp || baseScenario.last_updated.fmp
     },
-    fmp_snapshot: snapshot,
+    fmp_event_snapshot: snapshot,
     event_risk: degradedRisk
       ? 'medium'
       : snapshot.event_risk === 'high' || snapshot.event_risk === 'medium'
@@ -73,11 +73,43 @@ function applyFmpSnapshot(baseScenario, snapshot) {
   };
 }
 
+function applyFmpPriceSnapshot(baseScenario, snapshot) {
+  if (!snapshot) {
+    return baseScenario;
+  }
+
+  return {
+    ...baseScenario,
+    last_updated: {
+      ...baseScenario.last_updated,
+      fmp_price: snapshot.last_updated || snapshot.data_timestamp || baseScenario.last_updated.fmp_price || null
+    },
+    fmp_price_snapshot: snapshot,
+    spot: snapshot.price_available ? snapshot.price : null,
+    spot_source: snapshot.price_available ? 'fmp' : null,
+    spot_last_updated: snapshot.last_updated || snapshot.data_timestamp || null,
+    spot_is_real: Boolean(snapshot.price_available && !snapshot.is_mock),
+    spot_health: {
+      state: snapshot.state || 'unknown',
+      is_real: Boolean(snapshot.price_available && !snapshot.is_mock),
+      source: snapshot.price_available ? 'fmp' : null
+    },
+    day_change: snapshot.day_change ?? null,
+    day_change_percent: snapshot.day_change_percent ?? null
+  };
+}
+
 export async function getCurrentSignal(requestedScenario, options = {}) {
   const scenario = getMockScenario(requestedScenario);
   const snapshot = getTradingViewSnapshot();
   const fmpSnapshot = await getFmpSnapshot(options.fmp);
-  const enrichedScenario = applyFmpSnapshot(applyTradingViewSnapshot(scenario, snapshot), fmpSnapshot);
+  const enrichedScenario = applyFmpPriceSnapshot(
+    applyFmpEventSnapshot(
+      applyTradingViewSnapshot(scenario, snapshot),
+      fmpSnapshot.event
+    ),
+    fmpSnapshot.price
+  );
   const normalized = normalizeMockScenario(enrichedScenario);
   return runMasterEngine(normalized);
 }

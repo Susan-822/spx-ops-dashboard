@@ -9,6 +9,53 @@ import { runConflictEngine } from './conflict-engine.js';
 import { runActionEngine } from './action-engine.js';
 import { runPlainLanguageEngine } from './plain-language-engine.js';
 
+function buildDisplaySpotSnapshot(normalized, gammaWall) {
+  const hasDisplaySpot =
+    normalized.spot !== null
+    && normalized.spot !== undefined
+    && Number.isFinite(Number(normalized.spot));
+  const displaySpot = hasDisplaySpot ? Number(normalized.spot) : null;
+  if (displaySpot == null) {
+    return {
+      spot: null,
+      spot_source: normalized.spot_source ?? null,
+      spot_last_updated: normalized.spot_last_updated ?? null,
+      spot_is_real: normalized.spot_is_real ?? false,
+      day_change: normalized.day_change ?? null,
+      day_change_percent: normalized.day_change_percent ?? null,
+      distance_to_flip: null,
+      distance_to_call_wall: null,
+      distance_to_put_wall: null,
+      spot_position: 'unknown'
+    };
+  }
+
+  let spotPosition = 'between_walls';
+  if (displaySpot >= normalized.call_wall) {
+    spotPosition = 'above_call_wall';
+  } else if (displaySpot <= normalized.put_wall) {
+    spotPosition = 'below_put_wall';
+  } else if (displaySpot < normalized.flip_level) {
+    spotPosition = 'below_flip';
+  } else if (displaySpot > normalized.flip_level) {
+    spotPosition = 'above_flip';
+  }
+
+  return {
+    spot: displaySpot,
+    spot_source: normalized.spot_source ?? null,
+    spot_last_updated: normalized.spot_last_updated ?? null,
+    spot_is_real: normalized.spot_is_real ?? false,
+    day_change: normalized.day_change ?? null,
+    day_change_percent: normalized.day_change_percent ?? null,
+    distance_to_flip: Math.round(displaySpot - normalized.flip_level),
+    distance_to_call_wall: Math.round(normalized.call_wall - displaySpot),
+    distance_to_put_wall: Math.round(displaySpot - normalized.put_wall),
+    spot_position: spotPosition,
+    wall_bias: gammaWall.wall_bias
+  };
+}
+
 function buildStrategyCards({ normalized, action, marketRegime }) {
   const bullTarget = `${normalized.max_pain} -> ${normalized.call_wall}`;
   const bearTarget = `${normalized.put_wall} -> ${normalized.max_pain}`;
@@ -177,6 +224,7 @@ function buildRadarSummary({ normalized, priceStructure, uwFlow, eventRisk, acti
 export function runMasterEngine(normalized) {
   const marketRegime = runMarketRegimeEngine(normalized);
   const gammaWall = runGammaWallEngine(normalized);
+  const displaySpotSnapshot = buildDisplaySpotSnapshot(normalized, gammaWall);
   const volatility = runVolatilityEngine(normalized);
   const priceStructure = runPriceStructureEngine(normalized);
   const uwFlow = runUwDealerFlowEngine(normalized);
@@ -243,15 +291,20 @@ export function runMasterEngine(normalized) {
     market_state: marketRegime.market_state,
     gamma_regime: normalized.gamma_regime,
     market_snapshot: {
-      spot: normalized.spot,
+      spot: displaySpotSnapshot.spot,
+      spot_source: displaySpotSnapshot.spot_source,
+      spot_last_updated: displaySpotSnapshot.spot_last_updated,
+      spot_is_real: displaySpotSnapshot.spot_is_real,
+      day_change: displaySpotSnapshot.day_change,
+      day_change_percent: displaySpotSnapshot.day_change_percent,
       flip_level: normalized.flip_level,
       call_wall: normalized.call_wall,
       put_wall: normalized.put_wall,
       max_pain: normalized.max_pain,
-      distance_to_flip: gammaWall.distance_to_flip,
-      distance_to_call_wall: gammaWall.distance_to_call_wall,
-      distance_to_put_wall: gammaWall.distance_to_put_wall,
-      spot_position: gammaWall.wall_position
+      distance_to_flip: displaySpotSnapshot.distance_to_flip,
+      distance_to_call_wall: displaySpotSnapshot.distance_to_call_wall,
+      distance_to_put_wall: displaySpotSnapshot.distance_to_put_wall,
+      spot_position: displaySpotSnapshot.spot_position
     },
     uw_context: {
       flow_bias: normalized.uw_flow_bias,

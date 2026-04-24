@@ -31,6 +31,11 @@ export function createNormalizedSignal(partial = {}) {
     gamma_regime: partial.gamma_regime ?? 'unknown',
     market_snapshot: {
       spot: partial.market_snapshot?.spot ?? null,
+      spot_source: partial.market_snapshot?.spot_source ?? 'mock',
+      spot_last_updated: partial.market_snapshot?.spot_last_updated ?? null,
+      spot_is_real: partial.market_snapshot?.spot_is_real ?? false,
+      day_change: partial.market_snapshot?.day_change ?? null,
+      day_change_percent: partial.market_snapshot?.day_change_percent ?? null,
       flip_level: partial.market_snapshot?.flip_level ?? null,
       call_wall: partial.market_snapshot?.call_wall ?? null,
       put_wall: partial.market_snapshot?.put_wall ?? null,

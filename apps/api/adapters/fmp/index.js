@@ -1,9 +1,9 @@
-import { fetchFmpReal } from './real.js';
-import { fetchFmpMock } from './mock.js';
+import { fetchFmpEventRisk, fetchFmpPrice } from './real.js';
+import { fetchFmpEventMock, fetchFmpPriceMock } from './mock.js';
 
-function createFmpFailureFallback(real = {}, overrides = {}) {
+function createFmpEventFailureFallback(real = {}, overrides = {}) {
   const timestamp = new Date().toISOString();
-  return fetchFmpMock({
+  return fetchFmpEventMock({
     configured: real.configured ?? false,
     available: real.available ?? true,
     state: real.available === false ? 'degraded' : null,
@@ -25,19 +25,62 @@ function createFmpFailureFallback(real = {}, overrides = {}) {
   });
 }
 
+function createFmpPriceFailureFallback(real = {}, overrides = {}) {
+  const timestamp = new Date().toISOString();
+  return fetchFmpPriceMock({
+    configured: real.configured ?? false,
+    available: false,
+    state: real.state || 'degraded',
+    stale: real.stale ?? true,
+    is_mock: overrides.is_mock ?? false,
+    fetch_mode: real.fetch_mode ?? 'quote_short_poll',
+    last_updated: real.last_updated || real.data_timestamp || timestamp,
+    data_timestamp: real.data_timestamp || real.last_updated || timestamp,
+    received_at: timestamp,
+    latency_ms: typeof real.latency_ms === 'number' ? real.latency_ms : 0,
+    message: 'FMP SPX price unavailable',
+    fallback_reason: real.message || 'FMP SPX price unavailable',
+    price: null,
+    day_change: null,
+    day_change_percent: null,
+    ...overrides
+  });
+}
+
 export async function getFmpSnapshot(options = {}) {
-  const real = await fetchFmpReal(options);
-  if (real.configured && real.available) {
-    return real;
-  }
+  const event = await fetchFmpEventRisk(options.event || {});
+  const price = await fetchFmpPrice(options.price || {});
 
-  if (real.configured) {
-    return createFmpFailureFallback(real, {
-      configured: true,
-      available: true,
-      is_mock: true
-    });
-  }
+  const eventSnapshot = event.configured && event.available
+    ? event
+    : event.configured
+      ? await createFmpEventFailureFallback(event, {
+        configured: true,
+        available: true,
+        is_mock: true
+      })
+      : await fetchFmpEventMock();
 
-  return fetchFmpMock();
+  const priceSnapshot = price.configured && price.available && Number.isFinite(price.price)
+    ? price
+    : price.configured
+      ? await createFmpPriceFailureFallback(price, {
+        configured: true,
+        available: false,
+        state: price.state || 'degraded',
+        stale: price.stale ?? true,
+        is_mock: false
+      })
+      : await createFmpPriceFailureFallback(price, {
+        configured: false,
+        available: false,
+        state: 'degraded',
+        stale: true,
+        is_mock: false
+      });
+
+  return {
+    event: eventSnapshot,
+    price: priceSnapshot
+  };
 }

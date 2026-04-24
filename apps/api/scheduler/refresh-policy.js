@@ -38,14 +38,23 @@ export const SOURCE_REFRESH_POLICIES = Object.freeze({
     down_threshold_ms: 15 * MINUTE,
     event_triggers: ['home_needs_recalc', 'manual_refresh']
   },
-  fmp: {
-    source: 'fmp',
-    label: 'FMP',
+  fmp_event: {
+    source: 'fmp_event',
+    label: 'FMP Event',
     fetch_mode: 'low_frequency_poll',
     default_refresh_ms: 120 * SECOND,
     stale_threshold_ms: 10 * MINUTE,
     down_threshold_ms: 30 * MINUTE,
     event_triggers: ['macro_event_window', 'earnings_window', 'risk_gate_escalation']
+  },
+  fmp_price: {
+    source: 'fmp_price',
+    label: 'FMP Price',
+    fetch_mode: 'quote_short_poll',
+    default_refresh_ms: 60 * SECOND,
+    stale_threshold_ms: 2 * MINUTE,
+    down_threshold_ms: 10 * MINUTE,
+    event_triggers: ['price_refresh', 'manual_refresh', 'spot_unavailable']
   },
   uw_dom: {
     source: 'uw_dom',

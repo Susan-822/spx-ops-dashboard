@@ -17,7 +17,7 @@ function sessionLabel(session) {
 }
 
 function isFmpAbnormal(signal) {
-  const fmp = (signal?.source_status || []).find((item) => item.source === 'fmp');
+  const fmp = (signal?.source_status || []).find((item) => item.source === 'fmp_event');
   if (!fmp) {
     return false;
   }

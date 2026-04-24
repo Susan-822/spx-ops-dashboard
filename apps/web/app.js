@@ -85,6 +85,22 @@ function fmtInt(value) {
   return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
+function displaySpot(snapshot = {}) {
+  return snapshot?.spot_is_real === true && Number.isFinite(Number(snapshot?.spot))
+    ? fmt(snapshot.spot, 2)
+    : '--';
+}
+
+function displaySpotContext(snapshot = {}) {
+  if (snapshot?.spot_is_real === true) {
+    return `FMP · ${minutesAgo(snapshot.spot_last_updated)}`;
+  }
+  if (snapshot?.spot_source === 'fmp') {
+    return 'FMP unavailable';
+  }
+  return spotPositionLabel(snapshot.spot_position);
+}
+
 function shortTime(value) {
   if (!value) return '--';
   const date = value instanceof Date ? value : new Date(value);
@@ -328,7 +344,7 @@ function renderSourceStrip(signal) {
     <section class="source-row">
       <div class="section-label">Source State</div>
       <div class="source-list">
-        ${(signal.source_status || []).filter((item) => ['tradingview', 'fmp', 'theta_core', 'theta_full_chain', 'uw', 'telegram', 'dashboard'].includes(item.source)).map((item) => `
+        ${(signal.source_status || []).filter((item) => ['tradingview', 'fmp_event', 'fmp_price', 'theta_core', 'theta_full_chain', 'uw', 'telegram', 'dashboard'].includes(item.source)).map((item) => `
           <span class="source-chip ${statusClassForSource(item)}">
             ${escapeHtml(item.source)} · ${sourceStateLabel(item.state)} · ${minutesAgo(item.last_updated)}
           </span>
@@ -344,8 +360,8 @@ function renderMetricCards(signal) {
     <div class="price-stack">
       <div class="metric-card">
         <div class="metric-label">SPX Spot</div>
-        <div class="big-number">${fmt(snap.spot, 2)}</div>
-        <div class="delta-line"><i class="pulse-bar"></i><span>${spotPositionLabel(snap.spot_position)}</span></div>
+        <div class="big-number">${displaySpot(snap)}</div>
+        <div class="delta-line"><i class="pulse-bar"></i><span>${escapeHtml(displaySpotContext(snap))}</span></div>
       </div>
       <div class="metric-card">
         <div class="metric-label">Gamma Regime</div>
@@ -459,7 +475,7 @@ function renderStrategyCards(signal) {
 function renderLevelMatrix(signal) {
   const snap = signal.market_snapshot || {};
   const items = [
-    ['SPX', fmt(snap.spot, 2), '当前现价'],
+    ['SPX', displaySpot(snap), snap.spot_is_real ? `当前现价 · ${snap.spot_source || 'fmp'}` : '当前现价 unavailable'],
     ['Flip', fmtInt(snap.flip_level), `距离 ${fmt(snap.distance_to_flip, 1)} pt`],
     ['Call Wall', fmtInt(snap.call_wall), `距离 ${fmt(snap.distance_to_call_wall, 1)} pt`],
     ['Put Wall', fmtInt(snap.put_wall), `距离 ${fmt(snap.distance_to_put_wall, 1)} pt`],
@@ -534,7 +550,7 @@ function renderRadarSummary(signal) {
         </div>
         <p class="radar-note">${escapeHtml(signal.radar_summary?.dealer || signal.plain_language?.dealer_behavior || '等待 dealer 行为确认。')}</p>
         <div class="matrix-list">
-          <div class="matrix-item"><div class="matrix-name">现价位置</div><div class="matrix-value">${spotPositionLabel(snap.spot_position)}</div><div class="matrix-number">${fmt(snap.spot, 2)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">现价位置</div><div class="matrix-value">${escapeHtml(displaySpotContext(snap))}</div><div class="matrix-number">${displaySpot(snap)}</div></div>
           <div class="matrix-item"><div class="matrix-name">Flip</div><div class="matrix-value">${fmt(snap.distance_to_flip, 1)} pt</div><div class="matrix-number">${fmtInt(snap.flip_level)}</div></div>
           <div class="matrix-item"><div class="matrix-name">Call Wall</div><div class="matrix-value">${fmt(snap.distance_to_call_wall, 1)} pt</div><div class="matrix-number">${fmtInt(snap.call_wall)}</div></div>
           <div class="matrix-item"><div class="matrix-name">Put Wall</div><div class="matrix-value">${fmt(snap.distance_to_put_wall, 1)} pt</div><div class="matrix-number">${fmtInt(snap.put_wall)}</div></div>

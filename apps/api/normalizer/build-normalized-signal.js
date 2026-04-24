@@ -52,6 +52,22 @@ function isFmpAbnormalState({ configured, is_mock, stale, state, available }) {
   );
 }
 
+function isFmpPriceAbnormalState({ configured, is_mock, stale, state, available, price }) {
+  if (!configured) {
+    return false;
+  }
+
+  return (
+    is_mock ||
+    stale ||
+    available === false ||
+    state === SOURCE_STATE.DEGRADED ||
+    state === SOURCE_STATE.DELAYED ||
+    state === SOURCE_STATE.DOWN ||
+    !Number.isFinite(Number(price))
+  );
+}
+
 function createSourceEntry({ source, timestamp, last_updated, degraded = false }) {
   const policy = getSourcePolicy(source);
   const latencyMs = Math.max(0, new Date(timestamp).getTime() - new Date(last_updated).getTime());
@@ -112,12 +128,20 @@ function createSourceEntryFromSnapshot({
     available: snapshot?.available ?? true
   });
   const staleReason = snapshot?.stale_reason || createStaleReason(source, stale, latencyMs, policy.stale_threshold_ms);
-  const isFmpAbnormal = source === 'fmp' && isFmpAbnormalState({
+  const isFmpAbnormal = source === 'fmp_event' && isFmpAbnormalState({
     configured: snapshot?.configured ?? false,
     is_mock: snapshot?.is_mock ?? true,
     stale,
     state,
     available: snapshot?.available ?? true
+  });
+  const isFmpPriceAbnormal = source === 'fmp_price' && isFmpPriceAbnormalState({
+    configured: snapshot?.configured ?? false,
+    is_mock: snapshot?.is_mock ?? true,
+    stale,
+    state,
+    available: snapshot?.available ?? true,
+    price: snapshot?.price
   });
 
   return createSourceStatus({
@@ -139,6 +163,8 @@ function createSourceEntryFromSnapshot({
     event_triggers: policy.event_triggers,
     message: isFmpAbnormal
       ? FMP_ABNORMAL_SOURCE_MESSAGE
+      : isFmpPriceAbnormal
+        ? 'FMP SPX price unavailable'
       : snapshot?.message
         || (degraded
           ? `${source} 当前处于 degraded 模式，结论只能降权参考。`
@@ -163,6 +189,45 @@ function deriveEventContext(rawScenario, fmpStatus) {
     event_note: rawScenario.event_note,
     no_short_vol_window: rawScenario.event_risk === 'high' || rawScenario.event_risk === 'medium',
     trade_permission_adjustment: rawScenario.event_risk === 'low' ? 'normal' : 'downgrade'
+  };
+}
+
+function deriveSpotContext(rawScenario) {
+  const priceSnapshot = rawScenario.fmp_price_snapshot;
+  if (!priceSnapshot) {
+    return {
+      spot: rawScenario.spot,
+      spot_source: 'mock',
+      spot_last_updated: rawScenario.last_updated?.fmp ?? rawScenario.timestamp,
+      spot_is_real: false,
+      price_health: 'mock'
+    };
+  }
+
+  const state = String(priceSnapshot.state || '').toLowerCase();
+  const priceIsReal =
+    priceSnapshot.configured === true
+    && priceSnapshot.is_mock === false
+    && priceSnapshot.stale === false
+    && !['degraded', 'delayed', 'down', 'stale', 'mock'].includes(state)
+    && Number.isFinite(Number(priceSnapshot.price));
+
+  if (!priceIsReal) {
+    return {
+      spot: null,
+      spot_source: 'fmp',
+      spot_last_updated: priceSnapshot.last_updated || priceSnapshot.data_timestamp || rawScenario.last_updated?.fmp,
+      spot_is_real: false,
+      price_health: state || (priceSnapshot.stale ? 'stale' : 'degraded')
+    };
+  }
+
+  return {
+    spot: Number(priceSnapshot.price),
+    spot_source: 'fmp',
+    spot_last_updated: priceSnapshot.last_updated || priceSnapshot.data_timestamp || rawScenario.last_updated?.fmp,
+    spot_is_real: true,
+    price_health: 'real'
   };
 }
 
@@ -191,7 +256,7 @@ export function normalizeMockScenario(rawScenario) {
       last_updated: rawScenario.last_updated.theta_full_chain ?? rawScenario.last_updated.theta
     }),
     createSourceEntry({
-      source: 'fmp',
+      source: 'fmp_event',
       timestamp: receivedAt,
       last_updated: rawScenario.last_updated.fmp
     }),
@@ -220,12 +285,28 @@ export function normalizeMockScenario(rawScenario) {
     })
   ];
 
-  const fmpIndex = source_status.findIndex((item) => item.source === 'fmp');
-  if (fmpIndex >= 0 && rawScenario.fmp_snapshot) {
+  const fmpIndex = source_status.findIndex((item) => item.source === 'fmp_event');
+  if (fmpIndex >= 0 && rawScenario.fmp_event_snapshot) {
     source_status[fmpIndex] = createSourceEntryFromSnapshot({
-      source: 'fmp',
+      source: 'fmp_event',
       timestamp: receivedAt,
-      snapshot: rawScenario.fmp_snapshot,
+      snapshot: rawScenario.fmp_event_snapshot,
+      fallbackLastUpdated: rawScenario.last_updated.fmp
+    });
+  }
+
+  source_status.splice(5, 0, createSourceEntry({
+    source: 'fmp_price',
+    timestamp: receivedAt,
+    last_updated: rawScenario.last_updated.fmp
+  }));
+
+  const fmpPriceIndex = source_status.findIndex((item) => item.source === 'fmp_price');
+  if (fmpPriceIndex >= 0 && rawScenario.fmp_price_snapshot) {
+    source_status[fmpPriceIndex] = createSourceEntryFromSnapshot({
+      source: 'fmp_price',
+      timestamp: receivedAt,
+      snapshot: rawScenario.fmp_price_snapshot,
       fallbackLastUpdated: rawScenario.last_updated.fmp
     });
   }
@@ -234,14 +315,15 @@ export function normalizeMockScenario(rawScenario) {
     theta: source_status.find((item) => item.source === 'theta_core')?.stale ?? true,
     tradingview: source_status.find((item) => item.source === 'tradingview')?.stale ?? true,
     uw: source_status.find((item) => item.source === 'uw_dom')?.stale ?? true,
-    fmp: source_status.find((item) => item.source === 'fmp')?.stale ?? true
+    fmp: source_status.find((item) => item.source === 'fmp_event')?.stale ?? true
   };
   stale_flags.any_stale = Object.values(stale_flags).some(Boolean);
 
   const stale_reason = source_status.filter((item) => item.stale_reason).map((item) => item.stale_reason);
   const latency_ms = source_status.reduce((max, item) => Math.max(max, item.latency_ms), 0);
-  const fmpStatus = source_status.find((item) => item.source === 'fmp');
+  const fmpStatus = source_status.find((item) => item.source === 'fmp_event');
   const eventContext = deriveEventContext(rawScenario, fmpStatus);
+  const spotContext = deriveSpotContext(rawScenario);
 
   return {
     scenario: rawScenario.scenario,
@@ -259,7 +341,11 @@ export function normalizeMockScenario(rawScenario) {
     stale_flags,
     source_status,
     gamma_regime: rawScenario.gamma_regime,
-    spot: rawScenario.spot,
+    spot: spotContext.spot,
+    spot_source: spotContext.spot_source,
+    spot_last_updated: spotContext.spot_last_updated,
+    spot_is_real: spotContext.spot_is_real,
+    price_health: spotContext.price_health,
     flip_level: rawScenario.flip_level,
     call_wall: rawScenario.call_wall,
     put_wall: rawScenario.put_wall,

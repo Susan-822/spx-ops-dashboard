@@ -253,20 +253,22 @@ test('FMP high-risk event updates event_context and keeps source_status.fmp real
 
   const signal = await getCurrentSignal('positive_gamma_income_watch', {
     fmp: {
-      now: new Date('2026-04-24T12:00:00.000Z'),
-      fetchImpl: async () => ({
-        ok: true,
-        async json() {
-          return [
-            {
-              date: '2026-04-24T13:30:00.000Z',
-              country: 'US',
-              event: 'Non-Farm Payrolls',
-              impact: 'High'
-            }
-          ];
-        }
-      })
+      event: {
+        now: new Date('2026-04-24T12:00:00.000Z'),
+        fetchImpl: async () => ({
+          ok: true,
+          async json() {
+            return [
+              {
+                date: '2026-04-24T13:30:00.000Z',
+                country: 'US',
+                event: 'Non-Farm Payrolls',
+                impact: 'High'
+              }
+            ];
+          }
+        })
+      }
     }
   });
 
@@ -274,7 +276,7 @@ test('FMP high-risk event updates event_context and keeps source_status.fmp real
   assert.match(signal.event_context.event_note, /FMP 检测到/);
   assert.equal(signal.recommended_action, 'wait');
 
-  const fmpStatus = signal.source_status.find((item) => item.source === 'fmp');
+  const fmpStatus = signal.source_status.find((item) => item.source === 'fmp_event');
   assert.ok(fmpStatus);
   assert.equal(fmpStatus.is_mock, false);
   assert.equal(fmpStatus.state, 'real');
@@ -288,8 +290,10 @@ test('FMP fallback preserves schema but marks source_status.fmp degraded mock', 
 
   const signal = await getCurrentSignal('breakout_pullback_pending', {
     fmp: {
-      fetchImpl: async () => {
-        throw new Error('network unavailable');
+      event: {
+        fetchImpl: async () => {
+          throw new Error('network unavailable');
+        }
       }
     }
   });
@@ -300,7 +304,7 @@ test('FMP fallback preserves schema but marks source_status.fmp degraded mock', 
   assert.equal(signal.event_context.no_short_vol_window, true);
   assert.equal(signal.event_context.trade_permission_adjustment, 'downgrade');
 
-  const fmpStatus = signal.source_status.find((item) => item.source === 'fmp');
+  const fmpStatus = signal.source_status.find((item) => item.source === 'fmp_event');
   assert.ok(fmpStatus);
   assert.equal(fmpStatus.is_mock, true);
   assert.equal(fmpStatus.state, 'degraded');
@@ -315,15 +319,17 @@ test('FMP stale forces medium event risk and stale source status semantics', asy
 
   const signal = await getCurrentSignal('breakout_pullback_pending', {
     fmp: {
-      fetchImpl: async () => ({
-        ok: true,
-        async json() {
-          return [];
-        }
-      }),
-      now: new Date('2026-04-24T14:00:00.000Z'),
-      receivedAt: '2026-04-24T14:00:00.000Z',
-      forceLastUpdated: '2026-04-24T13:45:00.000Z'
+      event: {
+        fetchImpl: async () => ({
+          ok: true,
+          async json() {
+            return [];
+          }
+        }),
+        now: new Date('2026-04-24T14:00:00.000Z'),
+        receivedAt: '2026-04-24T14:00:00.000Z',
+        forceLastUpdated: '2026-04-24T13:45:00.000Z'
+      }
     }
   });
 
@@ -332,11 +338,100 @@ test('FMP stale forces medium event risk and stale source status semantics', asy
   assert.equal(signal.event_context.no_short_vol_window, true);
   assert.equal(signal.event_context.trade_permission_adjustment, 'downgrade');
 
-  const fmpStatus = signal.source_status.find((item) => item.source === 'fmp');
+  const fmpStatus = signal.source_status.find((item) => item.source === 'fmp_event');
   assert.ok(fmpStatus);
   assert.equal(fmpStatus.state, 'delayed');
   assert.equal(fmpStatus.stale, true);
   assert.equal(fmpStatus.message, 'FMP 数据异常，事件风险不可确认。');
+
+  delete process.env.FMP_API_KEY;
+});
+
+test('FMP price success replaces mock spot with real SPX price', async () => {
+  process.env.FMP_API_KEY = 'test-key';
+
+  const signal = await getCurrentSignal('breakout_pullback_pending', {
+    fmp: {
+      event: {
+        fetchImpl: async () => ({
+          ok: true,
+          async json() {
+            return [];
+          }
+        })
+      },
+      price: {
+        quoteShortFetchImpl: async () => ({
+          ok: true,
+          async json() {
+            return [
+              {
+                symbol: '^GSPC',
+                price: 5342.25
+              }
+            ];
+          }
+        }),
+        quoteFetchImpl: async () => {
+          throw new Error('should not reach quote fallback');
+        },
+        historicalFetchImpl: async () => {
+          throw new Error('should not reach historical fallback');
+        }
+      }
+    }
+  });
+
+  assert.equal(signal.market_snapshot.spot, 5342.25);
+  assert.equal(signal.market_snapshot.spot_source, 'fmp');
+  assert.equal(signal.market_snapshot.spot_is_real, true);
+  assert.equal(typeof signal.market_snapshot.spot_last_updated, 'string');
+
+  const fmpPriceStatus = signal.source_status.find((item) => item.source === 'fmp_price');
+  assert.ok(fmpPriceStatus);
+  assert.equal(fmpPriceStatus.state, 'real');
+  assert.equal(fmpPriceStatus.is_mock, false);
+  assert.equal(fmpPriceStatus.stale, false);
+  assert.equal(fmpPriceStatus.message, 'FMP SPX price real');
+
+  delete process.env.FMP_API_KEY;
+});
+
+test('FMP price failure clears spot instead of falling back to mock price', async () => {
+  process.env.FMP_API_KEY = 'test-key';
+
+  const signal = await getCurrentSignal('breakout_pullback_pending', {
+    fmp: {
+      event: {
+        fetchImpl: async () => ({
+          ok: true,
+          async json() {
+            return [];
+          }
+        })
+      },
+      price: {
+        quoteShortFetchImpl: async () => {
+          throw new Error('price unavailable');
+        },
+        quoteFetchImpl: async () => {
+          throw new Error('price unavailable');
+        },
+        historicalFetchImpl: async () => {
+          throw new Error('price unavailable');
+        }
+      }
+    }
+  });
+
+  assert.equal(signal.market_snapshot.spot, null);
+  assert.equal(signal.market_snapshot.spot_is_real, false);
+  assert.equal(signal.market_snapshot.spot_source, 'fmp');
+
+  const fmpPriceStatus = signal.source_status.find((item) => item.source === 'fmp_price');
+  assert.ok(fmpPriceStatus);
+  assert.equal(['degraded', 'down'].includes(fmpPriceStatus.state), true);
+  assert.equal(fmpPriceStatus.message, 'FMP SPX price unavailable');
 
   delete process.env.FMP_API_KEY;
 });
@@ -346,22 +441,24 @@ test('buildAlertMessage renders Chinese premarket warning for FMP risk gate', as
 
   const signal = await getCurrentSignal('positive_gamma_income_watch', {
     fmp: {
-      now: new Date('2026-04-24T08:00:00.000Z'),
-      receivedAt: '2026-04-24T08:00:00.000Z',
-      forceLastUpdated: '2026-04-24T08:00:00.000Z',
-      fetchImpl: async () => ({
-        ok: true,
-        async json() {
-          return [
-            {
-              date: '2026-04-24T10:00:00.000Z',
-              country: 'US',
-              event: 'CPI',
-              impact: 'High'
-            }
-          ];
-        }
-      })
+      event: {
+        now: new Date('2026-04-24T08:00:00.000Z'),
+        receivedAt: '2026-04-24T08:00:00.000Z',
+        forceLastUpdated: '2026-04-24T08:00:00.000Z',
+        fetchImpl: async () => ({
+          ok: true,
+          async json() {
+            return [
+              {
+                date: '2026-04-24T10:00:00.000Z',
+                country: 'US',
+                event: 'CPI',
+                impact: 'High'
+              }
+            ];
+          }
+        })
+      }
     }
   });
 
@@ -397,8 +494,10 @@ test('buildAlertMessage renders dedicated Chinese FMP exception warning', async 
 
   const signal = await getCurrentSignal('breakout_pullback_pending', {
     fmp: {
-      fetchImpl: async () => {
-        throw new Error('network unavailable');
+      event: {
+        fetchImpl: async () => {
+          throw new Error('network unavailable');
+        }
       }
     }
   });
