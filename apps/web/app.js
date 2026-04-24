@@ -8,6 +8,37 @@ const SCENARIOS = [
   'breakout_pullback_pending'
 ];
 
+function sanitizeText(text) {
+  if (text === undefined || text === null) {
+    return '';
+  }
+  return String(text)
+    .replaceAll('negative_gamma_expand', '负Gamma｜容易扩波')
+    .replaceAll('positive_gamma_grind', '正Gamma｜偏磨盘')
+    .replaceAll('flip_chop', 'Flip附近｜拉扯')
+    .replaceAll('event_risk', '事件风险｜先防守')
+    .replaceAll('below_flip', '现价在 Flip 下方')
+    .replaceAll('above_flip_below_call_wall', 'Flip 上方，Call Wall 下方')
+    .replaceAll('above_call_wall', '突破上方墙')
+    .replaceAll('below_put_wall', '跌破下方墙')
+    .replaceAll('between_walls', '墙内震荡区')
+    .replaceAll('chasing', '不追高')
+    .replaceAll('early_iron_condor', '不提前铁鹰')
+    .replaceAll('naked_sell', '不裸卖')
+    .replaceAll('middle_zone_countertrend', '不在中间区逆势抢')
+    .replaceAll('short_vol_before_event', '消息前禁卖波')
+    .replaceAll('trade_on_stale_data', '不用旧数据交易');
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
 function money(value) {
   return `$${Number(value).toFixed(1)}m`;
 }
