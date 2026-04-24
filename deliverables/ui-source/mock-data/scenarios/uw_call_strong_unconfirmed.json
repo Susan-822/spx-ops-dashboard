@@ -1,0 +1,466 @@
+{
+  "schema_version": "0.4.0",
+  "timestamp": "2026-04-24T08:42:37.495Z",
+  "data_timestamp": "2026-04-24T08:42:37.495Z",
+  "received_at": "2026-04-24T08:42:37.495Z",
+  "generated_at": "2026-04-24T08:42:37.495Z",
+  "latency_ms": 180000,
+  "stale_reason": [],
+  "is_mock": true,
+  "fetch_mode": "mock_scenario",
+  "scenario": "uw_call_strong_unconfirmed",
+  "symbol": "SPX",
+  "timeframe": "1D",
+  "last_updated": {
+    "theta": "2026-04-24T08:42:22.495Z",
+    "theta_full_chain": "2026-04-24T08:39:37.495Z",
+    "tradingview": "2026-04-24T08:42:07.495Z",
+    "uw": "2026-04-24T08:41:07.495Z",
+    "fmp": "2026-04-24T08:40:37.495Z",
+    "scheduler_health": "2026-04-24T08:42:07.495Z"
+  },
+  "stale_flags": {
+    "theta": false,
+    "tradingview": false,
+    "uw": false,
+    "fmp": false,
+    "any_stale": false
+  },
+  "source_status": [
+    {
+      "source": "dashboard",
+      "configured": false,
+      "available": true,
+      "is_mock": true,
+      "fetch_mode": "light_poll",
+      "stale": false,
+      "state": "mock",
+      "message": "dashboard mock 数据已接收，当前可作为 fallback 进入引擎。",
+      "last_updated": "2026-04-24T08:42:37.495Z",
+      "data_timestamp": "2026-04-24T08:42:37.495Z",
+      "received_at": "2026-04-24T08:42:37.495Z",
+      "latency_ms": 0,
+      "stale_reason": "",
+      "refresh_interval_ms": 5000,
+      "stale_threshold_ms": 15000,
+      "down_threshold_ms": 60000,
+      "event_triggers": [
+        "visibility_change",
+        "scenario_change",
+        "manual_refresh"
+      ]
+    },
+    {
+      "source": "tradingview",
+      "configured": false,
+      "available": true,
+      "is_mock": true,
+      "fetch_mode": "webhook_event",
+      "stale": false,
+      "state": "mock",
+      "message": "tradingview mock 数据已接收，当前可作为 fallback 进入引擎。",
+      "last_updated": "2026-04-24T08:42:07.495Z",
+      "data_timestamp": "2026-04-24T08:42:07.495Z",
+      "received_at": "2026-04-24T08:42:37.495Z",
+      "latency_ms": 30000,
+      "stale_reason": "",
+      "refresh_interval_ms": 0,
+      "stale_threshold_ms": 300000,
+      "down_threshold_ms": 900000,
+      "event_triggers": [
+        "webhook_breakout",
+        "webhook_breakdown",
+        "webhook_pullback",
+        "webhook_invalidation"
+      ]
+    },
+    {
+      "source": "theta_core",
+      "configured": false,
+      "available": true,
+      "is_mock": true,
+      "fetch_mode": "layered_poll",
+      "stale": false,
+      "state": "mock",
+      "message": "theta_core mock 数据已接收，当前可作为 fallback 进入引擎。",
+      "last_updated": "2026-04-24T08:42:22.495Z",
+      "data_timestamp": "2026-04-24T08:42:22.495Z",
+      "received_at": "2026-04-24T08:42:37.495Z",
+      "latency_ms": 15000,
+      "stale_reason": "",
+      "refresh_interval_ms": 30000,
+      "stale_threshold_ms": 30000,
+      "down_threshold_ms": 300000,
+      "event_triggers": [
+        "spot_near_flip",
+        "spot_near_call_wall",
+        "spot_near_put_wall",
+        "manual_refresh"
+      ]
+    },
+    {
+      "source": "theta_full_chain",
+      "configured": false,
+      "available": true,
+      "is_mock": true,
+      "fetch_mode": "layered_scan",
+      "stale": false,
+      "state": "mock",
+      "message": "theta_full_chain mock 数据已接收，当前可作为 fallback 进入引擎。",
+      "last_updated": "2026-04-24T08:39:37.495Z",
+      "data_timestamp": "2026-04-24T08:39:37.495Z",
+      "received_at": "2026-04-24T08:42:37.495Z",
+      "latency_ms": 180000,
+      "stale_reason": "",
+      "refresh_interval_ms": 180000,
+      "stale_threshold_ms": 300000,
+      "down_threshold_ms": 900000,
+      "event_triggers": [
+        "home_needs_recalc",
+        "manual_refresh"
+      ]
+    },
+    {
+      "source": "fmp",
+      "configured": false,
+      "available": true,
+      "is_mock": true,
+      "fetch_mode": "low_frequency_poll",
+      "stale": false,
+      "state": "mock",
+      "message": "fmp mock 数据已接收，当前可作为 fallback 进入引擎。",
+      "last_updated": "2026-04-24T08:40:37.495Z",
+      "data_timestamp": "2026-04-24T08:40:37.495Z",
+      "received_at": "2026-04-24T08:42:37.495Z",
+      "latency_ms": 120000,
+      "stale_reason": "",
+      "refresh_interval_ms": 120000,
+      "stale_threshold_ms": 600000,
+      "down_threshold_ms": 1800000,
+      "event_triggers": [
+        "macro_event_window",
+        "earnings_window",
+        "risk_gate_escalation"
+      ]
+    },
+    {
+      "source": "uw_dom",
+      "configured": false,
+      "available": true,
+      "is_mock": true,
+      "fetch_mode": "dom_read",
+      "stale": false,
+      "state": "degraded",
+      "message": "uw_dom 当前处于 degraded 模式，结论只能降权参考。",
+      "last_updated": "2026-04-24T08:41:07.495Z",
+      "data_timestamp": "2026-04-24T08:41:07.495Z",
+      "received_at": "2026-04-24T08:42:37.495Z",
+      "latency_ms": 90000,
+      "stale_reason": "",
+      "refresh_interval_ms": 120000,
+      "stale_threshold_ms": 300000,
+      "down_threshold_ms": 600000,
+      "event_triggers": [
+        "tv_key_event",
+        "manual_refresh",
+        "user_focus_on_uw_tab"
+      ]
+    },
+    {
+      "source": "uw_screenshot",
+      "configured": false,
+      "available": true,
+      "is_mock": true,
+      "fetch_mode": "vision_fallback",
+      "stale": false,
+      "state": "mock",
+      "message": "uw_screenshot mock 数据已接收，当前可作为 fallback 进入引擎。",
+      "last_updated": "2026-04-24T08:41:07.495Z",
+      "data_timestamp": "2026-04-24T08:41:07.495Z",
+      "received_at": "2026-04-24T08:42:37.495Z",
+      "latency_ms": 90000,
+      "stale_reason": "",
+      "refresh_interval_ms": 720000,
+      "stale_threshold_ms": 900000,
+      "down_threshold_ms": 1800000,
+      "event_triggers": [
+        "dom_unavailable",
+        "tv_key_event",
+        "manual_refresh"
+      ]
+    },
+    {
+      "source": "scheduler_health",
+      "configured": false,
+      "available": true,
+      "is_mock": true,
+      "fetch_mode": "health_poll",
+      "stale": false,
+      "state": "mock",
+      "message": "scheduler_health mock 数据已接收，当前可作为 fallback 进入引擎。",
+      "last_updated": "2026-04-24T08:42:07.495Z",
+      "data_timestamp": "2026-04-24T08:42:07.495Z",
+      "received_at": "2026-04-24T08:42:37.495Z",
+      "latency_ms": 30000,
+      "stale_reason": "",
+      "refresh_interval_ms": 30000,
+      "stale_threshold_ms": 60000,
+      "down_threshold_ms": 180000,
+      "event_triggers": [
+        "fixed_check"
+      ]
+    },
+    {
+      "source": "telegram",
+      "configured": false,
+      "available": true,
+      "is_mock": true,
+      "fetch_mode": "event_push",
+      "stale": false,
+      "state": "degraded",
+      "message": "telegram 当前处于 degraded 模式，结论只能降权参考。",
+      "last_updated": "2026-04-24T08:40:37.495Z",
+      "data_timestamp": "2026-04-24T08:40:37.495Z",
+      "received_at": "2026-04-24T08:42:37.495Z",
+      "latency_ms": 120000,
+      "stale_reason": "",
+      "refresh_interval_ms": 0,
+      "stale_threshold_ms": 600000,
+      "down_threshold_ms": 1800000,
+      "event_triggers": [
+        "recommended_action_change",
+        "stale_alert",
+        "conflict_alert",
+        "high_risk_alert"
+      ]
+    }
+  ],
+  "market_state": "positive_gamma_grind",
+  "gamma_regime": "positive",
+  "market_snapshot": {
+    "spot": 5298,
+    "flip_level": 5289,
+    "call_wall": 5332,
+    "put_wall": 5274,
+    "max_pain": 5302,
+    "distance_to_flip": 9,
+    "distance_to_call_wall": 34,
+    "distance_to_put_wall": 24,
+    "spot_position": "above_flip"
+  },
+  "uw_context": {
+    "flow_bias": "bullish",
+    "dark_pool_bias": "bullish",
+    "dealer_bias": "supportive",
+    "advanced_greeks": {
+      "vanna": "positive",
+      "charm": "positive"
+    }
+  },
+  "event_context": {
+    "event_risk": "low",
+    "event_note": "UW 明显偏多，但价格还没有走出确认结构。"
+  },
+  "radar_summary": {
+    "order_flow": {
+      "call_buy_premium": 4.2,
+      "call_sell_premium": 1.2,
+      "put_buy_premium": 1.8,
+      "put_sell_premium": 1.1,
+      "zero_dte_call_buy_premium": 2.1,
+      "zero_dte_put_buy_premium": 0.7,
+      "flow_bias": "Call强",
+      "flow_quality": "一般",
+      "aggressor": "ask-side / sweep",
+      "explanation": "资金偏多，但价格未确认，不追。"
+    },
+    "dealer": {
+      "gamma_bias": "positive",
+      "vanna_bias": "positive",
+      "charm_bias": "positive",
+      "vomma_risk": "中",
+      "speed_risk": "中",
+      "color_decay": "回中轴",
+      "dealer_behavior": "控波",
+      "explanation": "Gamma 偏正，主力更像在控波和承接，回踩确认比追突破更合适。"
+    },
+    "dark_pool": {
+      "support_below": "有",
+      "resistance_above": "不明显",
+      "key_levels": [
+        5274,
+        5302,
+        5332
+      ],
+      "distance_to_spot": [
+        24,
+        4,
+        34
+      ],
+      "dark_pool_bias": "下方承接",
+      "explanation": "下方更像存在承接区，但价格没站稳前仍不能直接抄底。"
+    },
+    "plan_alignment": {
+      "status": "部分支持，等确认",
+      "support_reason": "当前支持度有限。",
+      "conflict_reason": "价格未确认，不能把资金偏向直接翻译成执行动作。",
+      "effect_on_action": "资金雷达只支持等待，不支持直接追单。"
+    }
+  },
+  "tv_structure_event": "breakout_probe_unconfirmed",
+  "signals": {
+    "theta_signal": "bullish_pullback",
+    "tv_signal": "bullish_probe",
+    "uw_signal": "bullish_flow",
+    "fmp_signal": "clear",
+    "wall_bias": "neutral",
+    "dealer_behavior": "主力偏承接，回落更容易被接住",
+    "price_confirmation": "unconfirmed"
+  },
+  "weights": {
+    "theta": 0.4,
+    "tradingview": 0.3,
+    "uw": 0.2,
+    "fmp": 0.1
+  },
+  "conflict": {
+    "has_conflict": true,
+    "conflict_level": "medium",
+    "conflict_points": [
+      "UW 偏多但价格未确认"
+    ],
+    "adjusted_confidence": 74,
+    "theta_tv_conflict": false,
+    "directions": {
+      "theta": "positive",
+      "tradingview": "positive",
+      "uw": "positive",
+      "fmp": "neutral"
+    }
+  },
+  "plain_language": {
+    "market_status": "正 Gamma 让波动相对收敛，优先等结构与波动率同时配合。",
+    "dealer_behavior": "主力偏承接，回落更容易被接住，但仍需价格确认。",
+    "user_action": "结构还没确认，先等价格把方向走出来。",
+    "avoid": "不追高；不提前铁鹰。",
+    "invalidation": "价格重新失守 flip 5289"
+  },
+  "recommended_action": "wait",
+  "avoid_actions": [
+    "chasing",
+    "early_iron_condor"
+  ],
+  "invalidation_level": "价格重新失守 flip 5289",
+  "confidence_score": 69,
+  "strategy_cards": [
+    {
+      "strategy_name": "单腿",
+      "suitable_when": "仅在强确认趋势里才考虑，当前不是优先方案。",
+      "entry_condition": "等待结构确认后再决定。",
+      "target_zone": "5302 -> 5332",
+      "invalidation": "价格重新失守 flip 5289",
+      "avoid_when": "数据 stale、冲突过高、或事件风险抬升时不要做。"
+    },
+    {
+      "strategy_name": "看涨价差",
+      "suitable_when": "正 Gamma 且价格回踩后仍守住关键位。",
+      "entry_condition": "回踩 flip 5289 上方并重新企稳。",
+      "target_zone": "5302 -> 5332",
+      "invalidation": "跌破 put_wall 5274",
+      "avoid_when": "负 Gamma 扩张或 UW/价格不同步时不要提前做。"
+    },
+    {
+      "strategy_name": "看跌价差",
+      "suitable_when": "只有在结构明确转弱时才考虑。",
+      "entry_condition": "反抽不过 call_wall 5332 或 flip 5289",
+      "target_zone": "5274 -> 5302",
+      "invalidation": "重新站回 call_wall 5332",
+      "avoid_when": "正 Gamma 护盘或主力明显承接时避免。"
+    },
+    {
+      "strategy_name": "铁鹰",
+      "suitable_when": "当前不满足安全卖波动率窗口。",
+      "entry_condition": "仅在价格继续围绕 max_pain 5302 附近钉住时考虑。",
+      "target_zone": "5274 - 5332",
+      "invalidation": "事件风险升高、价格离开区间、或 IV 重新抬头。",
+      "avoid_when": "事件日前、数据过期时、或冲突升高时禁止提前做。"
+    },
+    {
+      "strategy_name": "观望",
+      "suitable_when": "当前最优解就是少动。",
+      "entry_condition": "不满足结构、确认、或风险条件时直接空仓。",
+      "target_zone": "等待更优位置",
+      "invalidation": "当冲突下降、结构确认、且数据新鲜时再重新评估。",
+      "avoid_when": "不要因为无聊交易，尤其不要在中间区域逆势硬做。"
+    }
+  ],
+  "engines": {
+    "market_regime": {
+      "market_state": "positive_gamma_grind",
+      "flip_distance": 9,
+      "event_risk": "low"
+    },
+    "gamma_wall": {
+      "wall_position": "above_flip",
+      "distance_to_flip": 9,
+      "distance_to_call_wall": 34,
+      "distance_to_put_wall": 24,
+      "wall_bias": "neutral"
+    },
+    "volatility": {
+      "vol_state": "mixed",
+      "short_vol_allowed": false,
+      "income_allowed_reason": "当前不满足正 Gamma、IV 回落、低事件风险的同时成立条件。"
+    },
+    "price_structure": {
+      "price_signal": "bullish_probe",
+      "confirmation_status": "unconfirmed"
+    },
+    "uw_dealer_flow": {
+      "uw_signal": "bullish_flow",
+      "dealer_behavior": "主力偏承接，回落更容易被接住",
+      "flow_quality_score": 100
+    },
+    "event_risk": {
+      "risk_gate": "open",
+      "blocked_actions": [],
+      "event_note": "UW 明显偏多，但价格还没有走出确认结构。"
+    },
+    "conflict": {
+      "has_conflict": true,
+      "conflict_level": "medium",
+      "conflict_points": [
+        "UW 偏多但价格未确认"
+      ],
+      "adjusted_confidence": 74,
+      "theta_tv_conflict": false,
+      "weights": {
+        "theta": 0.4,
+        "tradingview": 0.3,
+        "uw": 0.2,
+        "fmp": 0.1
+      },
+      "directions": {
+        "theta": "positive",
+        "tradingview": "positive",
+        "uw": "positive",
+        "fmp": "neutral"
+      },
+      "agreement_count": 3
+    },
+    "action": {
+      "recommended_action": "wait",
+      "avoid_actions": [
+        "chasing",
+        "early_iron_condor"
+      ],
+      "invalidation_level": "价格重新失守 flip 5289",
+      "confidence_score": 69
+    }
+  },
+  "notes": [
+    "Mock master-engine closed loop only.",
+    "No real API integration is active.",
+    "No automatic order placement exists."
+  ]
+}
