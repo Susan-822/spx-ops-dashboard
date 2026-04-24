@@ -1,16 +1,9 @@
-import { getThetaSnapshot } from '../adapters/theta/index.js';
-import { getFmpSnapshot } from '../adapters/fmp/index.js';
-import { getTradingViewSnapshot } from '../adapters/tradingview/index.js';
-import { getUwSnapshot } from '../adapters/uw/index.js';
-import { buildNormalizedSignal } from '../normalizer/build-normalized-signal.js';
+import { getMockScenario } from './mock-scenarios.js';
+import { normalizeMockScenario } from '../normalizer/build-normalized-signal.js';
+import { runMasterEngine } from './master-engine.js';
 
-export async function getCurrentSignal() {
-  const [theta, fmp, tradingview, uw] = await Promise.all([
-    getThetaSnapshot(),
-    getFmpSnapshot(),
-    getTradingViewSnapshot(),
-    getUwSnapshot()
-  ]);
-
-  return buildNormalizedSignal({ theta, fmp, tradingview, uw });
+export async function getCurrentSignal(requestedScenario) {
+  const scenario = getMockScenario(requestedScenario);
+  const normalized = normalizeMockScenario(scenario);
+  return runMasterEngine(normalized);
 }

@@ -1,4 +1,5 @@
 import { getCurrentSignal } from '../decision_engine/current-signal.js';
+import { getScenarioNames } from '../decision_engine/mock-scenarios.js';
 import { getTelegramSnapshot } from '../adapters/telegram/index.js';
 import { createSchedulerState } from '../scheduler/index.js';
 import { createStorageState } from '../storage/index.js';
@@ -7,40 +8,57 @@ import { sendJson, readJsonBody } from './helpers.js';
 
 export async function handleApiRoute(req, res) {
   const url = new URL(req.url, 'http://localhost');
+  const scenario = url.searchParams.get('scenario');
 
   if (req.method === 'GET' && url.pathname === '/health') {
     return sendJson(res, 200, {
       ok: true,
       service: 'spx-ops-dashboard-api',
+      mode: 'mock-master-engine',
+      available_scenarios: getScenarioNames(),
       is_mock: true
     });
   }
 
   if (req.method === 'GET' && url.pathname === '/sources/status') {
-    const signal = await getCurrentSignal();
+    const signal = await getCurrentSignal(scenario);
     return sendJson(res, 200, {
       items: signal.source_status,
+      stale_flags: signal.stale_flags,
+      scenario: signal.scenario,
       is_mock: true
     });
   }
 
   if (req.method === 'GET' && url.pathname === '/signals/current') {
-    const signal = await getCurrentSignal();
+    const signal = await getCurrentSignal(scenario);
     return sendJson(res, 200, signal);
   }
 
   if (req.method === 'GET' && url.pathname === '/gamma/summary') {
-    const signal = await getCurrentSignal();
+    const signal = await getCurrentSignal(scenario);
     return sendJson(res, 200, {
-      ...signal.gamma_summary,
+      scenario: signal.scenario,
+      gamma_regime: signal.gamma_regime,
+      market_state: signal.market_state,
+      market_snapshot: signal.market_snapshot,
       is_mock: true
     });
   }
 
   if (req.method === 'GET' && url.pathname === '/events') {
-    const signal = await getCurrentSignal();
+    const signal = await getCurrentSignal(scenario);
     return sendJson(res, 200, {
-      items: signal.events,
+      items: [
+        {
+          id: `scenario-${signal.scenario}`,
+          type: 'scenario',
+          title: signal.scenario,
+          details: signal.event_context.event_note,
+          is_mock: true,
+          created_at: signal.timestamp
+        }
+      ],
       scheduler: createSchedulerState(),
       storage: createStorageState(),
       is_mock: true
@@ -60,6 +78,7 @@ export async function handleApiRoute(req, res) {
       accepted: true,
       path: url.pathname,
       received: body,
+      message: 'TradingView remains disconnected in mock closed-loop mode.',
       is_mock: true
     });
   }
@@ -69,7 +88,7 @@ export async function handleApiRoute(req, res) {
     return sendJson(res, 202, {
       accepted: true,
       path: url.pathname,
-      message: 'Screenshot upload skeleton accepted without processing.',
+      message: 'UW ingestion remains disabled in mock closed-loop mode.',
       received: body,
       is_mock: true
     });
@@ -80,7 +99,7 @@ export async function handleApiRoute(req, res) {
     return sendJson(res, 202, {
       accepted: true,
       path: url.pathname,
-      message: 'UW DOM read skeleton accepted without browser automation.',
+      message: 'UW DOM parsing remains disabled in mock closed-loop mode.',
       received: body,
       is_mock: true
     });

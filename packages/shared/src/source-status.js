@@ -1,28 +1,26 @@
 export const SOURCE_STATE = Object.freeze({
-  CONFIGURED: "configured",
-  MISSING_CONFIG: "missing_config",
-  MOCK_FALLBACK: "mock_fallback",
+  READY: 'ready',
+  STALE: 'stale',
+  MOCK_FALLBACK: 'mock_fallback'
 });
 
 export function createSourceStatus({
   source,
   configured = false,
-  available = false,
+  available = true,
   is_mock = true,
-  message = "Mock fallback active.",
+  message = 'Mock source active.',
   last_updated = null,
+  stale = false
 }) {
   return {
     source,
     configured,
     available,
     is_mock,
-    state: configured
-      ? is_mock
-        ? SOURCE_STATE.MOCK_FALLBACK
-        : SOURCE_STATE.CONFIGURED
-      : SOURCE_STATE.MISSING_CONFIG,
+    stale,
+    state: stale ? SOURCE_STATE.STALE : is_mock ? SOURCE_STATE.MOCK_FALLBACK : SOURCE_STATE.READY,
     message,
-    last_updated,
+    last_updated
   };
 }
