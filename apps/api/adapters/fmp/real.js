@@ -1,6 +1,8 @@
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
 const FMP_CALENDAR_URL = 'https://financialmodelingprep.com/stable/economic-calendar';
+const FMP_ERROR_NOTE = 'FMP 数据异常，事件风险不可确认，降低交易权限，不提前卖波。';
+const FMP_ERROR_MESSAGE = 'FMP 数据异常，事件风险不可确认。';
 
 function formatUtcDate(date) {
   return date.toISOString().slice(0, 10);
@@ -101,7 +103,12 @@ function classifyFmpRisk(events, nowMs) {
   };
 }
 
-export async function fetchFmpReal({ fetchImpl = fetch, now = new Date() } = {}) {
+export async function fetchFmpReal({
+  fetchImpl = fetch,
+  now = new Date(),
+  receivedAt = new Date().toISOString(),
+  forceLastUpdated = null
+} = {}) {
   const configured = Boolean(process.env.FMP_API_KEY);
   if (!configured) {
     return {
@@ -110,7 +117,12 @@ export async function fetchFmpReal({ fetchImpl = fetch, now = new Date() } = {})
       available: false,
       is_mock: false,
       fetch_mode: 'low_frequency_poll',
-      message: 'FMP is not configured.'
+      message: FMP_ERROR_MESSAGE,
+      event_risk: 'medium',
+      fmp_signal: 'event_risk_unknown',
+      event_note: FMP_ERROR_NOTE,
+      trade_permission_adjustment: 'downgrade',
+      no_short_vol_window: true
     };
   }
 
@@ -137,15 +149,20 @@ export async function fetchFmpReal({ fetchImpl = fetch, now = new Date() } = {})
         available: false,
         is_mock: false,
         fetch_mode: 'low_frequency_poll',
-        message: `FMP economic calendar request failed: ${response.status}.`
+        message: FMP_ERROR_MESSAGE,
+        event_risk: 'medium',
+        fmp_signal: 'event_risk_unknown',
+        event_note: FMP_ERROR_NOTE,
+        trade_permission_adjustment: 'downgrade',
+        no_short_vol_window: true
       };
     }
 
     const payload = await response.json();
     const items = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
     const risk = classifyFmpRisk(items, now.getTime());
-    const receivedAt = new Date().toISOString();
     const latencyMs = Math.max(0, Date.now() - startMs);
+    const lastUpdated = forceLastUpdated || receivedAt;
 
     return {
       source: 'fmp',
@@ -156,8 +173,8 @@ export async function fetchFmpReal({ fetchImpl = fetch, now = new Date() } = {})
       message: risk.event_risk === 'low'
         ? 'FMP 当前未检测到近端高影响事件。'
         : risk.event_note,
-      last_updated: receivedAt,
-      data_timestamp: receivedAt,
+      last_updated: lastUpdated,
+      data_timestamp: lastUpdated,
       received_at: receivedAt,
       latency_ms: latencyMs,
       ...risk
@@ -169,7 +186,12 @@ export async function fetchFmpReal({ fetchImpl = fetch, now = new Date() } = {})
       available: false,
       is_mock: false,
       fetch_mode: 'low_frequency_poll',
-      message: `FMP economic calendar request failed: ${error.message}.`
+      message: FMP_ERROR_MESSAGE,
+      event_risk: 'medium',
+      fmp_signal: 'event_risk_unknown',
+      event_note: FMP_ERROR_NOTE,
+      trade_permission_adjustment: 'downgrade',
+      no_short_vol_window: true
     };
   }
 }

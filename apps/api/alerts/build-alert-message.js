@@ -16,6 +16,17 @@ function sessionLabel(session) {
   return session === 'premarket' ? '盘前提醒' : '盘中提醒';
 }
 
+function isFmpAbnormal(signal) {
+  const fmp = (signal?.source_status || []).find((item) => item.source === 'fmp');
+  if (!fmp) {
+    return false;
+  }
+  if (!fmp.configured) {
+    return false;
+  }
+  return ['degraded', 'delayed', 'down'].includes(fmp.state) || fmp.is_mock === true || fmp.stale === true;
+}
+
 function actionLabel(signal) {
   switch (signal?.recommended_action) {
     case 'income_ok':
@@ -58,6 +69,17 @@ function reasonLabel(session, signal) {
 export function buildAlertMessage({ signal, body = {} }) {
   const session = inferSession({ body, signal });
   const signalSummary = signal?.signals || {};
+  if (isFmpAbnormal(signal)) {
+    return [
+      '【SPX 指挥台｜事件风险】',
+      '状态：FMP 异常',
+      '事件：无法确认',
+      '动作：降低交易权限，不提前铁鹰，不裸卖波',
+      '影响：事件风险不可确认',
+      '禁做：不要把未知事件窗口当成安全区间',
+      '原因：FMP 数据异常或过期'
+    ].join('\n');
+  }
 
   return [
     '【SPX 指挥台】',

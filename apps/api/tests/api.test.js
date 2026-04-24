@@ -295,15 +295,48 @@ test('FMP fallback preserves schema but marks source_status.fmp degraded mock', 
   });
 
   assert.equal(signal.schema_version, '0.4.0');
-  assert.equal(signal.event_context.event_risk, 'low');
-  assert.equal(typeof signal.event_context.event_note, 'string');
+  assert.equal(signal.event_context.event_risk, 'medium');
+  assert.equal(signal.event_context.event_note, 'FMP 数据异常，事件风险不可确认，降低交易权限，不提前卖波。');
+  assert.equal(signal.event_context.no_short_vol_window, true);
+  assert.equal(signal.event_context.trade_permission_adjustment, 'downgrade');
 
   const fmpStatus = signal.source_status.find((item) => item.source === 'fmp');
   assert.ok(fmpStatus);
   assert.equal(fmpStatus.is_mock, true);
   assert.equal(fmpStatus.state, 'degraded');
   assert.equal(fmpStatus.configured, true);
-  assert.match(fmpStatus.message, /mock fallback/);
+  assert.equal(fmpStatus.message, 'FMP 数据异常，事件风险不可确认。');
+
+  delete process.env.FMP_API_KEY;
+});
+
+test('FMP stale forces medium event risk and stale source status semantics', async () => {
+  process.env.FMP_API_KEY = 'test-key';
+
+  const signal = await getCurrentSignal('breakout_pullback_pending', {
+    fmp: {
+      fetchImpl: async () => ({
+        ok: true,
+        async json() {
+          return [];
+        }
+      }),
+      now: new Date('2026-04-24T14:00:00.000Z'),
+      receivedAt: '2026-04-24T14:00:00.000Z',
+      forceLastUpdated: '2026-04-24T13:45:00.000Z'
+    }
+  });
+
+  assert.equal(signal.event_context.event_risk, 'medium');
+  assert.equal(signal.event_context.event_note, 'FMP 数据异常，事件风险不可确认，降低交易权限，不提前卖波。');
+  assert.equal(signal.event_context.no_short_vol_window, true);
+  assert.equal(signal.event_context.trade_permission_adjustment, 'downgrade');
+
+  const fmpStatus = signal.source_status.find((item) => item.source === 'fmp');
+  assert.ok(fmpStatus);
+  assert.equal(fmpStatus.state, 'delayed');
+  assert.equal(fmpStatus.stale, true);
+  assert.equal(fmpStatus.message, 'FMP 数据异常，事件风险不可确认。');
 
   delete process.env.FMP_API_KEY;
 });
@@ -314,6 +347,8 @@ test('buildAlertMessage renders Chinese premarket warning for FMP risk gate', as
   const signal = await getCurrentSignal('positive_gamma_income_watch', {
     fmp: {
       now: new Date('2026-04-24T08:00:00.000Z'),
+      receivedAt: '2026-04-24T08:00:00.000Z',
+      forceLastUpdated: '2026-04-24T08:00:00.000Z',
       fetchImpl: async () => ({
         ok: true,
         async json() {
@@ -344,6 +379,7 @@ test('buildAlertMessage renders Chinese premarket warning for FMP risk gate', as
 });
 
 test('buildAlertMessage renders Chinese intraday reminder from current signal', async () => {
+  delete process.env.FMP_API_KEY;
   const signal = await getCurrentSignal('breakout_pullback_pending');
   const message = buildAlertMessage({
     signal,
@@ -354,4 +390,31 @@ test('buildAlertMessage renders Chinese intraday reminder from current signal', 
   assert.match(message, /动作：等回踩不破关键位，再考虑偏多/);
   assert.match(message, /触发：SPX/);
   assert.match(message, /作废：回踩跌破 put_wall/);
+});
+
+test('buildAlertMessage renders dedicated Chinese FMP exception warning', async () => {
+  process.env.FMP_API_KEY = 'test-key';
+
+  const signal = await getCurrentSignal('breakout_pullback_pending', {
+    fmp: {
+      fetchImpl: async () => {
+        throw new Error('network unavailable');
+      }
+    }
+  });
+
+  const message = buildAlertMessage({
+    signal,
+    body: { session: 'intraday' }
+  });
+
+  assert.match(message, /【SPX 指挥台｜事件风险】/);
+  assert.match(message, /状态：FMP 异常/);
+  assert.match(message, /事件：无法确认/);
+  assert.match(message, /动作：降低交易权限，不提前铁鹰，不裸卖波/);
+  assert.match(message, /影响：事件风险不可确认/);
+  assert.match(message, /禁做：不要把未知事件窗口当成安全区间/);
+  assert.match(message, /原因：FMP 数据异常或过期/);
+
+  delete process.env.FMP_API_KEY;
 });

@@ -48,7 +48,9 @@ export function createNormalizedSignal(partial = {}) {
     },
     event_context: {
       event_risk: partial.event_context?.event_risk ?? 'low',
-      event_note: partial.event_context?.event_note ?? 'No event risk note.'
+      event_note: partial.event_context?.event_note ?? 'No event risk note.',
+      no_short_vol_window: partial.event_context?.no_short_vol_window ?? false,
+      trade_permission_adjustment: partial.event_context?.trade_permission_adjustment ?? 'none'
     },
     radar_summary: {
       order_flow: {

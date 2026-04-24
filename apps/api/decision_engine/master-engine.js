@@ -261,7 +261,9 @@ export function runMasterEngine(normalized) {
     },
     event_context: {
       event_risk: normalized.event_risk,
-      event_note: normalized.event_note
+      event_note: normalized.event_note,
+      no_short_vol_window: normalized.no_short_vol_window ?? false,
+      trade_permission_adjustment: normalized.trade_permission_adjustment ?? 'normal'
     },
     radar_summary,
     tv_structure_event: normalized.tv_structure_event,

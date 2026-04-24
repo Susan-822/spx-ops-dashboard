@@ -1,6 +1,9 @@
 import { createSourceStatus, SOURCE_STATE } from '../../../packages/shared/src/source-status.js';
 import { getSourcePolicy } from '../scheduler/refresh-policy.js';
 
+const FMP_ABNORMAL_SOURCE_MESSAGE = 'FMP 数据异常，事件风险不可确认。';
+const FMP_ABNORMAL_EVENT_NOTE = 'FMP 数据异常，事件风险不可确认，降低交易权限，不提前卖波。';
+
 function evaluateSourceState({ policy, is_mock, latencyMs }) {
   if (latencyMs >= policy.down_threshold_ms) {
     return SOURCE_STATE.DOWN;
@@ -32,6 +35,21 @@ function pickSourceState({ degraded, is_mock, latencyMs, policy, explicitState, 
     return SOURCE_STATE.DEGRADED;
   }
   return evaluateSourceState({ policy, is_mock, latencyMs });
+}
+
+function isFmpAbnormalState({ configured, is_mock, stale, state, available }) {
+  if (!configured) {
+    return false;
+  }
+
+  return (
+    is_mock ||
+    stale ||
+    available === false ||
+    state === SOURCE_STATE.DEGRADED ||
+    state === SOURCE_STATE.DELAYED ||
+    state === SOURCE_STATE.DOWN
+  );
 }
 
 function createSourceEntry({ source, timestamp, last_updated, degraded = false }) {
@@ -77,9 +95,13 @@ function createSourceEntryFromSnapshot({
 }) {
   const policy = getSourcePolicy(source);
   const lastUpdated = snapshot?.last_updated || snapshot?.data_timestamp || fallbackLastUpdated || timestamp;
+  const freshnessLatencyMs =
+    snapshot?.received_at
+      ? Math.max(0, new Date(snapshot.received_at).getTime() - new Date(lastUpdated).getTime())
+      : Math.max(0, new Date(timestamp).getTime() - new Date(lastUpdated).getTime());
   const latencyMs = typeof snapshot?.latency_ms === 'number'
-    ? snapshot.latency_ms
-    : Math.max(0, new Date(timestamp).getTime() - new Date(lastUpdated).getTime());
+    ? Math.max(snapshot.latency_ms, freshnessLatencyMs)
+    : freshnessLatencyMs;
   const stale = latencyMs >= policy.stale_threshold_ms;
   const isFallbackMock = Boolean(snapshot?.is_mock) && Boolean(snapshot?.fallback_reason);
   const state = pickSourceState({
@@ -90,6 +112,13 @@ function createSourceEntryFromSnapshot({
     available: snapshot?.available ?? true
   });
   const staleReason = snapshot?.stale_reason || createStaleReason(source, stale, latencyMs, policy.stale_threshold_ms);
+  const isFmpAbnormal = source === 'fmp' && isFmpAbnormalState({
+    configured: snapshot?.configured ?? false,
+    is_mock: snapshot?.is_mock ?? true,
+    stale,
+    state,
+    available: snapshot?.available ?? true
+  });
 
   return createSourceStatus({
     source,
@@ -108,13 +137,33 @@ function createSourceEntryFromSnapshot({
     stale_threshold_ms: policy.stale_threshold_ms,
     down_threshold_ms: policy.down_threshold_ms,
     event_triggers: policy.event_triggers,
-    message: snapshot?.message
-      || (degraded
-        ? `${source} 当前处于 degraded 模式，结论只能降权参考。`
-        : stale
-          ? `${source} 当前已 delayed，不能直接主导动作。`
-          : `${source} 数据已接收。`)
+    message: isFmpAbnormal
+      ? FMP_ABNORMAL_SOURCE_MESSAGE
+      : snapshot?.message
+        || (degraded
+          ? `${source} 当前处于 degraded 模式，结论只能降权参考。`
+          : stale
+            ? `${source} 当前已 delayed，不能直接主导动作。`
+            : `${source} 数据已接收。`)
   });
+}
+
+function deriveEventContext(rawScenario, fmpStatus) {
+  if (isFmpAbnormalState(fmpStatus ?? {})) {
+    return {
+      event_risk: 'medium',
+      event_note: FMP_ABNORMAL_EVENT_NOTE,
+      no_short_vol_window: true,
+      trade_permission_adjustment: 'downgrade'
+    };
+  }
+
+  return {
+    event_risk: rawScenario.event_risk,
+    event_note: rawScenario.event_note,
+    no_short_vol_window: rawScenario.event_risk === 'high' || rawScenario.event_risk === 'medium',
+    trade_permission_adjustment: rawScenario.event_risk === 'low' ? 'normal' : 'downgrade'
+  };
 }
 
 export function normalizeMockScenario(rawScenario) {
@@ -191,6 +240,8 @@ export function normalizeMockScenario(rawScenario) {
 
   const stale_reason = source_status.filter((item) => item.stale_reason).map((item) => item.stale_reason);
   const latency_ms = source_status.reduce((max, item) => Math.max(max, item.latency_ms), 0);
+  const fmpStatus = source_status.find((item) => item.source === 'fmp');
+  const eventContext = deriveEventContext(rawScenario, fmpStatus);
 
   return {
     scenario: rawScenario.scenario,
@@ -219,8 +270,10 @@ export function normalizeMockScenario(rawScenario) {
     uw_dealer_bias: rawScenario.uw_dealer_bias,
     uw_fetch_path: rawScenario.uw_fetch_path,
     advanced_greeks: rawScenario.advanced_greeks,
-    event_risk: rawScenario.event_risk,
-    event_note: rawScenario.event_note,
+    event_risk: eventContext.event_risk,
+    event_note: eventContext.event_note,
+    no_short_vol_window: eventContext.no_short_vol_window,
+    trade_permission_adjustment: eventContext.trade_permission_adjustment,
     fmp_signal: rawScenario.fmp_signal,
     theta_signal: rawScenario.theta_signal,
     tv_structure_event: rawScenario.tv_structure_event
