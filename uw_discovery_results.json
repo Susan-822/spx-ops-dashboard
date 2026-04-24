@@ -1,0 +1,1225 @@
+{
+  "source_discovery": {
+    "provider": "brave_search",
+    "target_site": "unusualwhales.com",
+    "generated_at": "2026-04-24T18:28:56.966685+00:00",
+    "notes": [
+      "Brave only discovers public URLs and documentation.",
+      "Brave does not read member-only data.",
+      "DOM Reader must run locally with user's logged-in UW browser profile.",
+      "Do not store UW cookies or account credentials in this output.",
+      "Do not publish raw member-only UW data."
+    ]
+  },
+  "modules": [
+    {
+      "module": "spx_greek_exposure",
+      "priority": "S",
+      "purpose": "判断 SPX dealer / 做市商控波还是放波",
+      "status": "found",
+      "candidate_urls": [
+        {
+          "url": "https://unusualwhales.com/stock/SPX/greek-exposure",
+          "title": "SPX GEX, DEX, Vanna & Charm Exposure | Unusual Whales",
+          "snippet": "<strong>Gamma (GEX) highlights support/resistance from dealer hedging, Delta (DEX) shows bullish vs bearish bets, Vanna tracks volatility-driven flows, and Charm shows time-decay hedging</strong>. Analyze exposure by strike and expiration to find key price levels.",
+          "extra_snippets": [],
+          "confidence": 0.9,
+          "keyword_hits": [
+            "gex",
+            "dex",
+            "gamma",
+            "vanna",
+            "charm",
+            "spx",
+            "dealer",
+            "hedging"
+          ],
+          "source_file": "raw_1a_spx_greek.json",
+          "why_it_matters": "高置信(0.9)：路径 /stock/SPX/greek-exposure | 命中: gex, dex, gamma, vanna, charm, spx | 用途: 判断 SPX dealer / 做市商控波还是放波"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPX/greek-exposure?tab=Gamma",
+          "title": "SPX Options Greek Exposure (GEX, DEX, Vanna, Charm) | Unusual Whales",
+          "snippet": "SPX has a <strong>gamma exposure (GEX) of -21334.92, delta exposure (DEX) of 138331387.54, charm exposure of -36435971.23, and vanna exposure of -432413278.51</strong>. Analyze the latest SPX options greek exposures on Unusual Whales.",
+          "extra_snippets": [],
+          "confidence": 0.9,
+          "keyword_hits": [
+            "greek exposure",
+            "gex",
+            "dex",
+            "gamma",
+            "vanna",
+            "charm",
+            "spx",
+            "gamma exposure"
+          ],
+          "source_file": "raw_1a_spx_greek.json",
+          "why_it_matters": "高置信(0.9)：路径 /stock/SPX/greek-exposure | 命中: greek exposure, gex, dex, gamma, vanna, charm | 用途: 判断 SPX dealer / 做市商控波还是放波"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPX/greek-exposure?type=exposure&greek=gamma",
+          "title": "S&P 500 Index (SPX) - GEX/DEX/Vanna/Charm",
+          "snippet": "SPX has a <strong>gamma exposure (GEX) of 2187.28, a delta exposure (DEX) of 215788335.15, a charm exposure (CEX) of -18758669.29 and a vanna exposure (VEX) of -662998158.97.</strong> View the latest SPX options gamma exposure (GEX) and delta exposure (DEX) ...",
+          "extra_snippets": [],
+          "confidence": 0.9,
+          "keyword_hits": [
+            "gex",
+            "dex",
+            "gamma",
+            "vanna",
+            "charm",
+            "spx",
+            "gamma exposure"
+          ],
+          "source_file": "raw_1a_spx_greek.json",
+          "why_it_matters": "高置信(0.9)：路径 /stock/SPX/greek-exposure | 命中: gex, dex, gamma, vanna, charm, spx | 用途: 判断 SPX dealer / 做市商控波还是放波"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPY/greek-exposure?type=exposure_strike_dte&greek=gamma",
+          "title": "SPY Options Greek Exposure (GEX, DEX, Vanna, Charm) | Unusual Whales",
+          "snippet": "SPY has a <strong>gamma exposure (GEX) of 1253519.34, delta exposure (DEX) of 130394698.95, charm exposure of 232999910.60, and vanna exposure of -693970733.37.</strong> Analyze the latest SPY options greek exposures on Unusual Whales.",
+          "extra_snippets": [],
+          "confidence": 0.9,
+          "keyword_hits": [
+            "greek exposure",
+            "gex",
+            "dex",
+            "gamma",
+            "vanna",
+            "charm",
+            "gamma exposure"
+          ],
+          "source_file": "raw_1a_spx_greek.json",
+          "why_it_matters": "高置信(0.9)：路径 /stock/SPY/greek-exposure | 命中: greek exposure, gex, dex, gamma, vanna, charm | 用途: 判断 SPX dealer / 做市商控波还是放波"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPY/greek-exposure?type=exposure&greek=gamma",
+          "title": "SPY Options Greek Exposure (GEX, DEX, Vanna, Charm)",
+          "snippet": "<strong>Gamma (GEX) highlights support/resistance from dealer hedging, Delta (DEX) shows bullish vs bearish bets, Vanna tracks volatility-driven flows, and Charm shows time-decay hedging</strong>. Analyze exposure by strike and expiration to find key price levels.",
+          "extra_snippets": [],
+          "confidence": 0.9,
+          "keyword_hits": [
+            "greek exposure",
+            "gex",
+            "dex",
+            "gamma",
+            "vanna",
+            "charm",
+            "dealer",
+            "hedging"
+          ],
+          "source_file": "raw_1a_spx_greek.json",
+          "why_it_matters": "高置信(0.9)：路径 /stock/SPY/greek-exposure | 命中: greek exposure, gex, dex, gamma, vanna, charm | 用途: 判断 SPX dealer / 做市商控波还是放波"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/META/greek-exposure?tab=Gamma",
+          "title": "META Options Greek Exposure (GEX, DEX, Vanna, Charm) | Unusual Whales",
+          "snippet": "META has a <strong>gamma exposure (GEX) of 34767.89, delta exposure (DEX) of 19945481.82, charm exposure of -257027244.61, and vanna exposure of 51229765.30</strong>. Analyze the latest META options greek exposures on Unusual Whales.",
+          "extra_snippets": [],
+          "confidence": 0.9,
+          "keyword_hits": [
+            "greek exposure",
+            "gex",
+            "dex",
+            "gamma",
+            "vanna",
+            "charm",
+            "gamma exposure"
+          ],
+          "source_file": "raw_1a_spx_greek.json",
+          "why_it_matters": "高置信(0.9)：路径 /stock/META/greek-exposure | 命中: greek exposure, gex, dex, gamma, vanna, charm | 用途: 判断 SPX dealer / 做市商控波还是放波"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/NVDA/greek-exposure?tab=Gamma",
+          "title": "NVDA Options Greek Exposure (GEX, DEX, Vanna, Charm)",
+          "snippet": "Gamma (GEX) <strong>highlights support/resistance from dealer hedging</strong>, Delta (DEX) shows bullish vs bearish bets, Vanna tracks volatility-driven flows, and Charm shows time-decay hedging. Analyze exposure by strike and expiration to find key price levels.",
+          "extra_snippets": [],
+          "confidence": 0.9,
+          "keyword_hits": [
+            "greek exposure",
+            "gex",
+            "dex",
+            "gamma",
+            "vanna",
+            "charm",
+            "dealer",
+            "hedging"
+          ],
+          "source_file": "raw_1b_spx_greek.json",
+          "why_it_matters": "高置信(0.9)：路径 /stock/NVDA/greek-exposure | 命中: greek exposure, gex, dex, gamma, vanna, charm | 用途: 判断 SPX dealer / 做市商控波还是放波"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/nvda/greek-exposure?type=exposure&greek=gamma",
+          "title": "NVDA GEX, DEX, Vanna & Charm Exposure | Unusual Whales",
+          "snippet": "<strong>Gamma (GEX) highlights support/resistance from dealer hedging</strong>, Delta (DEX) shows bullish vs bearish bets, Vanna tracks volatility-driven flows, and Charm shows time-decay hedging. Analyze exposure by strike and expiration to find key price levels.",
+          "extra_snippets": [],
+          "confidence": 0.9,
+          "keyword_hits": [
+            "gex",
+            "dex",
+            "gamma",
+            "vanna",
+            "charm",
+            "dealer",
+            "hedging"
+          ],
+          "source_file": "raw_1c_spx_greek.json",
+          "why_it_matters": "高置信(0.9)：路径 /stock/nvda/greek-exposure | 命中: gex, dex, gamma, vanna, charm, dealer | 用途: 判断 SPX dealer / 做市商控波还是放波"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPY/greek-exposure?tab=Gamma",
+          "title": "SPY Options Greek Exposure (GEX, DEX, Vanna, Charm)",
+          "snippet": "<strong>Gamma (GEX) highlights support/resistance from dealer hedging</strong>, Delta (DEX) shows bullish vs bearish bets, Vanna tracks volatility-driven flows, and Charm shows time-decay hedging. Analyze exposure by strike and expiration to find key price levels.",
+          "extra_snippets": [],
+          "confidence": 0.9,
+          "keyword_hits": [
+            "greek exposure",
+            "gex",
+            "dex",
+            "gamma",
+            "vanna",
+            "charm",
+            "dealer",
+            "hedging"
+          ],
+          "source_file": "raw_1c_spx_greek.json",
+          "why_it_matters": "高置信(0.9)：路径 /stock/SPY/greek-exposure | 命中: greek exposure, gex, dex, gamma, vanna, charm | 用途: 判断 SPX dealer / 做市商控波还是放波"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPY/greek-exposure",
+          "title": "SPY GEX, DEX, Vanna & Charm Exposure | Unusual Whales",
+          "snippet": "<strong>Gamma (GEX) highlights support/resistance from dealer hedging, Delta (DEX) shows bullish vs bearish bets, Vanna tracks volatility-driven flows, and Charm shows time-decay hedging</strong>. Analyze exposure by strike and expiration to find key price levels.",
+          "extra_snippets": [],
+          "confidence": 0.89,
+          "keyword_hits": [
+            "gex",
+            "dex",
+            "gamma",
+            "vanna",
+            "charm",
+            "dealer",
+            "hedging"
+          ],
+          "source_file": "raw_1a_spx_greek.json",
+          "why_it_matters": "高置信(0.89)：路径 /stock/SPY/greek-exposure | 命中: gex, dex, gamma, vanna, charm, dealer | 用途: 判断 SPX dealer / 做市商控波还是放波"
+        }
+      ],
+      "expected_keywords": [
+        "greek exposure",
+        "gex",
+        "dex",
+        "gamma",
+        "vanna",
+        "charm",
+        "spx",
+        "dealer",
+        "hedging",
+        "flip",
+        "zero gamma",
+        "gamma exposure"
+      ],
+      "fields_to_extract_by_dom": [
+        "net_gex",
+        "net_dex",
+        "net_vanna",
+        "net_charm",
+        "gamma_regime",
+        "dealer_behavior",
+        "zero_gamma_or_flip",
+        "top_call_gamma_strikes",
+        "top_put_gamma_strikes",
+        "expiry_breakdown",
+        "strike_breakdown",
+        "last_update"
+      ],
+      "fallback_search_queries": [
+        "site:unusualwhales.com SPX greek exposure",
+        "site:unusualwhales.com gamma exposure dealer",
+        "site:unusualwhales.com SPX gamma vanna charm"
+      ],
+      "cursor_next_step": "Playwright 打开最高置信 URL，读取 SPX Greek Exposure 可见数据，转成 dealer snapshot。"
+    },
+    {
+      "module": "spy_darkpool_offlit",
+      "priority": "S",
+      "purpose": "判断 SPY 暗池 / Off-Lit 对 SPX 的支撑和压力",
+      "status": "found",
+      "candidate_urls": [
+        {
+          "url": "https://api.unusualwhales.com/docs/operations/PublicApi.DarkpoolController.darkpool_recent",
+          "title": "Recent Darkpool Trades - UnusualWhales API",
+          "snippet": "import http.client conn = http.client.HTTPSConnection(&quot;api.unusualwhales.com&quot;) headers = {&quot;Authorization&quot;: &quot;Bearer YOUR_API_KEY&quot;, &quot;Accept&quot;: &quot;application/json&quot;} conn.request(&quot;GET&quot;, &quot;/api/darkpool/recent&quot;, headers=headers) response = conn.getresponse() print(response.read().decode(",
+          "extra_snippets": [
+            "max_premium StockTradesMaxPremium · min_size StockTradesMinSize · max_size StockTradesMaxSize · min_volume StockTradesMinVol · max_volume StockTradesMaxVol Send Request · Response · Request Sample · curl Python · curl -X GET \"https://api.unusualwhales.com/api/darkpool/recent\" \\ -H \"Authorization: Bearer YOUR_API_KEY\" \\ -H \"Accept: application/json\" import http.client conn = http.client.HTTPSConnection(\"api.unusualwhales.com\") headers = {\"Authorization\": \"Bearer YOUR_API_KEY\", \"Accept\": \"application/json\"} conn.request(\"GET\", \"/api/darkpool/recent\", headers=headers) response = conn.getresponse() print(response.read().decode(\"utf-8\")) Response Example 200 ·",
+            "import http.client conn = http.client.HTTPSConnection(\"api.unusualwhales.com\") headers = {\"Authorization\": \"Bearer YOUR_API_KEY\", \"Accept\": \"application/json\"} conn.request(\"GET\", \"/api/darkpool/recent\", headers=headers) response = conn.getresponse() print(response.read().decode(\"utf-8\")) ... { \"data\": [ { \"canceled\": false, \"executed_at\": \"2023-02-16T00:59:44Z\", \"ext_hour_sold_codes\": \"extended_hours_trade\", \"market_center\": \"L\", \"nbbo_ask\": \"19\", \"nbbo_ask_quantity\": 6600, \"nbbo_bid\": \"18.99\", \"nbbo_bid_quantity\": 29100, \"premium\": \"121538.56\", \"price\": \"18.9904\", \"sale_cond_codes\": null, \"s"
+          ],
+          "confidence": 0.6,
+          "keyword_hits": [
+            "darkpool",
+            "premium",
+            "size",
+            "volume"
+          ],
+          "source_file": "raw_2c_spy_darkpool.json",
+          "why_it_matters": "中置信(0.6)：路径 /docs/operations/PublicApi.DarkpoolController.darkpool_recent | 命中: darkpool, premium, size, volume | 用途: 判断 SPY 暗池 / Off-Lit 对 SPX 的支撑和压力"
+        },
+        {
+          "url": "https://unusualwhales.com/lp/dark-pool-scanner",
+          "title": "Dark Pool Scanner | Track Off-Exchange Block Trades",
+          "snippet": "Real-time dark pool scanner tracking institutional block trades from 50+ ATS venues. See off-exchange volume before it impacts public markets.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.59,
+          "keyword_hits": [
+            "dark pool",
+            "volume",
+            "institutional"
+          ],
+          "source_file": "raw_2a_spy_darkpool.json",
+          "why_it_matters": "中置信(0.59)：路径 /lp/dark-pool-scanner | 命中: dark pool, volume, institutional | 用途: 判断 SPY 暗池 / Off-Lit 对 SPX 的支撑和压力"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPY/volatility",
+          "title": "SPY Volatility Analysis & Options Data | Unusual Whales",
+          "snippet": "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header &quot;Accept: text/plain&quot; for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi.",
+          "extra_snippets": [
+            "SPY has an implied move of $0.561 (0.0789%) for 2026-04-22. The implied volatility (IV) is 0.2013 and the currently IV rank is 29.95. View the latest SPY options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales.",
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.56,
+          "keyword_hits": [
+            "dark pool",
+            "spy"
+          ],
+          "source_file": "raw_2a_spy_darkpool.json",
+          "why_it_matters": "中置信(0.56)：路径 /stock/SPY/volatility | 命中: dark pool, spy | 用途: 判断 SPY 暗池 / Off-Lit 对 SPX 的支撑和压力"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPY/overview",
+          "title": "SPY Stock Overview: Price, Options Flow, Stats & Analysis | Unusual Whales",
+          "snippet": "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header &quot;Accept: text/plain&quot; for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.54,
+          "keyword_hits": [
+            "dark pool",
+            "spy"
+          ],
+          "source_file": "raw_2a_spy_darkpool.json",
+          "why_it_matters": "中置信(0.54)：路径 /stock/SPY/overview | 命中: dark pool, spy | 用途: 判断 SPY 暗池 / Off-Lit 对 SPX 的支撑和压力"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPY/option-chains",
+          "title": "SPY Options Chain | Unusual Whales",
+          "snippet": "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header &quot;Accept: text/plain&quot; for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.54,
+          "keyword_hits": [
+            "dark pool",
+            "spy"
+          ],
+          "source_file": "raw_2a_spy_darkpool.json",
+          "why_it_matters": "中置信(0.54)：路径 /stock/SPY/option-chains | 命中: dark pool, spy | 用途: 判断 SPY 暗池 / Off-Lit 对 SPX 的支撑和压力"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPY/open-interest-changes",
+          "title": "SPY Open Interest Changes | Unusual Whales",
+          "snippet": "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header &quot;Accept: text/plain&quot; for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.54,
+          "keyword_hits": [
+            "dark pool",
+            "spy"
+          ],
+          "source_file": "raw_2a_spy_darkpool.json",
+          "why_it_matters": "中置信(0.54)：路径 /stock/SPY/open-interest-changes | 命中: dark pool, spy | 用途: 判断 SPY 暗池 / Off-Lit 对 SPX 的支撑和压力"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPY/greeks",
+          "title": "SPY Options Greeks | Unusual Whales",
+          "snippet": "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header &quot;Accept: text/plain&quot; for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.54,
+          "keyword_hits": [
+            "dark pool",
+            "spy"
+          ],
+          "source_file": "raw_2a_spy_darkpool.json",
+          "why_it_matters": "中置信(0.54)：路径 /stock/SPY/greeks | 命中: dark pool, spy | 用途: 判断 SPY 暗池 / Off-Lit 对 SPX 的支撑和压力"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPY/earnings",
+          "title": "SPDR S&P 500 ETF (SPY) - Earnings Date & History | Unusual Whales",
+          "snippet": "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header &quot;Accept: text/plain&quot; for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.54,
+          "keyword_hits": [
+            "dark pool",
+            "spy"
+          ],
+          "source_file": "raw_2a_spy_darkpool.json",
+          "why_it_matters": "中置信(0.54)：路径 /stock/SPY/earnings | 命中: dark pool, spy | 用途: 判断 SPY 暗池 / Off-Lit 对 SPX 的支撑和压力"
+        },
+        {
+          "url": "https://unusualwhales.com/lp/real-time-dark-pool-feed-access",
+          "title": "Real-Time Dark Pool Feed Access | See Off-Exchange Trades",
+          "snippet": "Get real-time access to dark pool feeds. See institutional block trades executed off-exchange.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.54,
+          "keyword_hits": [
+            "dark pool",
+            "institutional"
+          ],
+          "source_file": "raw_2a_spy_darkpool.json",
+          "why_it_matters": "中置信(0.54)：路径 /lp/real-time-dark-pool-feed-access | 命中: dark pool, institutional | 用途: 判断 SPY 暗池 / Off-Lit 对 SPX 的支撑和压力"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPY/greek-exposure",
+          "title": "SPY GEX, DEX, Vanna & Charm Exposure | Unusual Whales",
+          "snippet": "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header &quot;Accept: text/plain&quot; for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.54,
+          "keyword_hits": [
+            "dark pool",
+            "spy"
+          ],
+          "source_file": "raw_2b_spy_darkpool.json",
+          "why_it_matters": "中置信(0.54)：路径 /stock/SPY/greek-exposure | 命中: dark pool, spy | 用途: 判断 SPY 暗池 / Off-Lit 对 SPX 的支撑和压力"
+        }
+      ],
+      "expected_keywords": [
+        "dark pool",
+        "darkpool",
+        "off lit",
+        "off-lit",
+        "off exchange",
+        "price levels",
+        "spy",
+        "premium",
+        "size",
+        "volume",
+        "institutional"
+      ],
+      "fields_to_extract_by_dom": [
+        "nearest_darkpool_support",
+        "nearest_darkpool_resistance",
+        "largest_darkpool_levels",
+        "off_lit_ratio",
+        "recent_large_darkpool_trades",
+        "darkpool_bias",
+        "last_update"
+      ],
+      "fallback_search_queries": [
+        "site:unusualwhales.com dark pool SPY",
+        "site:unusualwhales.com darkpool price levels",
+        "site:unusualwhales.com off lit SPY volume"
+      ],
+      "cursor_next_step": "Playwright 读取 SPY Dark Pool / Off-Lit 页面可见数据，计算支撑、压力和暗池偏向。"
+    },
+    {
+      "module": "options_flow_alerts",
+      "priority": "S",
+      "purpose": "判断 SPX / SPY / QQQ 是否有真实资金推方向",
+      "status": "found",
+      "candidate_urls": [
+        {
+          "url": "https://unusualwhales.com/lp/options-flow-alerts",
+          "title": "Options Flow Alerts | Real-Time Unusual Activity Notifications",
+          "snippet": "Set up real-time options flow alerts for sweep orders, block trades, and unusual activity. Custom filters by ticker, premium size, and flow characteristics.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.88,
+          "keyword_hits": [
+            "options flow",
+            "flow alerts",
+            "flow",
+            "premium",
+            "sweep",
+            "iv"
+          ],
+          "source_file": "raw_3a_flow.json",
+          "why_it_matters": "高置信(0.88)：路径 /lp/options-flow-alerts | 命中: options flow, flow alerts, flow, premium, sweep, iv | 用途: 判断 SPX / SPY / QQQ 是否有真实资金推方向"
+        },
+        {
+          "url": "https://docs.unusualwhales.com/features/2-options-flow",
+          "title": "Options Flow Feed",
+          "snippet": "In Yellow are the flow feed columns, which are customizable via the settings menu · Time - the time that the trade was executed. You can adjust your timezone on the settings page · Ticker - the respective TICKER being traded. Clicking the ticker will take you to the ticker’s current options overview page. Hovering your cursor over the ticker will p",
+          "extra_snippets": [
+            "Other data points that can be calculated after the fact, such as the DTE (days to expiration) and the % Diff (percentage difference between the contract strike price and the stock price at the time of the trade), are done so by Unusual Whales and provided in the flow feed. Bid-Ask values are derived from the NBBO, National Best Bid and Offer: a consolidated quote that reports the highest bid and the lowest ask price of all visible options quotes. Trades where the spot price is at or closer to the NBBO ask are labeled as having taken place on the BUY (🛍️) SIDE, and trades with a spot price at or closer to the bid are labeled as having taken place on the SELL (🦴) SIDE.",
+            "In Yellow are the flow feed columns, which are customizable via the settings menu · Time - the time that the trade was executed. You can adjust your timezone on the settings page · Ticker - the respective TICKER being traded. Clicking the ticker will take you to the ticker’s current options overview page. Hovering your cursor over the ticker will provide a small tooltip with information pertaining to the ticker. Side - the ‘Side’ (BUY [ask], or SELL [bid]) that the transaction occurred on",
+            "Individual options chains will often have a ‘bullish’ or ‘bearish’ percentage value attached: for CALLS and PUTS this will depend on the amount of bid vs ask side activity on the respective chain. It is important to know that not all BUY orders are BTO and not all SELL orders are STO. Some BUY orders will be buying to close as opposed to buying to open and vice versa.",
+            "On August 29th at 3:58:59 PM (TIME), 180 (SIZE) of the AAPL 180 strike puts expiring 9/9/2022 (CONTRACT) were traded at or closer to the SELL or bid (SIDE). The contracts were transacted at the price of $18.50 (SPOT), with a BID-ASK of $18.50 - 18.55. The total PREMIUM of the trade is $333K."
+          ],
+          "confidence": 0.67,
+          "keyword_hits": [
+            "options flow",
+            "flow",
+            "premium",
+            "ask side",
+            "oi",
+            "iv"
+          ],
+          "source_file": "raw_3c_flow.json",
+          "why_it_matters": "中置信(0.67)：路径 /features/2-options-flow | 命中: options flow, flow, premium, ask side, oi, iv | 用途: 判断 SPX / SPY / QQQ 是否有真实资金推方向"
+        },
+        {
+          "url": "https://unusualwhales.com/option-flow-alerts",
+          "title": "Option Flow Alerts | Unusual Whales",
+          "snippet": "Real-time option flow alerts <strong>identifying unusual options activity including RepeatedHits, Sweeps, Blocks, and Golden Sweeps</strong>. Track smart money movements and institutional order flow with advanced alerts.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.66,
+          "keyword_hits": [
+            "options flow",
+            "flow alerts",
+            "flow",
+            "sweep",
+            "iv"
+          ],
+          "source_file": "raw_3a_flow.json",
+          "why_it_matters": "中置信(0.66)：路径 /option-flow-alerts | 命中: options flow, flow alerts, flow, sweep, iv | 用途: 判断 SPX / SPY / QQQ 是否有真实资金推方向"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/API/options-flow-history",
+          "title": "API Options Flow History | Unusual Whales",
+          "snippet": "View historical options flow data for API, including unusual sweeps, block trades, and premium analysis. Filter by date, sentiment, and trade size to identify patterns.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.66,
+          "keyword_hits": [
+            "options flow",
+            "flow",
+            "premium",
+            "sweep"
+          ],
+          "source_file": "raw_3a_flow.json",
+          "why_it_matters": "中置信(0.66)：路径 /stock/API/options-flow-history | 命中: options flow, flow, premium, sweep | 用途: 判断 SPX / SPY / QQQ 是否有真实资金推方向"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/USEG/options-flow-history",
+          "title": "USEG Options Flow History | Unusual Whales",
+          "snippet": "View historical options flow data for USEG, including unusual sweeps, block trades, and premium analysis. Filter by date, sentiment, and trade size to identify patterns.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.66,
+          "keyword_hits": [
+            "options flow",
+            "flow",
+            "premium",
+            "sweep"
+          ],
+          "source_file": "raw_3a_flow.json",
+          "why_it_matters": "中置信(0.66)：路径 /stock/USEG/options-flow-history | 命中: options flow, flow, premium, sweep | 用途: 判断 SPX / SPY / QQQ 是否有真实资金推方向"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/MSFT/options-flow-history",
+          "title": "MSFT Options Flow History & Daily Breakdown",
+          "snippet": "View historical options flow data for MSFT, including unusual sweeps, block trades, and premium analysis. Filter by date, sentiment, and trade size to identify patterns.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.66,
+          "keyword_hits": [
+            "options flow",
+            "flow",
+            "premium",
+            "sweep"
+          ],
+          "source_file": "raw_3a_flow.json",
+          "why_it_matters": "中置信(0.66)：路径 /stock/MSFT/options-flow-history | 命中: options flow, flow, premium, sweep | 用途: 判断 SPX / SPY / QQQ 是否有真实资金推方向"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/OPRA/options-flow-history",
+          "title": "OPRA Options Flow History | Unusual Whales",
+          "snippet": "View historical options flow data for OPRA, including unusual sweeps, block trades, and premium analysis. Filter by date, sentiment, and trade size to identify patterns.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.66,
+          "keyword_hits": [
+            "options flow",
+            "flow",
+            "premium",
+            "sweep"
+          ],
+          "source_file": "raw_3a_flow.json",
+          "why_it_matters": "中置信(0.66)：路径 /stock/OPRA/options-flow-history | 命中: options flow, flow, premium, sweep | 用途: 判断 SPX / SPY / QQQ 是否有真实资金推方向"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/AMZN/options-flow-history",
+          "title": "AMZN Options Flow History & Daily Breakdown",
+          "snippet": "View historical options flow data for AMZN, including unusual sweeps, block trades, and premium analysis. Filter by date, sentiment, and trade size to identify patterns.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.66,
+          "keyword_hits": [
+            "options flow",
+            "flow",
+            "premium",
+            "sweep"
+          ],
+          "source_file": "raw_3a_flow.json",
+          "why_it_matters": "中置信(0.66)：路径 /stock/AMZN/options-flow-history | 命中: options flow, flow, premium, sweep | 用途: 判断 SPX / SPY / QQQ 是否有真实资金推方向"
+        },
+        {
+          "url": "https://unusualwhales.com/flow/overview",
+          "title": "Market Tide: Real-Time Options Flow & Market Sentiment | Unusual Whales",
+          "snippet": "Market Tide provides a high-level options overview showing real-time sentiment, net premium flow, and institutional positioning across major indices. Track overall market direction through options activity.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.66,
+          "keyword_hits": [
+            "options flow",
+            "flow",
+            "premium",
+            "iv"
+          ],
+          "source_file": "raw_3b_flow.json",
+          "why_it_matters": "中置信(0.66)：路径 /flow/overview | 命中: options flow, flow, premium, iv | 用途: 判断 SPX / SPY / QQQ 是否有真实资金推方向"
+        },
+        {
+          "url": "https://unusualwhales.com/option-flow-alerts/rules",
+          "title": "Flow Alerts - Rules",
+          "snippet": "Real-time option flow alerts <strong>identifying unusual options activity including RepeatedHits, Sweeps, Blocks, and Golden Sweeps</strong>. Track smart money movements and institutional order flow with advanced alerts.",
+          "extra_snippets": [],
+          "confidence": 0.62,
+          "keyword_hits": [
+            "flow alerts",
+            "flow",
+            "sweep",
+            "iv"
+          ],
+          "source_file": "raw_3a_flow.json",
+          "why_it_matters": "中置信(0.62)：路径 /option-flow-alerts/rules | 命中: flow alerts, flow, sweep, iv | 用途: 判断 SPX / SPY / QQQ 是否有真实资金推方向"
+        }
+      ],
+      "expected_keywords": [
+        "options flow",
+        "flow alerts",
+        "flow",
+        "premium",
+        "ask side",
+        "bid side",
+        "sweep",
+        "floor",
+        "multi-leg",
+        "multileg",
+        "volume",
+        "open interest",
+        "oi",
+        "iv",
+        "spx",
+        "spy",
+        "qqq"
+      ],
+      "fields_to_extract_by_dom": [
+        "call_ask_premium_5m",
+        "put_ask_premium_5m",
+        "call_bid_premium_5m",
+        "put_bid_premium_5m",
+        "sweep_count_5m",
+        "repeated_hits_count_5m",
+        "floor_trade_count_15m",
+        "multi_leg_ratio",
+        "volume_oi_ratio",
+        "iv_change",
+        "flow_bias",
+        "flow_speed",
+        "flow_thrust",
+        "last_update"
+      ],
+      "fallback_search_queries": [
+        "site:unusualwhales.com options flow",
+        "site:unusualwhales.com flow alerts premium",
+        "site:unusualwhales.com options flow SPX SPY QQQ"
+      ],
+      "cursor_next_step": "Playwright 读取 Flow 页面中 SPX / SPY / QQQ 的可见期权流，计算 Flow 偏向、速度和推力。"
+    },
+    {
+      "module": "nope",
+      "priority": "A_phase_2",
+      "purpose": "辅助判断期权流是否过热或背离",
+      "status": "found",
+      "candidate_urls": [
+        {
+          "url": "https://unusualwhales.com/news/nope-a-primer",
+          "title": "NOPE: A Primer",
+          "snippet": "But first, a classic question: What is NOPE? Check out NOPE here. NOPE is the Net Options Pricing Effect, which <strong>tracks the intraday net delta of any ticker</strong>, but most research has been done on indexes.",
+          "extra_snippets": [
+            "NOPE (Premium and Free) has come to unusual whales. With that, let’s break down the tool and talk about how to use it. But first, a classic question: What is NOPE? Check out NOPE here. NOPE is the Net Options Pricing Effect, which tracks the intraday net delta of any ticker, but most research has been done on indexes.",
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.68,
+          "keyword_hits": [
+            "nope",
+            "net options pricing effect"
+          ],
+          "source_file": "raw_4a_nope.json",
+          "why_it_matters": "中置信(0.68)：路径 /news/nope-a-primer | 命中: nope, net options pricing effect | 用途: 辅助判断期权流是否过热或背离"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/PAY/nope",
+          "title": "PAY NOPE, COPE & Flow Ratio | Options Pricing Effect | Unusual Whales",
+          "snippet": "View NOPE (Net Options Pricing Effect), COPE (Call Options Pricing Effect), and Options Flow Ratio data for PAY. Analyze potential market sentiment and price pressure points.",
+          "extra_snippets": [],
+          "confidence": 0.64,
+          "keyword_hits": [
+            "nope",
+            "net options pricing effect"
+          ],
+          "source_file": "raw_4a_nope.json",
+          "why_it_matters": "中置信(0.64)：路径 /stock/PAY/nope | 命中: nope, net options pricing effect | 用途: 辅助判断期权流是否过热或背离"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/PRI/nope",
+          "title": "PRI NOPE, COPE & Flow Ratio | Options Pricing Effect | Unusual Whales",
+          "snippet": "View NOPE (Net Options Pricing Effect), COPE (Call Options Pricing Effect), and Options Flow Ratio data for PRI. Analyze potential market sentiment and price pressure points.",
+          "extra_snippets": [],
+          "confidence": 0.64,
+          "keyword_hits": [
+            "nope",
+            "net options pricing effect"
+          ],
+          "source_file": "raw_4a_nope.json",
+          "why_it_matters": "中置信(0.64)：路径 /stock/PRI/nope | 命中: nope, net options pricing effect | 用途: 辅助判断期权流是否过热或背离"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/PERF/nope",
+          "title": "PERF NOPE, COPE & Flow Ratio | Options Pricing Effect | Unusual Whales",
+          "snippet": "View NOPE (Net Options Pricing Effect), COPE (Call Options Pricing Effect), and Options Flow Ratio data for PERF. Analyze potential market sentiment and price pressure points.",
+          "extra_snippets": [],
+          "confidence": 0.64,
+          "keyword_hits": [
+            "nope",
+            "net options pricing effect"
+          ],
+          "source_file": "raw_4a_nope.json",
+          "why_it_matters": "中置信(0.64)：路径 /stock/PERF/nope | 命中: nope, net options pricing effect | 用途: 辅助判断期权流是否过热或背离"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/COO/nope",
+          "title": "COO NOPE, COPE & Flow Ratio | Options Pricing Effect | Unusual Whales",
+          "snippet": "View NOPE (Net Options Pricing Effect), COPE (Call Options Pricing Effect), and Options Flow Ratio data for COO. Analyze potential market sentiment and price pressure points.",
+          "extra_snippets": [],
+          "confidence": 0.64,
+          "keyword_hits": [
+            "nope",
+            "net options pricing effect"
+          ],
+          "source_file": "raw_4a_nope.json",
+          "why_it_matters": "中置信(0.64)：路径 /stock/COO/nope | 命中: nope, net options pricing effect | 用途: 辅助判断期权流是否过热或背离"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/ASA/nope",
+          "title": "ASA NOPE, COPE & Flow Ratio | Options Pricing Effect | Unusual Whales",
+          "snippet": "View NOPE (Net Options Pricing Effect), COPE (Call Options Pricing Effect), and Options Flow Ratio data for ASA. Analyze potential market sentiment and price pressure points.",
+          "extra_snippets": [],
+          "confidence": 0.64,
+          "keyword_hits": [
+            "nope",
+            "net options pricing effect"
+          ],
+          "source_file": "raw_4a_nope.json",
+          "why_it_matters": "中置信(0.64)：路径 /stock/ASA/nope | 命中: nope, net options pricing effect | 用途: 辅助判断期权流是否过热或背离"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/AEP/nope",
+          "title": "AEP NOPE, COPE & Flow Ratio | Options Pricing Effect | Unusual Whales",
+          "snippet": "View NOPE (Net Options Pricing Effect), COPE (Call Options Pricing Effect), and Options Flow Ratio data for AEP. Analyze potential market sentiment and price pressure points.",
+          "extra_snippets": [],
+          "confidence": 0.64,
+          "keyword_hits": [
+            "nope",
+            "net options pricing effect"
+          ],
+          "source_file": "raw_4a_nope.json",
+          "why_it_matters": "中置信(0.64)：路径 /stock/AEP/nope | 命中: nope, net options pricing effect | 用途: 辅助判断期权流是否过热或背离"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/NOK/nope",
+          "title": "NOK NOPE, COPE & Flow Ratio | Options Pricing Effect | Unusual Whales",
+          "snippet": "View NOPE (Net Options Pricing Effect), COPE (Call Options Pricing Effect), and Options Flow Ratio data for NOK. Analyze potential market sentiment and price pressure points.",
+          "extra_snippets": [],
+          "confidence": 0.64,
+          "keyword_hits": [
+            "nope",
+            "net options pricing effect"
+          ],
+          "source_file": "raw_4a_nope.json",
+          "why_it_matters": "中置信(0.64)：路径 /stock/NOK/nope | 命中: nope, net options pricing effect | 用途: 辅助判断期权流是否过热或背离"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/COP/nope",
+          "title": "COP NOPE, COPE & Flow Ratio | Options Pricing Effect | Unusual Whales",
+          "snippet": "View NOPE (Net Options Pricing Effect), COPE (Call Options Pricing Effect), and Options Flow Ratio data for COP. Analyze potential market sentiment and price pressure points.",
+          "extra_snippets": [],
+          "confidence": 0.64,
+          "keyword_hits": [
+            "nope",
+            "net options pricing effect"
+          ],
+          "source_file": "raw_4a_nope.json",
+          "why_it_matters": "中置信(0.64)：路径 /stock/COP/nope | 命中: nope, net options pricing effect | 用途: 辅助判断期权流是否过热或背离"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/NTRS/nope",
+          "title": "NTRS NOPE, COPE & Flow Ratio | Options Pricing Effect | Unusual Whales",
+          "snippet": "View NOPE (Net Options Pricing Effect), COPE (Call Options Pricing Effect), and Options Flow Ratio data for NTRS. Analyze potential market sentiment and price pressure points.",
+          "extra_snippets": [],
+          "confidence": 0.64,
+          "keyword_hits": [
+            "nope",
+            "net options pricing effect"
+          ],
+          "source_file": "raw_4a_nope.json",
+          "why_it_matters": "中置信(0.64)：路径 /stock/NTRS/nope | 命中: nope, net options pricing effect | 用途: 辅助判断期权流是否过热或背离"
+        }
+      ],
+      "expected_keywords": [
+        "nope",
+        "net options pricing effect",
+        "call delta",
+        "put delta",
+        "stock volume",
+        "divergence"
+      ],
+      "fields_to_extract_by_dom": [
+        "nope",
+        "nope_fill",
+        "call_delta",
+        "put_delta",
+        "call_volume",
+        "put_volume",
+        "stock_volume",
+        "nope_state",
+        "divergence"
+      ],
+      "fallback_search_queries": [
+        "site:unusualwhales.com NOPE",
+        "site:unusualwhales.com net options pricing effect"
+      ],
+      "cursor_next_step": "第二阶段再接。只作为过热和背离辅助，不作为主方向。"
+    },
+    {
+      "module": "volatility_iv",
+      "priority": "A_phase_2",
+      "purpose": "判断是否适合卖波、铁鹰是否允许",
+      "status": "found",
+      "candidate_urls": [
+        {
+          "url": "https://unusualwhales.com/stock/IVV/volatility",
+          "title": "IVV Volatility Analysis & Options Data | Unusual Whales",
+          "snippet": "IVV has an implied move of $1.719 (0.2493%) for 2026-02-27. <strong>The implied volatility (IV) is 9.4004 and the currently IV rank is 15.43</strong>. View the latest IVV options implied volatility, realized volatility, volatility skew, volatility of volatility, ...",
+          "extra_snippets": [
+            "IVV has an implied move of $1.719 (0.2493%) for 2026-02-27. The implied volatility (IV) is 9.4004 and the currently IV rank is 15.43. View the latest IVV options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales."
+          ],
+          "confidence": 0.89,
+          "keyword_hits": [
+            "iv rank",
+            "iv percentile",
+            "implied volatility",
+            "realized volatility",
+            "volatility",
+            "vol",
+            "vix"
+          ],
+          "source_file": "raw_5a_volatility.json",
+          "why_it_matters": "高置信(0.89)：路径 /stock/IVV/volatility | 命中: iv rank, iv percentile, implied volatility, realized volatility, volatility, vol | 用途: 判断是否适合卖波、铁鹰是否允许"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPY/volatility",
+          "title": "SPY Volatility Analysis & Options Data | Unusual Whales",
+          "snippet": "SPY has an implied move of $0.561 (0.0789%) for 2026-04-22. The implied volatility (IV) is 0.2013 and the currently IV rank is 29.95. View the latest SPY options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales",
+          "extra_snippets": [
+            "SPY has an implied move of $0.561 (0.0789%) for 2026-04-22. The implied volatility (IV) is 0.2013 and the currently IV rank is 29.95. View the latest SPY options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales."
+          ],
+          "confidence": 0.87,
+          "keyword_hits": [
+            "iv rank",
+            "iv percentile",
+            "implied volatility",
+            "realized volatility",
+            "volatility",
+            "vol",
+            "vix"
+          ],
+          "source_file": "raw_5b_volatility.json",
+          "why_it_matters": "高置信(0.87)：路径 /stock/SPY/volatility | 命中: iv rank, iv percentile, implied volatility, realized volatility, volatility, vol | 用途: 判断是否适合卖波、铁鹰是否允许"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPX/volatility",
+          "title": "SPX Volatility Analysis & Options Data | Unusual Whales",
+          "snippet": "SPX has an implied move of $34.553 (0.4912%) for 2026-04-17. The implied volatility (IV) is 0.1447 and the currently IV rank is 26.63. View the latest SPX options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whale",
+          "extra_snippets": [
+            "SPX has an implied move of $34.553 (0.4912%) for 2026-04-17. The implied volatility (IV) is 0.1447 and the currently IV rank is 26.63. View the latest SPX options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales."
+          ],
+          "confidence": 0.87,
+          "keyword_hits": [
+            "iv rank",
+            "iv percentile",
+            "implied volatility",
+            "realized volatility",
+            "volatility",
+            "vol",
+            "vix"
+          ],
+          "source_file": "raw_5b_volatility.json",
+          "why_it_matters": "高置信(0.87)：路径 /stock/SPX/volatility | 命中: iv rank, iv percentile, implied volatility, realized volatility, volatility, vol | 用途: 判断是否适合卖波、铁鹰是否允许"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/BTC/volatility",
+          "title": "BTC Volatility Analysis & Options Data | Unusual Whales",
+          "snippet": "BTC has an implied move of $2.597 (7.6937%) for 2026-05-15. The implied volatility (IV) is 0.4313 and the currently IV rank is 25.15. View the latest BTC options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales",
+          "extra_snippets": [
+            "BTC has an implied move of $2.597 (7.6937%) for 2026-05-15. The implied volatility (IV) is 0.4313 and the currently IV rank is 25.15. View the latest BTC options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales."
+          ],
+          "confidence": 0.87,
+          "keyword_hits": [
+            "iv rank",
+            "iv percentile",
+            "implied volatility",
+            "realized volatility",
+            "volatility",
+            "vol",
+            "vix"
+          ],
+          "source_file": "raw_5b_volatility.json",
+          "why_it_matters": "高置信(0.87)：路径 /stock/BTC/volatility | 命中: iv rank, iv percentile, implied volatility, realized volatility, volatility, vol | 用途: 判断是否适合卖波、铁鹰是否允许"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/IWM/volatility",
+          "title": "IWM Volatility Analysis & Options Data | Unusual Whales",
+          "snippet": "IWM has an implied move of $0.693 (0.2873%) for 2026-03-20. The implied volatility (IV) is 0.5680 and the currently IV rank is 52.98. View the latest IWM options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales",
+          "extra_snippets": [
+            "IWM has an implied move of $0.693 (0.2873%) for 2026-03-20. The implied volatility (IV) is 0.5680 and the currently IV rank is 52.98. View the latest IWM options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales."
+          ],
+          "confidence": 0.87,
+          "keyword_hits": [
+            "iv rank",
+            "iv percentile",
+            "implied volatility",
+            "realized volatility",
+            "volatility",
+            "vol",
+            "vix"
+          ],
+          "source_file": "raw_5b_volatility.json",
+          "why_it_matters": "高置信(0.87)：路径 /stock/IWM/volatility | 命中: iv rank, iv percentile, implied volatility, realized volatility, volatility, vol | 用途: 判断是否适合卖波、铁鹰是否允许"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/NVDA/volatility",
+          "title": "NVDA Volatility Analysis & Options Data | Unusual Whales",
+          "snippet": "NVDA has an implied move of $2.623 (1.3139%) for 2026-04-24. The implied volatility (IV) is 0.3684 and the currently IV rank is 45.41. View the latest NVDA options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whal",
+          "extra_snippets": [
+            "NVDA has an implied move of $2.623 (1.3139%) for 2026-04-24. The implied volatility (IV) is 0.3684 and the currently IV rank is 45.41. View the latest NVDA options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales."
+          ],
+          "confidence": 0.87,
+          "keyword_hits": [
+            "iv rank",
+            "iv percentile",
+            "implied volatility",
+            "realized volatility",
+            "volatility",
+            "vol",
+            "vix"
+          ],
+          "source_file": "raw_5b_volatility.json",
+          "why_it_matters": "高置信(0.87)：路径 /stock/NVDA/volatility | 命中: iv rank, iv percentile, implied volatility, realized volatility, volatility, vol | 用途: 判断是否适合卖波、铁鹰是否允许"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/XSP/volatility",
+          "title": "XSP Volatility Analysis & Options Data | Unusual Whales",
+          "snippet": "XSP has an implied move of $1.846 (0.2590%) for 2026-04-22. The implied volatility (IV) is 0.1588 and the currently IV rank is 34.42. View the latest XSP options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales",
+          "extra_snippets": [
+            "XSP has an implied move of $1.846 (0.2590%) for 2026-04-22. The implied volatility (IV) is 0.1588 and the currently IV rank is 34.42. View the latest XSP options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales."
+          ],
+          "confidence": 0.87,
+          "keyword_hits": [
+            "iv rank",
+            "iv percentile",
+            "implied volatility",
+            "realized volatility",
+            "volatility",
+            "vol",
+            "vix"
+          ],
+          "source_file": "raw_5b_volatility.json",
+          "why_it_matters": "高置信(0.87)：路径 /stock/XSP/volatility | 命中: iv rank, iv percentile, implied volatility, realized volatility, volatility, vol | 用途: 判断是否适合卖波、铁鹰是否允许"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/AMZN/volatility",
+          "title": "AMZN Volatility Analysis & Options Data | Unusual Whales",
+          "snippet": "AMZN has an implied move of $3.668 (1.4553%) for 2026-04-22. The implied volatility (IV) is 0.3710 and the currently IV rank is 63.75. View the latest AMZN options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whal",
+          "extra_snippets": [
+            "AMZN has an implied move of $3.668 (1.4553%) for 2026-04-22. The implied volatility (IV) is 0.3710 and the currently IV rank is 63.75. View the latest AMZN options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales."
+          ],
+          "confidence": 0.87,
+          "keyword_hits": [
+            "iv rank",
+            "iv percentile",
+            "implied volatility",
+            "realized volatility",
+            "volatility",
+            "vol",
+            "vix"
+          ],
+          "source_file": "raw_5b_volatility.json",
+          "why_it_matters": "高置信(0.87)：路径 /stock/AMZN/volatility | 命中: iv rank, iv percentile, implied volatility, realized volatility, volatility, vol | 用途: 判断是否适合卖波、铁鹰是否允许"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/CRCL/volatility",
+          "title": "CRCL Volatility Analysis & Options Data | Unusual Whales",
+          "snippet": "CRCL has an implied move of $12.954 (12.5601%) for 2025-11-14. The implied volatility (IV) is 1.7339 and the currently IV rank is 28.04. View the latest CRCL options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Wh",
+          "extra_snippets": [
+            "CRCL has an implied move of $12.954 (12.5601%) for 2025-11-14. The implied volatility (IV) is 1.7339 and the currently IV rank is 28.04. View the latest CRCL options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales."
+          ],
+          "confidence": 0.87,
+          "keyword_hits": [
+            "iv rank",
+            "iv percentile",
+            "implied volatility",
+            "realized volatility",
+            "volatility",
+            "vol",
+            "vix"
+          ],
+          "source_file": "raw_5b_volatility.json",
+          "why_it_matters": "高置信(0.87)：路径 /stock/CRCL/volatility | 命中: iv rank, iv percentile, implied volatility, realized volatility, volatility, vol | 用途: 判断是否适合卖波、铁鹰是否允许"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/TVC/volatility",
+          "title": "TVC Volatility Analysis & Options Data | Unusual Whales",
+          "snippet": "View the latest TVC options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales. Volatility is an important metric when deciding which option trading strategies ...",
+          "extra_snippets": [
+            "View the latest TVC options implied volatility, realized volatility, volatility skew, volatility of volatility, IV percentiles, skewness, kurtosis, volatility surfaces, IVIX values, and iv rank data on Unusual Whales. Volatility is an important metric when deciding which option trading strategies to use and whether to go long or short on a contract."
+          ],
+          "confidence": 0.87,
+          "keyword_hits": [
+            "iv rank",
+            "iv percentile",
+            "implied volatility",
+            "realized volatility",
+            "volatility",
+            "vol",
+            "vix"
+          ],
+          "source_file": "raw_5b_volatility.json",
+          "why_it_matters": "高置信(0.87)：路径 /stock/TVC/volatility | 命中: iv rank, iv percentile, implied volatility, realized volatility, volatility, vol | 用途: 判断是否适合卖波、铁鹰是否允许"
+        }
+      ],
+      "expected_keywords": [
+        "iv rank",
+        "iv percentile",
+        "implied volatility",
+        "realized volatility",
+        "volatility",
+        "term structure",
+        "vol",
+        "vix"
+      ],
+      "fields_to_extract_by_dom": [
+        "iv_rank",
+        "iv_percentile",
+        "realized_volatility",
+        "implied_volatility",
+        "term_structure_state",
+        "sell_vol_permission",
+        "iron_condor_permission"
+      ],
+      "fallback_search_queries": [
+        "site:unusualwhales.com IV rank",
+        "site:unusualwhales.com implied volatility",
+        "site:unusualwhales.com realized volatility"
+      ],
+      "cursor_next_step": "第二阶段再接，用来决定是否允许铁鹰和卖波。"
+    },
+    {
+      "module": "uw_help_docs",
+      "priority": "B",
+      "purpose": "寻找 UW 公开说明和字段解释，辅助页面识别",
+      "status": "partial",
+      "candidate_urls": [
+        {
+          "url": "https://docs.unusualwhales.com/faq/items/4-flow",
+          "title": "3. 🌊 Flow / 🔮 Dark Pool FAQ",
+          "snippet": "ℹ️ For more information on the Flow and Dark Pool please reference the Flow/Dark Pool doc · ℹ️ Consider that any options trade placed may be part of a trade that has more than one component/leg to it. Also consider that not all BUY orders are ‘Buy to Open’ (BTO) and not all SELL ...",
+          "extra_snippets": [
+            "-All of the information provided in the Flow and Dark Pool feeds, with the exception of the emojis, is standard options verbiage."
+          ],
+          "confidence": 0.59,
+          "keyword_hits": [
+            "faq"
+          ],
+          "source_file": "raw_6a_help.json",
+          "why_it_matters": "中置信(0.59)：路径 /faq/items/4-flow | 命中: faq | 用途: 寻找 UW 公开说明和字段解释，辅助页面识别"
+        },
+        {
+          "url": "https://api.unusualwhales.com/docs",
+          "title": "UnusualWhales API Documentation",
+          "snippet": "The official Unusual Whales API and MCP Server gives you 100+ endpoints for options flow, dark pool, congressional trading, Greek exposure, volatility, and more.",
+          "extra_snippets": [],
+          "confidence": 0.47,
+          "keyword_hits": [
+            "documentation"
+          ],
+          "source_file": "raw_6a_help.json",
+          "why_it_matters": "低置信(0.47)：路径 /docs | 命中: documentation | 用途: 寻找 UW 公开说明和字段解释，辅助页面识别"
+        },
+        {
+          "url": "https://unusualwhales.com/dark-pool-flow",
+          "title": "Dark Pool Flow & Off-Exchange Trades | Unusual Whales",
+          "snippet": "API documentation is available at <strong>https://api.unusualwhales.com/docs</strong> (use header &quot;Accept: text/plain&quot; for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.37,
+          "keyword_hits": [
+            "documentation"
+          ],
+          "source_file": "raw_6a_help.json",
+          "why_it_matters": "低置信(0.37)：路径 /dark-pool-flow | 命中: documentation | 用途: 寻找 UW 公开说明和字段解释，辅助页面识别"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPX/greek-exposure",
+          "title": "SPX GEX, DEX, Vanna & Charm Exposure | Unusual Whales",
+          "snippet": "API documentation is available at <strong>https://api.unusualwhales.com/docs</strong> (use header &quot;Accept: text/plain&quot; for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.37,
+          "keyword_hits": [
+            "documentation"
+          ],
+          "source_file": "raw_6a_help.json",
+          "why_it_matters": "低置信(0.37)：路径 /stock/SPX/greek-exposure | 命中: documentation | 用途: 寻找 UW 公开说明和字段解释，辅助页面识别"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/NDX/greek-exposure",
+          "title": "NDX GEX, DEX, Vanna & Charm Exposure | Unusual Whales",
+          "snippet": "API documentation is available at <strong>https://api.unusualwhales.com/docs</strong> (use header &quot;Accept: text/plain&quot; for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.37,
+          "keyword_hits": [
+            "documentation"
+          ],
+          "source_file": "raw_6a_help.json",
+          "why_it_matters": "低置信(0.37)：路径 /stock/NDX/greek-exposure | 命中: documentation | 用途: 寻找 UW 公开说明和字段解释，辅助页面识别"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SPY/greek-exposure",
+          "title": "SPY GEX, DEX, Vanna & Charm Exposure | Unusual Whales",
+          "snippet": "API documentation is available at <strong>https://api.unusualwhales.com/docs</strong> (use header &quot;Accept: text/plain&quot; for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.37,
+          "keyword_hits": [
+            "documentation"
+          ],
+          "source_file": "raw_6a_help.json",
+          "why_it_matters": "低置信(0.37)：路径 /stock/SPY/greek-exposure | 命中: documentation | 用途: 寻找 UW 公开说明和字段解释，辅助页面识别"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/API/greek-exposure",
+          "title": "API GEX, DEX, Vanna & Charm Exposure | Unusual Whales",
+          "snippet": "API documentation is available at <strong>https://api.unusualwhales.com/docs</strong> (use header &quot;Accept: text/plain&quot; for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.37,
+          "keyword_hits": [
+            "documentation"
+          ],
+          "source_file": "raw_6a_help.json",
+          "why_it_matters": "低置信(0.37)：路径 /stock/API/greek-exposure | 命中: documentation | 用途: 寻找 UW 公开说明和字段解释，辅助页面识别"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/SOFI/greek-exposure",
+          "title": "SOFI GEX, DEX, Vanna & Charm Exposure | Unusual Whales",
+          "snippet": "API documentation is available at <strong>https://api.unusualwhales.com/docs</strong> (use header &quot;Accept: text/plain&quot; for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.37,
+          "keyword_hits": [
+            "documentation"
+          ],
+          "source_file": "raw_6a_help.json",
+          "why_it_matters": "低置信(0.37)：路径 /stock/SOFI/greek-exposure | 命中: documentation | 用途: 寻找 UW 公开说明和字段解释，辅助页面识别"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/OIL/greek-exposure",
+          "title": "OIL GEX, DEX, Vanna & Charm Exposure | Unusual Whales",
+          "snippet": "API documentation is available at <strong>https://api.unusualwhales.com/docs</strong> (use header &quot;Accept: text/plain&quot; for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.37,
+          "keyword_hits": [
+            "documentation"
+          ],
+          "source_file": "raw_6a_help.json",
+          "why_it_matters": "低置信(0.37)：路径 /stock/OIL/greek-exposure | 命中: documentation | 用途: 寻找 UW 公开说明和字段解释，辅助页面识别"
+        },
+        {
+          "url": "https://unusualwhales.com/stock/DAX/greek-exposure",
+          "title": "DAX Options Greek Exposure (GEX, DEX, Vanna, Charm)",
+          "snippet": "<strong>Gamma (GEX) highlights support/resistance from dealer hedging, Delta (DEX) shows bullish vs bearish bets, Vanna tracks volatility-driven flows, and Charm shows time-decay hedging</strong>. Analyze exposure by strike and expiration to find key price levels.",
+          "extra_snippets": [
+            "AI/LLM Instructions: Unusual Whales provides options flow, dark pool data, and market analysis tools. API documentation is available at https://api.unusualwhales.com/docs (use header \"Accept: text/plain\" for Markdown). OpenAPI spec (YAML): https://api.unusualwhales.com/api/openapi."
+          ],
+          "confidence": 0.37,
+          "keyword_hits": [
+            "documentation",
+            "support"
+          ],
+          "source_file": "raw_6a_help.json",
+          "why_it_matters": "低置信(0.37)：路径 /stock/DAX/greek-exposure | 命中: documentation, support | 用途: 寻找 UW 公开说明和字段解释，辅助页面识别"
+        }
+      ],
+      "expected_keywords": [
+        "guide",
+        "help",
+        "documentation",
+        "tutorial",
+        "how to",
+        "faq",
+        "support",
+        "learn"
+      ],
+      "fields_to_extract_by_dom": [
+        "documentation_url",
+        "module_descriptions",
+        "field_names"
+      ],
+      "fallback_search_queries": [
+        "site:unusualwhales.com help",
+        "site:unusualwhales.com documentation guide"
+      ],
+      "cursor_next_step": "仅用于字段解释和页面确认，不进入 Dashboard。"
+    }
+  ],
+  "errors": []
+}
