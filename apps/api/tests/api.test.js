@@ -159,6 +159,20 @@ test('conflict output uses reason arrays instead of numeric points', async () =>
   }
 });
 
+test('flip conflict scenario stays high conflict wait after freshness calibration', async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/signals/current?scenario=flip_conflict_wait`);
+    const json = await response.json();
+    assert.equal(json.recommended_action, 'wait');
+    assert.equal(json.conflict.conflict_level, 'high');
+    assert.equal(json.stale_flags.theta, false);
+  } finally {
+    server.close();
+  }
+});
+
 test('sources status exposes refresh and state metadata for command center footer', async () => {
   const { server, baseUrl } = await startServer();
 

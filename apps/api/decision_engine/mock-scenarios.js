@@ -4,6 +4,12 @@ function isoMinutesAgo(minutes) {
 
 function createScenario(definition) {
   const timestamp = new Date().toISOString();
+  const defaultAges = {
+    theta: 0.25,
+    tradingview: 0.5,
+    uw: 1.5,
+    fmp: 5
+  };
 
   return {
     timestamp,
@@ -13,10 +19,10 @@ function createScenario(definition) {
     fetch_mode: 'mock_scenario',
     uw_fetch_path: definition.uw_fetch_path ?? 'dom',
     last_updated: {
-      theta: isoMinutesAgo(definition.last_updated_minutes?.theta ?? 1),
-      tradingview: isoMinutesAgo(definition.last_updated_minutes?.tradingview ?? 1),
-      uw: isoMinutesAgo(definition.last_updated_minutes?.uw ?? 1),
-      fmp: isoMinutesAgo(definition.last_updated_minutes?.fmp ?? 1)
+      theta: isoMinutesAgo(definition.last_updated_minutes?.theta ?? defaultAges.theta),
+      tradingview: isoMinutesAgo(definition.last_updated_minutes?.tradingview ?? defaultAges.tradingview),
+      uw: isoMinutesAgo(definition.last_updated_minutes?.uw ?? defaultAges.uw),
+      fmp: isoMinutesAgo(definition.last_updated_minutes?.fmp ?? defaultAges.fmp)
     },
     ...definition
   };
