@@ -18,27 +18,26 @@ export function runActionEngine({
   marketRegime,
   volatility,
   priceStructure,
-  uwFlow,
   eventRisk,
-  conflict
+  conflict,
+  commandEnvironment,
+  allowedSetups,
+  tvSentinel,
+  tradePlan
 }) {
   const avoid = new Set();
   let confidence = conflict.adjusted_confidence;
+  const marketState = marketRegime?.market_state || 'unknown';
 
-  if (marketRegime.market_state === 'negative_gamma_expand') {
+  if (marketState === 'negative_gamma_expand') {
     confidence -= 6;
     avoid.add(AVOID.CHASING);
     avoid.add(AVOID.MIDDLE_ZONE_COUNTERTREND);
   }
 
-  if (marketRegime.market_state === 'flip_chop') {
+  if (marketState === 'flip_chop') {
     confidence -= 4;
     avoid.add(AVOID.MIDDLE_ZONE_COUNTERTREND);
-  }
-
-  if (priceStructure.confirmation_status !== 'confirmed') {
-    confidence -= 5;
-    avoid.add(AVOID.CHASING);
   }
 
   if (normalized.stale_flags.any_stale) {
@@ -58,46 +57,48 @@ export function runActionEngine({
     avoid.add(AVOID.MIDDLE_ZONE_COUNTERTREND);
   }
 
-  confidence = clampConfidence(confidence);
+  if (tvSentinel?.status !== 'triggered') {
+    avoid.add(AVOID.CHASING);
+  }
+
+  if (allowedSetups?.single_leg?.allowed !== true) {
+    avoid.add(AVOID.MIDDLE_ZONE_COUNTERTREND);
+  }
+
+  if (allowedSetups?.iron_condor?.allowed !== true) {
+    avoid.add(AVOID.EARLY_IRON_CONDOR);
+  }
+
+  if (volatility.short_vol_allowed !== true) {
+    avoid.add(AVOID.SHORT_VOL_BEFORE_EVENT);
+  }
+
+  confidence = clampConfidence(
+    tradePlan?.confidence_score
+      ?? commandEnvironment?.confidence_score
+      ?? confidence
+  );
 
   let recommended_action = ACTIONS.WAIT;
-
   if (normalized.stale_flags.any_stale) {
     recommended_action = normalized.stale_flags.theta ? ACTIONS.NO_TRADE : ACTIONS.WAIT;
+  } else if (tradePlan?.recommended_action && Object.values(ACTIONS).includes(tradePlan.recommended_action)) {
+    recommended_action = tradePlan.recommended_action;
   } else if (conflict.conflict_level === 'high') {
     recommended_action = ACTIONS.WAIT;
   } else if (eventRisk.risk_gate === 'blocked') {
     recommended_action = ACTIONS.WAIT;
-  } else if (uwFlow.uw_signal === 'bullish_flow' && priceStructure.confirmation_status !== 'confirmed') {
+  } else if (priceStructure.confirmation_status !== 'confirmed') {
     recommended_action = ACTIONS.WAIT;
-  } else if (
-    confidence >= 70 &&
-    volatility.short_vol_allowed &&
-    normalized.gamma_regime === 'positive' &&
-    normalized.event_risk === 'low' &&
-    normalized.iv_state === 'cooling'
-  ) {
-    recommended_action = ACTIONS.INCOME_OK;
-  } else if (priceStructure.price_signal === 'long_pullback_ready' && confidence >= 65) {
-    recommended_action = ACTIONS.LONG_ON_PULLBACK;
-    avoid.add(AVOID.CHASING);
-  } else if (priceStructure.price_signal === 'short_retest_ready' && confidence >= 65) {
-    recommended_action = ACTIONS.SHORT_ON_RETEST;
-    avoid.add(AVOID.MIDDLE_ZONE_COUNTERTREND);
   }
 
   if (recommended_action !== ACTIONS.INCOME_OK) {
     avoid.add(AVOID.EARLY_IRON_CONDOR);
   }
 
-  let invalidation_level = `价格重新失守 flip ${normalized.flip_level}`;
-  if (recommended_action === ACTIONS.LONG_ON_PULLBACK) {
-    invalidation_level = `回踩跌破 put_wall ${normalized.put_wall}`;
-  } else if (recommended_action === ACTIONS.SHORT_ON_RETEST) {
-    invalidation_level = `反抽重新站上 call_wall ${normalized.call_wall}`;
-  } else if (recommended_action === ACTIONS.INCOME_OK) {
-    invalidation_level = `IV 不再回落，或价格跌回 flip ${normalized.flip_level} 下方`;
-  }
+  const invalidation_level =
+    tradePlan?.invalidation_text
+    || `价格重新失守 flip ${normalized.flip_level}`;
 
   return {
     recommended_action,

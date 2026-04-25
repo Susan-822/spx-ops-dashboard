@@ -78,6 +78,9 @@ function userActionText({ recommended_action, conflict, stale_flags, priceStruct
   if (recommended_action === ACTIONS.SHORT_ON_RETEST) {
     return '等反抽受阻再空，不提前下手。';
   }
+  if (recommended_action === ACTIONS.WAIT && priceStructure.confirmation_status === 'confirmed') {
+    return '指挥部环境已形成，但仍只允许等待 TV 哨兵触发后的执行计划。';
+  }
   if (priceStructure.confirmation_status !== 'confirmed') {
     return '结构还没确认，先等价格把方向走出来。';
   }

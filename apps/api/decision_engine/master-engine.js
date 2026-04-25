@@ -8,6 +8,12 @@ import { runEventRiskEngine } from './event-risk-engine.js';
 import { runConflictEngine } from './conflict-engine.js';
 import { runActionEngine } from './action-engine.js';
 import { runPlainLanguageEngine } from './plain-language-engine.js';
+import { runDataHealthEngine } from './data-health-engine.js';
+import { runMarketSentimentEngine } from './market-sentiment-engine.js';
+import { runCommandEnvironmentEngine } from './command-environment-engine.js';
+import { runAllowedSetupsEngine } from './allowed-setups-engine.js';
+import { runTvSentinelEngine } from './tv-sentinel-engine.js';
+import { runTradePlanBuilder } from './trade-plan-builder.js';
 
 function buildDisplaySpotSnapshot(normalized, gammaWall) {
   const hasDisplaySpot =
@@ -222,6 +228,7 @@ function buildRadarSummary({ normalized, priceStructure, uwFlow, eventRisk, acti
 }
 
 export function runMasterEngine(normalized) {
+  const dataHealth = runDataHealthEngine(normalized);
   const marketRegime = runMarketRegimeEngine(normalized);
   const gammaWall = runGammaWallEngine(normalized);
   const displaySpotSnapshot = buildDisplaySpotSnapshot(normalized, gammaWall);
@@ -229,6 +236,13 @@ export function runMasterEngine(normalized) {
   const priceStructure = runPriceStructureEngine(normalized);
   const uwFlow = runUwDealerFlowEngine(normalized);
   const eventRisk = runEventRiskEngine(normalized);
+  const marketSentiment = runMarketSentimentEngine({
+    gamma_regime: normalized.gamma_regime,
+    theta_signal: normalized.theta_signal,
+    fmp_signal: normalized.fmp_signal,
+    event_risk: normalized.event_risk,
+    price_signal: priceStructure.price_signal
+  });
   const conflict = runConflictEngine({
     theta_signal: normalized.theta_signal,
     tv_signal: priceStructure.price_signal,
@@ -237,13 +251,45 @@ export function runMasterEngine(normalized) {
     stale_flags: normalized.stale_flags,
     tv_confirmation: priceStructure.confirmation_status
   });
+  const commandEnvironment = runCommandEnvironmentEngine({
+    normalized,
+    dataHealth,
+    marketRegime,
+    gammaWall,
+    uwFlow,
+    volatility,
+    eventRisk,
+    marketSentiment,
+    conflict
+  });
+  const allowedSetups = runAllowedSetupsEngine({
+    dataHealth,
+    commandEnvironment,
+    marketRegime,
+    eventRisk,
+    volatility,
+    normalized
+  });
+  const tvSentinel = runTvSentinelEngine({
+    priceStructure,
+    tv_structure_event: normalized.tv_structure_event
+  });
+  const tradePlan = runTradePlanBuilder({
+    normalized,
+    commandEnvironment,
+    allowedSetups,
+    tradingviewSentinel: tvSentinel
+  });
   const action = runActionEngine({
     normalized,
     marketRegime,
     volatility,
     priceStructure,
-    uwFlow,
     eventRisk,
+    commandEnvironment,
+    allowedSetups,
+    tvSentinel,
+    tradePlan,
     conflict
   });
 
@@ -259,6 +305,12 @@ export function runMasterEngine(normalized) {
       priceStructure,
       uwFlow,
       eventRisk,
+      dataHealth,
+      marketSentiment,
+      commandEnvironment,
+      allowedSetups,
+      tvSentinel,
+      tradePlan,
       conflict,
       action
     }
@@ -322,12 +374,12 @@ export function runMasterEngine(normalized) {
     tv_structure_event: normalized.tv_structure_event,
     signals: {
       theta_signal: normalized.theta_signal,
-      tv_signal: priceStructure.price_signal,
+      tv_signal: tvSentinel.tv_signal,
       uw_signal: uwFlow.uw_signal,
       fmp_signal: normalized.fmp_signal,
       wall_bias: gammaWall.wall_bias,
       dealer_behavior: uwFlow.dealer_behavior,
-      price_confirmation: priceStructure.confirmation_status
+      price_confirmation: tvSentinel.price_confirmation
     },
     weights: conflict.weights,
     conflict: {
@@ -351,9 +403,15 @@ export function runMasterEngine(normalized) {
     engines: {
       market_regime: marketRegime,
       gamma_wall: gammaWall,
+      data_health: dataHealth,
       volatility,
       price_structure: priceStructure,
       uw_dealer_flow: uwFlow,
+      market_sentiment: marketSentiment,
+      command_environment: commandEnvironment,
+      allowed_setups: allowedSetups,
+      tv_sentinel: tvSentinel,
+      trade_plan: tradePlan,
       event_risk: eventRisk,
       conflict,
       action

@@ -616,7 +616,7 @@ test('buildAlertMessage renders Chinese intraday reminder from current signal', 
   assert.match(message, /状态：盘中提醒/);
   assert.match(message, /动作：等回踩不破关键位，再考虑偏多/);
   assert.match(message, /触发：SPX/);
-  assert.match(message, /作废：回踩跌破 put_wall/);
+  assert.match(message, /作废：(回踩跌破 put_wall|价格重新失守 flip)/);
 });
 
 test('buildAlertMessage renders dedicated Chinese FMP exception warning', async () => {
@@ -646,4 +646,28 @@ test('buildAlertMessage renders dedicated Chinese FMP exception warning', async 
   assert.match(message, /原因：FMP 数据异常或过期/);
 
   delete process.env.FMP_API_KEY;
+});
+
+test('command environment can allow setups while TV sentinel still blocks execution', async () => {
+  const signal = await getCurrentSignal('uw_call_strong_unconfirmed');
+
+  assert.equal(signal.recommended_action, 'wait');
+  assert.equal(signal.engines.command_environment.allowed, true);
+  assert.equal(signal.engines.allowed_setups.single_leg.allowed, true);
+  assert.equal(signal.engines.allowed_setups.vertical.allowed, true);
+  assert.equal(signal.engines.allowed_setups.iron_condor.allowed, false);
+  assert.equal(signal.engines.tv_sentinel.triggered, false);
+  assert.equal(signal.engines.trade_plan.triggered_by_tv, false);
+});
+
+test('TV sentinel only upgrades to directional plan when command environment allows it', async () => {
+  const signal = await getCurrentSignal('breakout_pullback_pending');
+
+  assert.equal(signal.engines.command_environment.allowed, true);
+  assert.equal(signal.engines.allowed_setups.single_leg.allowed, true);
+  assert.equal(signal.engines.allowed_setups.vertical.allowed, true);
+  assert.equal(signal.engines.tv_sentinel.triggered, true);
+  assert.equal(signal.engines.tv_sentinel.direction, 'bullish');
+  assert.equal(signal.engines.trade_plan.plan_family, 'A');
+  assert.equal(signal.recommended_action, 'long_on_pullback');
 });
