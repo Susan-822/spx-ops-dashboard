@@ -417,3 +417,130 @@ These are forbidden in mixed mode:
 - Telegram only alerts on meaningful changes.
 - Mixed real-price plus mock-map state is non-executable by definition.
 
+---
+
+## 10) Baseline deployment clarification
+
+The project now distinguishes between:
+
+- **historical accepted host-app branch**
+- **current formal deployment branch**
+
+Historical note:
+
+- The accepted host-app branch used during the prior local-agent cycle was `cursor/project-rules-scaffold-44ea`.
+- That branch became the practical base for the accepted UI plus FMP work before later cloud-agent work moved the final deploy line into `main`.
+
+Current rule:
+
+- Only one branch may be treated as the **formal deployment branch** at a time.
+- Render must point at that branch explicitly.
+- All agents must start from that same branch before editing or deploying.
+- If an accepted host-app branch diverges from the formal deployment branch, reconciliation must happen before any new deploy is considered valid.
+
+---
+
+## 11) Updated source authority model
+
+### TradingView
+
+- **Authority:** structure trigger only.
+- **Not allowed:** final execution permission, event risk, gamma map, target generation.
+
+### FMP Event Risk
+
+- **Authority:** event risk gate only.
+- **Not allowed:** direction, target generation, execution trigger.
+
+### FMP Price
+
+- **Authority:** preferred backup real `externalSpot`.
+- **Not allowed:** directional judgment or target generation by itself.
+
+### ThetaData
+
+- **Authority:** formal dealer / gamma map.
+- **Not allowed:** event gate or direct order authorization.
+
+### UW
+
+- **Authority:** supporting confirmation only.
+- **Not allowed:** replacing ThetaData, replacing TradingView, or authorizing execution by itself.
+
+### Dashboard
+
+- **Authority:** projection layer only.
+- **Not allowed:** inventing strategy ladders, re-deriving target zones, or exposing mock/scenario numbers as executable outputs.
+
+---
+
+## 12) Mandatory final evaluation order
+
+The authoritative order is:
+
+1. data ingestion
+2. normalization
+3. source health
+4. external spot resolve
+5. event risk gate
+6. ThetaData dealer / gamma regime
+7. TradingView structure trigger
+8. UW flow / dealer / dark pool / volatility assistance
+9. data coherence guard
+10. conflict resolver
+11. command environment
+12. allowed setups
+13. trade plan builder
+14. dashboard projection
+15. telegram alert
+
+Short version:
+
+- **First decide whether the data is trustworthy.**
+- **Then decide whether the market environment permits action.**
+- **Then decide whether price structure is triggered.**
+- **Only then may strategy permissions and targets exist.**
+
+---
+
+## 13) Hard no-execution rules
+
+The following states must force no-trade output:
+
+- `scenario` / `mock`
+- `mixed`
+- `conflict`
+- `theta partial`
+- `theta stale`
+- `theta unavailable`
+- `theta error`
+- `uw conflict`
+- `fmp event blocked`
+- `tv stale`
+
+When any of these applies:
+
+- `executable = false`
+- `trade_permission = no_trade`
+- strategy card `entry = --`
+- strategy card `target = --`
+- strategy card `invalidation = --`
+- dashboard must not show `5275 -> 5320`, `5225 - 5320`, `flip 5285`, or any similar mock/scenario ladder as an executable output.
+
+---
+
+## 14) Agent ownership guardrails
+
+- **ThetaData + FMP + TradingView + Render deploy agents**
+  - may change `apps/api`, `apps/web` presentation safety, `scripts`, deployment docs, and local bridge tooling.
+  - must not redo UW parsing logic when not explicitly requested.
+
+- **UW agents**
+  - may change `integrations/unusual-whales/` and UW ingestion/normalization paths.
+  - must not redefine formal deployment branch or overwrite host-app UI logic without explicit reconciliation.
+
+- **Any agent before editing**
+  - must read `PROJECT_BASELINE.md`.
+  - must confirm the formal deployment branch.
+  - must confirm whether the task is about production deploy, local bridge/runtime, or a single source module.
+
