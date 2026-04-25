@@ -1,6 +1,7 @@
 import { createSourceStatus, SOURCE_STATE } from '../../../packages/shared/src/source-status.js';
 import { getSourcePolicy } from '../scheduler/refresh-policy.js';
 import { mapTradingViewEventToStructure } from '../storage/tradingview-snapshot.js';
+import { normalizeUwSummary } from '../../../integrations/unusual-whales/normalizer/uw-summary-normalizer.js';
 
 const FMP_ABNORMAL_SOURCE_MESSAGE = 'FMP 数据异常，事件风险不可确认。';
 const FMP_ABNORMAL_EVENT_NOTE = 'FMP 数据异常，事件风险不可确认，降低交易权限，不提前卖波。';
@@ -343,9 +344,60 @@ function appendUniqueNote(notes, note) {
   return notes.includes(note) ? notes : [...notes, note];
 }
 
+function createUwSourceEntry({ timestamp, snapshot, staleSeconds }) {
+  const policy = getSourcePolicy('uw_dom');
+  const normalizedUw = normalizeUwSummary(snapshot, { stale: snapshot?.stale === true }).uw;
+  const lastUpdated = normalizedUw?.last_update || timestamp;
+  const latencyMs = Math.max(0, new Date(timestamp).getTime() - new Date(lastUpdated).getTime());
+  const stale = Boolean(snapshot?.stale);
+  const state =
+    normalizedUw?.status === 'error'
+      ? 'down'
+      : normalizedUw?.status === 'unavailable'
+        ? 'unavailable'
+        : normalizedUw?.status === 'partial' || stale
+          ? SOURCE_STATE.DELAYED
+          : SOURCE_STATE.REAL;
+
+  return createSourceStatus({
+    source: 'uw',
+    configured: snapshot != null,
+    available: normalizedUw?.status === 'live' || normalizedUw?.status === 'partial' || normalizedUw?.status === 'stale',
+    is_mock: false,
+    fetch_mode: 'curated_ingest',
+    stale,
+    state,
+    last_updated: lastUpdated,
+    data_timestamp: lastUpdated,
+    received_at: timestamp,
+    latency_ms: latencyMs,
+    stale_reason: stale ? `uw 超过 stale_threshold ${staleSeconds * 1000}ms，当前延迟约 ${latencyMs}ms。` : '',
+    refresh_interval_ms: 0,
+    stale_threshold_ms: staleSeconds * 1000,
+    down_threshold_ms: policy?.down_threshold_ms ?? staleSeconds * 1000 * 2,
+    event_triggers: ['uw_ingest'],
+    message:
+      normalizedUw?.status === 'partial'
+        ? 'UW curated summary partial.'
+        : stale
+          ? 'UW curated summary stale.'
+          : normalizedUw?.status === 'unavailable'
+            ? 'UW curated summary unavailable.'
+            : normalizedUw?.status === 'error'
+              ? 'UW curated summary error.'
+              : snapshot
+                ? 'UW curated summary ingested.'
+                : 'UW curated summary unavailable.'
+  });
+}
+
 export function normalizeMockScenario(rawScenario) {
   const receivedAt = new Date().toISOString();
+  const uwStaleSeconds = Number.parseInt(String(process.env.UW_SNAPSHOT_STALE_SECONDS ?? '300'), 10) || 300;
   const thetaContext = deriveThetaContext(rawScenario);
+  const normalizedUw = normalizeUwSummary(rawScenario.uw_snapshot, {
+    stale: rawScenario.uw_snapshot?.stale === true
+  }).uw;
 
   const source_status = [
     createSourceEntry({
@@ -373,17 +425,10 @@ export function normalizeMockScenario(rawScenario) {
       timestamp: receivedAt,
       last_updated: rawScenario.last_updated.fmp
     }),
-    createSourceEntry({
-      source: 'uw_dom',
+    createUwSourceEntry({
       timestamp: receivedAt,
-      last_updated: rawScenario.last_updated.uw,
-      degraded: rawScenario.uw_fetch_path === 'screenshot'
-    }),
-    createSourceEntry({
-      source: 'uw_screenshot',
-      timestamp: receivedAt,
-      last_updated: rawScenario.last_updated.uw,
-      degraded: rawScenario.uw_fetch_path !== 'screenshot'
+      snapshot: rawScenario.uw_snapshot,
+      staleSeconds: uwStaleSeconds
     }),
     createSourceEntry({
       source: 'scheduler_health',
@@ -437,7 +482,7 @@ export function normalizeMockScenario(rawScenario) {
   const stale_flags = {
     theta: thetaContext.theta.status === 'stale',
     tradingview: source_status.find((item) => item.source === 'tradingview')?.stale ?? true,
-    uw: source_status.find((item) => item.source === 'uw_dom')?.stale ?? true,
+    uw: source_status.find((item) => item.source === 'uw')?.stale ?? true,
     fmp: source_status.find((item) => item.source === 'fmp_event')?.stale ?? true
   };
   stale_flags.any_stale = Object.values(stale_flags).some(Boolean);
@@ -513,9 +558,20 @@ export function normalizeMockScenario(rawScenario) {
     put_wall: rawScenario.put_wall,
     max_pain: rawScenario.max_pain,
     iv_state: rawScenario.iv_state,
-    uw_flow_bias: rawScenario.uw_flow_bias,
-    uw_dark_pool_bias: rawScenario.uw_dark_pool_bias,
-    uw_dealer_bias: rawScenario.uw_dealer_bias,
+    uw: normalizedUw,
+    uw_snapshot: rawScenario.uw_snapshot ?? null,
+    uw_flow_bias: normalizedUw.flow.flow_bias,
+    uw_dark_pool_bias: normalizedUw.darkpool.darkpool_bias,
+    uw_dealer_bias:
+      normalizedUw.dealer_crosscheck.state === 'confirm'
+        ? 'supportive'
+        : normalizedUw.dealer_crosscheck.state === 'conflict'
+          ? 'defensive'
+          : 'neutral',
+    uw_institutional_entry: normalizedUw.flow.institutional_entry,
+    uw_volatility_light: normalizedUw.volatility.volatility_light,
+    uw_market_tide: normalizedUw.sentiment.market_tide,
+    uw_dealer_crosscheck: normalizedUw.dealer_crosscheck.state,
     uw_fetch_path: rawScenario.uw_fetch_path,
     advanced_greeks: rawScenario.advanced_greeks,
     event_risk: eventContext.event_risk,

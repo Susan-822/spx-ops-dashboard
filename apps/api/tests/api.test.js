@@ -18,6 +18,12 @@ const {
   resetThetaSnapshotStoreForTests,
   writeThetaSnapshot
 } = await import('../storage/theta-snapshot.js');
+const {
+  readUwSnapshot,
+  writeUwSnapshot,
+  clearUwSnapshot,
+  resetUwSnapshotStoreForTests
+} = await import('../state/uwSnapshotStore.js');
 const { getCurrentSignal } = await import('../decision_engine/current-signal.js');
 const { buildAlertMessage } = await import('../alerts/build-alert-message.js');
 const { resetTvSnapshotStoreForTests } = await import('../state/tvSnapshotStore.js');
@@ -49,7 +55,7 @@ const ALLOWED_MARKET_STATES = new Set([
 
 const ALLOWED_GAMMA_REGIMES = new Set(['positive', 'negative', 'critical', 'unknown']);
 const ALLOWED_ACTIONS = new Set(['wait', 'long_on_pullback', 'short_on_retest', 'income_ok', 'no_trade']);
-const ALLOWED_SOURCE_STATES = new Set(['real', 'mock', 'delayed', 'degraded', 'down']);
+const ALLOWED_SOURCE_STATES = new Set(['real', 'mock', 'delayed', 'degraded', 'down', 'unavailable']);
 const REQUIRED_STRATEGIES = ['单腿', '看涨价差', '看跌价差', '铁鹰', '观望'];
 
 function startServer() {
@@ -88,6 +94,84 @@ async function resetThetaStateEnv(overrides = {}) {
   Object.assign(process.env, overrides);
   await resetThetaSnapshotStoreForTests();
   await clearThetaSnapshot();
+}
+
+async function resetUwStateEnv(overrides = {}) {
+  delete process.env.UW_INGEST_SECRET;
+  delete process.env.UW_STATE_STORE;
+  delete process.env.UW_SNAPSHOT_FILE;
+  delete process.env.UW_SNAPSHOT_TTL_SECONDS;
+  delete process.env.UW_SNAPSHOT_STALE_SECONDS;
+  delete process.env.UW_REDIS_URL;
+  Object.assign(process.env, overrides);
+  await clearUwSnapshot();
+  await resetUwSnapshotStoreForTests();
+}
+
+function buildUwPayload(statusOrOverrides = {}, maybeOverrides = {}) {
+  const status = typeof statusOrOverrides === 'string'
+    ? statusOrOverrides
+    : statusOrOverrides?.status || 'partial';
+  const overrides = typeof statusOrOverrides === 'string'
+    ? maybeOverrides
+    : statusOrOverrides;
+
+  const base = {
+    secret: process.env.UW_INGEST_SECRET || 'local-test-secret',
+    source: 'unusual_whales',
+    status,
+    last_update: new Date().toISOString(),
+    flow: {
+      flow_bias: status === 'live' ? 'bullish' : 'unavailable',
+      institutional_entry: status === 'live' ? 'building' : 'unavailable'
+    },
+    darkpool: {
+      darkpool_bias: status === 'live' ? 'support' : 'unavailable'
+    },
+    volatility: {
+      volatility_light: status === 'live' ? 'yellow' : 'unavailable'
+    },
+    sentiment: {
+      market_tide: status === 'live' ? 'risk_on' : 'unavailable'
+    },
+    dealer_crosscheck: {
+      state: status === 'live' ? 'confirm' : 'unavailable'
+    },
+    quality: {
+      data_quality: status,
+      missing_fields: status === 'live' ? [] : ['flow', 'darkpool', 'volatility', 'market_tide'],
+      warnings: status === 'live' ? ['test_payload_not_real_market'] : ['market_closed_weekend_test']
+    }
+  };
+
+  return {
+    ...base,
+    ...overrides,
+    flow: {
+      ...base.flow,
+      ...(overrides.flow || {})
+    },
+    darkpool: {
+      ...base.darkpool,
+      ...(overrides.darkpool || {})
+    },
+    volatility: {
+      ...base.volatility,
+      ...(overrides.volatility || {})
+    },
+    sentiment: {
+      ...base.sentiment,
+      ...(overrides.sentiment || {})
+    },
+    dealer_crosscheck: {
+      ...base.dealer_crosscheck,
+      ...(overrides.dealer_crosscheck || {})
+    },
+    quality: {
+      ...base.quality,
+      ...(overrides.quality || {})
+    }
+  };
 }
 
 function sampleThetaPayload(overrides = {}) {
@@ -1153,6 +1237,48 @@ test('coherent live theta data can remain executable', async () => {
 
   assert.equal(signal.engines.data_coherence.data_mode, 'live');
   assert.equal(signal.engines.data_coherence.executable, true);
+});
+
+test('partial UW snapshot exposes top-level UW contract without becoming ready', async () => {
+  await resetUwStateEnv({
+    UW_STATE_STORE: 'memory',
+    UW_SNAPSHOT_STALE_SECONDS: '300'
+  });
+
+  await writeUwSnapshot({
+    source: 'unusual_whales',
+    status: 'partial',
+    last_update: new Date().toISOString(),
+    flow: {
+      flow_bias: 'bullish',
+      institutional_entry: 'unavailable'
+    },
+    darkpool: {
+      darkpool_bias: 'unavailable'
+    },
+    volatility: {
+      volatility_light: 'unavailable'
+    },
+    sentiment: {
+      market_tide: 'risk_on'
+    },
+    dealer_crosscheck: {
+      state: 'unavailable'
+    },
+    quality: {
+      data_quality: 'partial',
+      missing_fields: ['institutional_entry', 'darkpool_bias', 'volatility_light', 'dealer_crosscheck'],
+      warnings: ['partial_contract_test']
+    }
+  });
+
+  const signal = await getCurrentSignal(undefined);
+  assert.equal(signal.uw.status, 'partial');
+  assert.equal(signal.uw_conclusion.status, 'partial');
+  assert.equal(signal.uw_conclusion.flow_bias, 'bullish');
+  assert.equal(signal.uw_conclusion.market_tide, 'risk_on');
+  assert.equal(signal.execution_constraints.uw.executable, false);
+  assert.equal(signal.trade_plan.uw_ready, false);
 });
 
 test('local env loader prefers Downloads bridge env over script env', async () => {

@@ -3,6 +3,7 @@ import { normalizeMockScenario } from '../normalizer/build-normalized-signal.js'
 import { runMasterEngine } from './master-engine.js';
 import { getTradingViewSnapshot } from '../storage/tradingview-snapshot.js';
 import { getThetaSnapshot } from '../storage/theta-snapshot.js';
+import { readUwSnapshot } from '../state/uwSnapshotStore.js';
 import { getFmpSnapshot } from '../adapters/fmp/index.js';
 import {
   buildDealerConclusionEngine,
@@ -254,6 +255,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   const snapshot = await getTradingViewSnapshot();
   const thetaSnapshot = await getThetaSnapshot();
   const fmpSnapshot = await getFmpSnapshot(options.fmp);
+  const uwSnapshot = options.uw?.snapshot ?? await readUwSnapshot({ now: options.now });
   const enrichedScenario = applyTradingViewPriceFallback(
     applyFmpPriceSnapshot(
       applyFmpEventSnapshot(
@@ -265,7 +267,10 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     snapshot
   );
   const finalScenario = applyThetaSnapshot(
-    enrichedScenario,
+    {
+      ...enrichedScenario,
+      uw_snapshot: uwSnapshot
+    },
     thetaSnapshot
   );
   const normalized = normalizeMockScenario(finalScenario);

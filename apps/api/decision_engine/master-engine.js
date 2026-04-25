@@ -16,6 +16,8 @@ import { runAllowedSetupsEngine } from './allowed-setups-engine.js';
 import { runTvSentinelEngine } from './tv-sentinel-engine.js';
 import { runTradePlanBuilder } from './trade-plan-builder.js';
 import { deriveThetaExecutionConstraint } from './dealer-conclusion-engine.js';
+import { runUwConclusionEngine } from './uw-conclusion-engine.js';
+import { runCommandInputAggregator } from './command-input-aggregator.js';
 
 function buildDisplaySpotSnapshot(normalized, gammaWall) {
   const hasDisplaySpot =
@@ -268,6 +270,7 @@ export function runMasterEngine(normalized) {
   const priceStructure = runPriceStructureEngine(normalized);
   const uwFlow = runUwDealerFlowEngine(normalized);
   const eventRisk = runEventRiskEngine(normalized);
+  const uwConclusion = runUwConclusionEngine({ normalized });
   const marketSentiment = runMarketSentimentEngine({
     gamma_regime: normalized.gamma_regime,
     theta_signal: normalized.theta_signal,
@@ -282,6 +285,21 @@ export function runMasterEngine(normalized) {
     fmp_signal: normalized.fmp_signal,
     stale_flags: normalized.stale_flags,
     tv_confirmation: priceStructure.confirmation_status
+  });
+  const commandInputs = runCommandInputAggregator({
+    fmpConclusion: {
+      status: 'unavailable',
+      market_bias: 'unavailable',
+      event_risk: 'unavailable',
+      price_status: 'unavailable'
+    },
+    dealerConclusion: normalized.theta_dealer_conclusion,
+    uwConclusion,
+    tvSentinel: {
+      status: normalized.stale_flags.tradingview ? 'stale' : 'fresh',
+      event_type: normalized.tv_event_type || 'none'
+    },
+    dataHealth
   });
   const commandEnvironment = runCommandEnvironmentEngine({
     normalized,
@@ -363,6 +381,20 @@ export function runMasterEngine(normalized) {
   const thetaExecutionConstraint =
     normalized.theta_execution_constraint
     || deriveThetaExecutionConstraint(normalized.theta_dealer_conclusion);
+  const uwExecutionConstraint = {
+    available: uwConclusion.status !== 'unavailable' && uwConclusion.status !== 'error',
+    executable: false,
+    reason:
+      uwConclusion.status === 'partial'
+        ? 'UW partial'
+        : uwConclusion.status === 'stale'
+          ? 'UW stale'
+          : uwConclusion.status === 'error'
+            ? 'UW error'
+            : uwConclusion.status === 'unavailable'
+              ? 'UW unavailable'
+              : ''
+  };
   const projection = {
     dealer_summary: {
       status: normalized.theta_dealer_conclusion?.status || 'unavailable',
@@ -454,57 +486,10 @@ export function runMasterEngine(normalized) {
     data_mode: dataCoherence.data_mode,
     trade_permission: dataCoherence.trade_permission,
     execution_constraints: {
-      theta: thetaExecutionConstraint
+      theta: thetaExecutionConstraint,
+      uw: uwExecutionConstraint
     },
-    command_inputs: {
-      external_spot: {
-        spot: normalized.external_spot ?? normalized.spot ?? null,
-        source:
-          (normalized.external_spot ?? normalized.spot) != null
-            ? (normalized.spot_source && normalized.spot != null
-                ? normalized.spot_source
-                : normalized.external_spot_source && normalized.external_spot_source !== 'unavailable'
-                  ? normalized.external_spot_source
-                  : 'unavailable')
-            : 'unavailable',
-        is_real:
-          (normalized.external_spot ?? normalized.spot) != null
-            ? (normalized.spot_source === 'fmp' && normalized.spot != null)
-              || (normalized.spot != null && normalized.spot_is_real === true)
-              || (normalized.external_spot_source === 'fmp' && normalized.external_spot != null)
-              || (normalized.external_spot_is_real === true)
-            : false,
-        status:
-          (normalized.external_spot ?? normalized.spot) != null
-            ? (
-                (normalized.spot_source === 'fmp' && normalized.spot != null)
-                || (normalized.spot != null && normalized.spot_is_real === true)
-                || (normalized.external_spot_source === 'fmp' && normalized.external_spot != null)
-                || normalized.external_spot_is_real === true
-              )
-              ? 'real'
-              : 'degraded'
-            : 'unavailable',
-        last_updated:
-          normalized.external_spot_last_updated
-          || normalized.spot_last_updated
-          || null
-      },
-      dealer: {
-        dealer_conclusion: {
-          status: normalized.theta_dealer_conclusion?.status || 'unavailable',
-          gamma_regime: normalized.theta_dealer_conclusion?.gamma_regime || 'unknown',
-          dealer_behavior: normalized.theta_dealer_conclusion?.dealer_behavior || 'unknown',
-          least_resistance_path: normalized.theta_dealer_conclusion?.least_resistance_path || 'unknown',
-          call_wall: normalized.theta_dealer_conclusion?.call_wall ?? null,
-          put_wall: normalized.theta_dealer_conclusion?.put_wall ?? null,
-          max_pain: normalized.theta_dealer_conclusion?.max_pain ?? null,
-          zero_gamma: normalized.theta_dealer_conclusion?.zero_gamma ?? null,
-          expected_move_upper: normalized.theta_dealer_conclusion?.expected_move_upper ?? null,
-          expected_move_lower: normalized.theta_dealer_conclusion?.expected_move_lower ?? null
-        }
-      }
-    },
+    command_inputs: commandInputs,
     projection,
     strategy_cards: buildStrategyCards({
       normalized,
@@ -514,8 +499,15 @@ export function runMasterEngine(normalized) {
       commandEnvironment,
       thetaExecutionConstraint
     }),
-    trade_plan: tradePlan,
+    uw_conclusion: uwConclusion,
+    uw: normalized.uw,
+    trade_plan: {
+      ...tradePlan,
+      uw_ready: false
+    },
     engines: {
+      uw_conclusion: uwConclusion,
+      command_inputs: commandInputs,
       market_regime: marketRegime,
       gamma_wall: gammaWall,
       data_coherence: dataCoherence,
@@ -527,7 +519,10 @@ export function runMasterEngine(normalized) {
       command_environment: commandEnvironment,
       allowed_setups: allowedSetups,
       tv_sentinel: tvSentinel,
-      trade_plan: tradePlan,
+      trade_plan: {
+        ...tradePlan,
+        uw_ready: false
+      },
       event_risk: eventRisk,
       conflict,
       action,
