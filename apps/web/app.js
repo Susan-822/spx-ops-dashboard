@@ -98,6 +98,52 @@ function safeText(value, fallback = '--') {
   return fallback;
 }
 
+function isExecutable(signal) {
+  return signal?.command_environment?.executable === true;
+}
+
+function isScenarioOrMock(signal) {
+  return signal?.fetch_mode === 'mock_scenario'
+    || signal?.data_health?.data_mode === 'mock';
+}
+
+function getExecutionBlockReason(signal) {
+  if (signal?.command_environment?.executable === true) {
+    return '';
+  }
+
+  const coherence = signal?.data_health?.coherence_status;
+  if (coherence === 'conflict' || signal?.data_health?.spot_structure_mismatch === true) {
+    return '数据冲突｜禁止执行';
+  }
+  if (coherence === 'mixed') {
+    return '数据混用｜禁止执行';
+  }
+  if (isScenarioOrMock(signal)) {
+    return '演示场景｜不可交易';
+  }
+  if (signal?.data_health?.data_mode === 'stale' || signal?.stale_flags?.any_stale) {
+    return '数据过期｜禁止执行';
+  }
+  if (signal?.data_health?.data_mode === 'partial') {
+    return signal?.command_environment?.reason || '缺少关键输入｜禁止执行';
+  }
+  return signal?.command_environment?.reason || '禁止执行';
+}
+
+function blockedPriceText(signal, fallback = '--') {
+  return isExecutable(signal) ? fallback : '--';
+}
+
+function getTopConflictReasons(signal) {
+  const items = [];
+  const coherence = signal?.data_health?.coherence_reason;
+  if (coherence) items.push(coherence);
+  if (Array.isArray(signal?.conflict_resolver?.conflicts)) items.push(...signal.conflict_resolver.conflicts);
+  if (Array.isArray(signal?.conflict?.conflict_points)) items.push(...signal.conflict.conflict_points);
+  return items.filter(Boolean);
+}
+
 function fmt(value, digits = 2) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '--';
@@ -295,9 +341,12 @@ function getAction(signal) {
 }
 
 function hasHardBlock(signal) {
-  return signal?.recommended_action === 'no_trade'
+  return signal?.command_environment?.executable === false
+    || signal?.recommended_action === 'no_trade'
     || signal?.conflict?.conflict_level === 'high'
     || signal?.stale_flags?.any_stale
+    || signal?.data_health?.coherence_status === 'mixed'
+    || signal?.data_health?.coherence_status === 'conflict'
     || signal?.source_status?.some((s) => s.state === 'down');
 }
 
@@ -321,61 +370,86 @@ function chipClassByRisk(value) {
 }
 
 function getStrategyCard(signal, type) {
-  const cards = Array.isArray(signal.strategy_cards) ? signal.strategy_cards : [];
-  const callSpread = cards.find((c) => c.strategy_name === '看涨价差');
-  const putSpread = cards.find((c) => c.strategy_name === '看跌价差');
-  const single = cards.find((c) => c.strategy_name === '单腿');
-  const iron = cards.find((c) => c.strategy_name === '铁鹰');
+  const tradePlan = signal?.trade_plan || {};
+  const strategyPermission = tradePlan.strategy_permission || {};
+  const projectionCard = Array.isArray(signal?.projection?.strategy_cards)
+    ? signal.projection.strategy_cards.find((item) => item?.strategy_name === type)
+    : null;
 
-  if (type === '单腿') return single || {};
-  if (type === '铁鹰') return iron || {};
-  if (type === '垂直') {
-    if (signal.recommended_action === 'short_on_retest') return putSpread || callSpread || {};
-    return callSpread || putSpread || {};
+  const blocked = !isExecutable(signal);
+  const baseCard = {
+    strategy_name: type,
+    suitable_when: blocked ? getExecutionBlockReason(signal) : '等待后端策略投影。',
+    entry_condition: blocked ? '--' : tradePlan.entry_zone?.text || '--',
+    target_zone: blocked ? '--' : tradePlan.target_text || '--',
+    invalidation: blocked ? '--' : tradePlan.invalidation?.text || tradePlan.invalidation_text || '--',
+    avoid_when: signal?.command_environment?.reason || tradePlan?.plain_chinese || '等待后端判断。'
+  };
+
+  const merged = {
+    ...baseCard,
+    ...(projectionCard || {})
+  };
+
+  if (blocked) {
+    return {
+      ...merged,
+      entry_condition: '--',
+      target_zone: '--',
+      invalidation: '--',
+      suitable_when: getExecutionBlockReason(signal),
+      avoid_when: signal?.command_environment?.reason || getExecutionBlockReason(signal)
+    };
   }
-  return {};
+
+  if (type === '单腿') {
+    merged.entry_condition = tradePlan.entry_zone?.text || merged.entry_condition || '--';
+  } else if (type === '垂直') {
+    merged.entry_condition = tradePlan.entry_zone?.text || merged.entry_condition || '--';
+    merged.target_zone = tradePlan.target_text || merged.target_zone || '--';
+    merged.invalidation = tradePlan.invalidation?.text || tradePlan.invalidation_text || merged.invalidation || '--';
+  } else if (type === '铁鹰') {
+    merged.entry_condition = strategyPermission.iron_condor === 'allow'
+      ? tradePlan.entry_zone?.text || merged.entry_condition || '--'
+      : '--';
+    merged.target_zone = strategyPermission.iron_condor === 'allow'
+      ? tradePlan.target_text || merged.target_zone || '--'
+      : '--';
+    merged.invalidation = strategyPermission.iron_condor === 'allow'
+      ? tradePlan.invalidation?.text || tradePlan.invalidation_text || merged.invalidation || '--'
+      : '--';
+  }
+
+  return merged;
 }
 
 function strategyState(signal, type) {
-  if (hasHardBlock(signal)) return { text: '不可执行', cls: 'block' };
-  if (type === '铁鹰') {
-    if (signal.recommended_action === 'income_ok') return { text: '观察可做', cls: 'go' };
-    if (signal.gamma_regime === 'negative' || signal.event_context?.event_risk === 'high') return { text: '禁止', cls: 'block' };
-    return { text: '等波动回落', cls: 'watch' };
-  }
-  if (type === '垂直') {
-    if (['long_on_pullback', 'short_on_retest'].includes(signal.recommended_action)) return { text: '等触发', cls: 'go' };
-    return { text: '等确认', cls: 'watch' };
-  }
-  if (type === '单腿') {
-    if (['long_on_pullback', 'short_on_retest'].includes(signal.recommended_action)) return { text: '轻仓快打', cls: 'watch' };
-    return { text: '不优先', cls: 'watch' };
-  }
-  return { text: '等确认', cls: 'watch' };
+  if (hasHardBlock(signal)) return { text: '禁止', cls: 'block' };
+
+  const permission = signal?.trade_plan?.strategy_permission || {};
+  const value =
+    type === '单腿' ? permission.single_leg
+      : type === '垂直' ? permission.vertical
+        : permission.iron_condor;
+
+  if (value === 'allow') return { text: '允许', cls: 'go' };
+  if (value === 'wait') return { text: '等待', cls: 'watch' };
+  return { text: '禁止', cls: 'block' };
 }
 
 function buildTrigger(signal) {
-  const snap = signal.market_snapshot || {};
-  if (signal.recommended_action === 'long_on_pullback') return `回踩 ${fmtInt(snap.flip_level)} 上方不破`;
-  if (signal.recommended_action === 'short_on_retest') return `反抽 ${fmtInt(snap.call_wall || snap.flip_level)} 不过`;
-  if (signal.recommended_action === 'income_ok') return `围绕 ${fmtInt(snap.max_pain)} 钉住，IV 回落`;
-  if (signal.recommended_action === 'no_trade') return '无触发，先保护本金';
-  return `离开 Flip ${fmtInt(snap.flip_level)} 后再看`;
+  if (!isExecutable(signal)) return '--';
+  return signal?.trade_plan?.entry_zone?.text || '--';
 }
 
 function buildTarget(signal) {
-  const snap = signal.market_snapshot || {};
-  if (signal.recommended_action === 'long_on_pullback') return `${fmtInt(snap.call_wall)} / 上方流动性`;
-  if (signal.recommended_action === 'short_on_retest') return `${fmtInt(snap.put_wall)} / 下方流动性`;
-  if (signal.recommended_action === 'income_ok') return `${fmtInt(snap.put_wall)} - ${fmtInt(snap.call_wall)} 区间内收时间`;
-  return '无目标，先等';
+  if (!isExecutable(signal)) return '--';
+  return signal?.trade_plan?.target_text || '--';
 }
 
 function buildInvalidation(signal) {
-  if (signal.plain_language?.invalidation) return signal.plain_language.invalidation;
-  const snap = signal.market_snapshot || {};
-  if (signal.invalidation_level) return `跌破 / 站回 ${fmtInt(signal.invalidation_level)}`;
-  return `Flip ${fmtInt(snap.flip_level)} 失效`; 
+  if (!isExecutable(signal)) return '--';
+  return signal?.trade_plan?.invalidation?.text || signal?.trade_plan?.invalidation_text || '--';
 }
 
 function buildAvoid(signal) {
@@ -420,6 +494,7 @@ function renderTopbar(path, signal) {
   const sentCls = getSentimentClass(signal);
   const sentFill = getSentimentFill(signal);
   const sentText = getSentimentText(signal);
+  const blockReason = getExecutionBlockReason(signal);
   return `
     <header class="topbar">
       <div class="topbar-inner">
@@ -448,6 +523,7 @@ function renderTopbar(path, signal) {
         </div>
         <div class="sentiment-chips">
           <span class="sentiment-chip ${sentCls}">${escapeHtml(sentText)}</span>
+          ${blockReason ? `<span class="sentiment-chip conflict">${escapeHtml(blockReason)}</span>` : ''}
         </div>
       </div>
     </header>
@@ -520,6 +596,7 @@ function renderMetricCards(signal) {
         <div class="big-number">${displaySpot(snap)}</div>
         <div class="delta-line"><i class="pulse-bar"></i><span>${displaySpotContext(snap)}</span></div>
         <div class="tag-row" style="margin-top:8px">
+          <span class="tag blue">Spot ${escapeHtml(signal?.market_snapshot?.spot_source || signal?.command_inputs?.external_spot?.source || 'unavailable')}</span>
           <span class="tag ${chipClassByRisk(signal.gamma_regime)}">${gammaLabel(signal.gamma_regime)}</span>
           <span class="tag blue" title="多空分界线：价格在此上方偏多，下方偏空">多空线 ${fmtInt(snap.flip_level)}</span>
         </div>
@@ -615,7 +692,7 @@ function renderVolLights(signal) {
 
 function renderRiskStack(signal) {
   const cls = qualityClass(signal);
-  const conflicts = signal.conflict?.conflict_points || [];
+  const conflicts = getTopConflictReasons(signal);
   return `
     <div class="risk-col">
       <div class="metric-card">
@@ -715,10 +792,10 @@ function renderLevelMatrix(signal) {
   const snap = signal.market_snapshot || {};
   const items = [
     ['SPX', displaySpot(snap), displaySpotContext(snap)],
-    ['Flip', fmtInt(snap.flip_level), `距离 ${distanceLabel(snap.distance_to_flip)}`],
-    ['Call Wall', fmtInt(snap.call_wall), `距离 ${distanceLabel(snap.distance_to_call_wall)}`],
-    ['Put Wall', fmtInt(snap.put_wall), `距离 ${distanceLabel(snap.distance_to_put_wall)}`],
-    ['Max Pain', fmtInt(snap.max_pain), '中轴参考'],
+    ['Flip', isExecutable(signal) ? fmtInt(snap.flip_level) : '--', isExecutable(signal) ? `距离 ${distanceLabel(snap.distance_to_flip)}` : getExecutionBlockReason(signal)],
+    ['Call Wall', isExecutable(signal) ? fmtInt(snap.call_wall) : '--', isExecutable(signal) ? `距离 ${distanceLabel(snap.distance_to_call_wall)}` : getExecutionBlockReason(signal)],
+    ['Put Wall', isExecutable(signal) ? fmtInt(snap.put_wall) : '--', isExecutable(signal) ? `距离 ${distanceLabel(snap.distance_to_put_wall)}` : getExecutionBlockReason(signal)],
+    ['Max Pain', isExecutable(signal) ? fmtInt(snap.max_pain) : '--', isExecutable(signal) ? '中轴参考' : getExecutionBlockReason(signal)],
     ['把握度', qualityScore(signal), '当前执行把握']
   ];
   return `
@@ -781,7 +858,7 @@ function renderHome(signal) {
 
 function renderRadarSummary(signal) {
   const snap = signal.market_snapshot || {};
-  const conflictPoints = signal.conflict?.conflict_points || [];
+  const conflictPoints = getTopConflictReasons(signal);
   const dealerConclusion = safeText(signal.engines?.dealer_conclusion, signal.plain_language?.dealer_behavior || '等待做市商方向确认。');
   const uwConclusion = safeText(signal.engines?.uw_conclusion, 'UW 未接入，当前只作为后续辅助位。');
   const fmpConclusion = safeText(signal.engines?.fmp_conclusion, signal.event_context?.event_note || '无重大事件风险。');
@@ -795,10 +872,10 @@ function renderRadarSummary(signal) {
         </div>
         <p class="radar-note">${escapeHtml(safeText(signal.radar_summary?.dealer, dealerConclusion))}</p>
         <div class="matrix-list">
-          <div class="matrix-item"><div class="matrix-name">现价位置</div><div class="matrix-value">${displaySpotContext(snap)}</div><div class="matrix-number">${displaySpot(snap)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Flip</div><div class="matrix-value">${distanceLabel(snap.distance_to_flip)}</div><div class="matrix-number">${fmtInt(snap.flip_level)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Call Wall</div><div class="matrix-value">${distanceLabel(snap.distance_to_call_wall)}</div><div class="matrix-number">${fmtInt(snap.call_wall)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Put Wall</div><div class="matrix-value">${distanceLabel(snap.distance_to_put_wall)}</div><div class="matrix-number">${fmtInt(snap.put_wall)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Spot 来源</div><div class="matrix-value">${escapeHtml(signal?.market_snapshot?.spot_source || signal?.command_inputs?.external_spot?.source || 'unavailable')}</div><div class="matrix-number">${displaySpot(snap)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Gamma 来源</div><div class="matrix-value">${escapeHtml(signal?.dealer_conclusion?.status === 'live' ? 'theta/live' : 'scenario/mock')}</div><div class="matrix-number">${escapeHtml(signal?.data_health?.coherence_status || signal?.data_health?.data_mode || 'unknown')}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Flip</div><div class="matrix-value">${isExecutable(signal) ? distanceLabel(snap.distance_to_flip) : getExecutionBlockReason(signal)}</div><div class="matrix-number">${isExecutable(signal) ? fmtInt(snap.flip_level) : '--'}</div></div>
+          <div class="matrix-item"><div class="matrix-name">结论</div><div class="matrix-value">${escapeHtml(getExecutionBlockReason(signal) || '可观察')}</div><div class="matrix-number">${escapeHtml(signal?.data_health?.coherence_reason || '价格地图一致')}</div></div>
         </div>
       </article>
 

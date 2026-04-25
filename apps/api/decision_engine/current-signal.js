@@ -4,6 +4,7 @@ import { runMasterEngine } from './master-engine.js';
 import { getTradingViewSnapshot } from '../storage/tradingview-snapshot.js';
 import { getFmpSnapshot } from '../adapters/fmp/index.js';
 import { readUwSnapshot } from '../state/uwSnapshotStore.js';
+import { readThetaSnapshot } from '../state/thetaSnapshotStore.js';
 
 function isFmpRiskDegraded(snapshot) {
   if (!snapshot) {
@@ -112,6 +113,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   const snapshot = await getTradingViewSnapshot();
   const fmpSnapshot = await getFmpSnapshot(options.fmp);
   const uwSnapshot = options.uw?.snapshot ?? await readUwSnapshot({ now: options.now });
+  const thetaSnapshot = options.theta?.snapshot ?? await readThetaSnapshot();
   const enrichedScenario = {
     ...applyFmpPriceSnapshot(
       applyFmpEventSnapshot(
@@ -120,7 +122,8 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
       ),
       fmpSnapshot.price
     ),
-    uw_snapshot: uwSnapshot
+    uw_snapshot: uwSnapshot,
+    theta_snapshot: thetaSnapshot
   };
   const normalized = normalizeMockScenario(enrichedScenario);
   return runMasterEngine(normalized);

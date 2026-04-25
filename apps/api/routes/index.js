@@ -22,6 +22,7 @@ import {
 import { sendJson, readJsonBody, secureCompare } from './helpers.js';
 import { ingestUwSummary } from '../../../integrations/unusual-whales/ingest/uw-ingest.js';
 import { writeUwSnapshot } from '../state/uwSnapshotStore.js';
+import { writeThetaSnapshot } from '../state/thetaSnapshotStore.js';
 
 function buildTelegramTestText(body = {}) {
   return [
@@ -209,6 +210,39 @@ export async function handleApiRoute(req, res) {
         is_mock: true
       });
     }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/ingest/theta') {
+    const body = await readJsonBody(req);
+    const expectedKey = process.env.DATA_PUSH_API_KEY || '';
+    const providedKey = typeof req.headers['x-api-key'] === 'string' ? req.headers['x-api-key'] : '';
+
+    if (!expectedKey || !secureCompare(providedKey, expectedKey)) {
+      return sendJson(res, 401, {
+        accepted: false,
+        message: 'Invalid theta ingest API key.',
+        is_mock: true
+      });
+    }
+
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return sendJson(res, 400, {
+        accepted: false,
+        message: 'Theta payload must be a JSON object.',
+        is_mock: true
+      });
+    }
+
+    await writeThetaSnapshot({
+      ...body,
+      received_at: new Date().toISOString()
+    });
+
+    return sendJson(res, 202, {
+      accepted: true,
+      message: 'Theta curated payload accepted.',
+      is_mock: false
+    });
   }
 
   if (req.method === 'POST' && url.pathname === '/telegram/test') {

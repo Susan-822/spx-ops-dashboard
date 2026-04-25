@@ -155,6 +155,10 @@ function emptyTargets() {
   ];
 }
 
+function reasonTag(reason) {
+  return reason || '--';
+}
+
 function hasValidNumber(value) {
   return Number.isFinite(Number(value)) && Number(value) !== 0;
 }
@@ -306,6 +310,11 @@ function buildPlainChinese({ status, directionLabelText, commandEnvironment, tra
 
 export function runTradePlanBuilder({ normalized, commandEnvironment, allowedSetups, tradingviewSentinel }) {
   const sentinelReason = tradingviewSentinel?.plain_chinese || tradingviewSentinel?.reason || '价格条件尚未到位。';
+  const nonExecutableReason =
+    commandEnvironment?.reason
+    || commandEnvironment?.coherence_reason
+    || commandEnvironment?.plain_chinese
+    || '指挥部环境尚未允许执行。';
 
   if (tradingviewSentinel?.event_type === 'structure_invalidated') {
     return {
@@ -355,9 +364,9 @@ export function runTradePlanBuilder({ normalized, commandEnvironment, allowedSet
       recommended_action: ACTIONS.WAIT,
       trigger_status: 'blocked',
       title: '等待指挥部允许',
-      trigger_text: '指挥部环境尚未允许执行。',
-      target_text: '未生成目标位。',
-      invalidation_text: `价格重新失守 flip ${normalized.flip_level}`,
+      trigger_text: nonExecutableReason,
+      target_text: '--',
+      invalidation_text: '--',
       entry_zone: emptyPriceField(),
       entry_trigger: '--',
       stop_loss: { level: null, basis: '', text: '--' },
@@ -370,7 +379,7 @@ export function runTradePlanBuilder({ normalized, commandEnvironment, allowedSet
       },
       confidence_score: commandEnvironment?.confidence_score ?? 0,
       supporting_factors: [],
-      conflicts: [commandEnvironment?.reason].filter(Boolean),
+      conflicts: [nonExecutableReason].filter(Boolean),
       forbidden_actions: ['不追高', '不提前押方向'],
       plain_chinese: buildPlainChinese({
         status: 'blocked',
@@ -398,7 +407,7 @@ export function runTradePlanBuilder({ normalized, commandEnvironment, allowedSet
       title: '等待 TradingView 哨兵确认',
       trigger_text: sentinelReason,
       target_text: '未生成目标位。',
-      invalidation_text: `价格重新失守 flip ${normalized.flip_level}`,
+      invalidation_text: '--',
       entry_zone: emptyPriceField(),
       entry_trigger: '--',
       stop_loss: { level: null, basis: '', text: '--' },
@@ -440,7 +449,7 @@ export function runTradePlanBuilder({ normalized, commandEnvironment, allowedSet
       title: '哨兵触发，但当前 setup 未被允许',
       trigger_text: sentinelReason,
       target_text: '未生成目标位。',
-      invalidation_text: `价格重新失守 flip ${normalized.flip_level}`,
+      invalidation_text: '--',
       entry_zone: emptyPriceField(),
       entry_trigger: '--',
       stop_loss: { level: null, basis: '', text: '--' },

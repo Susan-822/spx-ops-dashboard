@@ -80,6 +80,15 @@ export function runConflictResolver({
   if (fmp_conclusion.price_status === 'conflict') {
     conflicts.push('价格状态冲突，禁止执行。');
   }
+  if (data_health.coherence === 'mixed') {
+    conflicts.push('真实现价与 scenario/mock Gamma 地图混用，禁止执行。');
+  }
+  if (data_health.coherence === 'conflict') {
+    conflicts.push('现价与 Flip/Wall/Max Pain 地图严重冲突，禁止执行。');
+  }
+  if (data_health.coherence === 'mock') {
+    conflicts.push('当前为演示场景，不可交易。');
+  }
 
   let severity = 'none';
   let action = 'allow';
@@ -87,6 +96,7 @@ export function runConflictResolver({
     uw_conclusion.dealer_crosscheck === 'conflict'
     || fmp_conclusion.event_risk === 'blocked'
     || (allowed_setups?.iron_condor?.allowed === true && uw_conclusion.volatility_light === 'green')
+    || ['mixed', 'conflict', 'mock'].includes(data_health.coherence)
   ) {
     severity = 'high';
     action = 'block';

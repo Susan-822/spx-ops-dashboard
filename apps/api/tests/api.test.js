@@ -27,13 +27,13 @@ const {
 } = await import('../state/telegramAlertDedupeStore.js');
 
 const EXPECTED_ACTIONS = {
-  negative_gamma_wait_pullback: 'wait',
-  positive_gamma_income_watch: 'wait',
-  flip_conflict_wait: 'wait',
+  negative_gamma_wait_pullback: 'no_trade',
+  positive_gamma_income_watch: 'no_trade',
+  flip_conflict_wait: 'no_trade',
   theta_stale_no_trade: 'no_trade',
-  fmp_event_no_short_vol: 'wait',
-  uw_call_strong_unconfirmed: 'wait',
-  breakout_pullback_pending: 'wait'
+  fmp_event_no_short_vol: 'no_trade',
+  uw_call_strong_unconfirmed: 'no_trade',
+  breakout_pullback_pending: 'no_trade'
 };
 
 const ALLOWED_MARKET_STATES = new Set([
@@ -496,7 +496,7 @@ test('FMP high-risk event updates event_context and keeps source_status.fmp real
 
   assert.equal(signal.event_context.event_risk, 'high');
   assert.match(signal.event_context.event_note, /FMP 检测到/);
-  assert.equal(signal.recommended_action, 'wait');
+  assert.equal(signal.recommended_action, 'no_trade');
 
   const fmpStatus = signal.source_status.find((item) => item.source === 'fmp_event');
   assert.ok(fmpStatus);
@@ -747,7 +747,7 @@ test('buildAlertMessage renders dedicated Chinese FMP exception warning', async 
 test('command environment can allow setups while TV sentinel still blocks execution', async () => {
   const signal = await getCurrentSignal('uw_call_strong_unconfirmed');
 
-  assert.equal(signal.recommended_action, 'wait');
+  assert.equal(signal.recommended_action, 'no_trade');
   assert.equal(signal.engines.command_environment.allowed, false);
   assert.equal(signal.engines.allowed_setups.single_leg.allowed, false);
   assert.equal(signal.engines.allowed_setups.vertical.allowed, false);
@@ -765,7 +765,7 @@ test('TV sentinel only upgrades to directional plan when command environment all
   assert.equal(signal.engines.tv_sentinel.triggered, true);
   assert.equal(signal.engines.tv_sentinel.direction, 'bullish');
   assert.equal(signal.engines.trade_plan.plan_family, null);
-  assert.equal(signal.recommended_action, 'wait');
+  assert.equal(signal.recommended_action, 'no_trade');
 });
 
 test('telegram dedupe bypasses structure invalidated, stale, and data_mixed alerts', async () => {
@@ -1090,4 +1090,84 @@ test('UW interaction rules block execution for partial/stale, block iron condor 
   assert.equal(telegramMessage.includes('raw_rows'), false);
   assert.equal(telegramMessage.includes('token'), false);
   assert.equal(JSON.stringify(signal.projection).includes('raw_visible_fields'), false);
+});
+
+test('real FMP spot plus scenario gamma forces mixed data coherence and no-trade style suppression', async () => {
+  process.env.FMP_API_KEY = 'test-key';
+
+  const signal = await getCurrentSignal('breakout_pullback_pending', {
+    fmp: {
+      event: {
+        fetchImpl: async () => ({
+          ok: true,
+          async json() {
+            return [];
+          }
+        })
+      },
+      price: {
+        quoteShortFetchImpl: async () => ({
+          ok: true,
+          async json() {
+            return [{ symbol: '^GSPC', price: 9000.0 }];
+          }
+        }),
+        quoteFetchImpl: async () => { throw new Error('unused'); },
+        historicalFetchImpl: async () => { throw new Error('unused'); }
+      }
+    }
+  });
+
+  assert.equal(signal.market_snapshot.spot, 9000);
+  assert.equal(signal.data_health.coherence, 'conflict');
+  assert.equal(signal.data_health.executable, false);
+  assert.equal(signal.command_environment.executable, false);
+  assert.equal(signal.command_environment.data_mode, 'conflict');
+  assert.equal(signal.recommended_action, 'no_trade');
+  assert.ok((signal.confidence_score || 0) <= 20);
+  assert.equal(signal.trade_plan.entry_zone?.text, '--');
+  assert.equal(signal.trade_plan.stop_loss?.text, '--');
+  assert.equal(signal.trade_plan.target_text, '--');
+  assert.match(signal.command_environment.reason, /数据冲突|演示场景|mock Gamma/i);
+
+  delete process.env.FMP_API_KEY;
+});
+
+test('large external spot distance from scenario structure forces conflict data mode and blocks targets', async () => {
+  process.env.FMP_API_KEY = 'test-key';
+
+  const signal = await getCurrentSignal('negative_gamma_wait_pullback', {
+    fmp: {
+      event: {
+        fetchImpl: async () => ({
+          ok: true,
+          async json() {
+            return [];
+          }
+        })
+      },
+      price: {
+        quoteShortFetchImpl: async () => ({
+          ok: true,
+          async json() {
+            return [{ symbol: '^GSPC', price: 9000.00 }];
+          }
+        }),
+        quoteFetchImpl: async () => { throw new Error('unused'); },
+        historicalFetchImpl: async () => { throw new Error('unused'); }
+      }
+    }
+  });
+
+  assert.equal(signal.data_health.coherence, 'conflict');
+  assert.equal(signal.data_health.executable, false);
+  assert.equal(signal.command_environment.executable, false);
+  assert.equal(signal.command_environment.data_mode, 'conflict');
+  assert.equal(signal.recommended_action, 'no_trade');
+  assert.ok((signal.confidence_score || 0) <= 20);
+  assert.equal(signal.trade_plan.entry_zone?.text, '--');
+  assert.equal(signal.trade_plan.stop_loss?.text, '--');
+  assert.equal(signal.trade_plan.target_text, '--');
+
+  delete process.env.FMP_API_KEY;
 });

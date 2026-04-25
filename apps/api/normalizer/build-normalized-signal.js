@@ -214,7 +214,10 @@ function deriveSpotContext(rawScenario) {
       spot_source: 'mock',
       spot_last_updated: rawScenario.last_updated?.fmp ?? rawScenario.timestamp,
       spot_is_real: false,
-      price_health: 'mock'
+      price_health: 'mock',
+      external_spot: Number.isFinite(Number(rawScenario.spot)) ? Number(rawScenario.spot) : null,
+      external_spot_source: Number.isFinite(Number(rawScenario.spot)) ? 'market_snapshot' : 'unavailable',
+      external_spot_is_real: false
     };
   }
 
@@ -232,7 +235,10 @@ function deriveSpotContext(rawScenario) {
       spot_source: 'fmp',
       spot_last_updated: priceSnapshot.last_updated || priceSnapshot.data_timestamp || rawScenario.last_updated?.fmp,
       spot_is_real: false,
-      price_health: state || (priceSnapshot.stale ? 'stale' : 'degraded')
+      price_health: state || (priceSnapshot.stale ? 'stale' : 'degraded'),
+      external_spot: null,
+      external_spot_source: 'unavailable',
+      external_spot_is_real: false
     };
   }
 
@@ -241,7 +247,78 @@ function deriveSpotContext(rawScenario) {
     spot_source: 'fmp',
     spot_last_updated: priceSnapshot.last_updated || priceSnapshot.data_timestamp || rawScenario.last_updated?.fmp,
     spot_is_real: true,
-    price_health: 'real'
+    price_health: 'real',
+    external_spot: Number(priceSnapshot.price),
+    external_spot_source: 'fmp',
+    external_spot_is_real: true
+  };
+}
+
+function deriveExpectedMoveRange(rawScenario) {
+  const upper = Number(rawScenario.call_wall);
+  const lower = Number(rawScenario.put_wall);
+  if (!Number.isFinite(upper) || !Number.isFinite(lower)) {
+    return null;
+  }
+  return Math.abs(upper - lower);
+}
+
+function deriveDataCoherence(rawScenario, sourceStatus, spotContext) {
+  const thetaCore = sourceStatus.find((item) => item.source === 'theta_core');
+  const thetaChain = sourceStatus.find((item) => item.source === 'theta_full_chain');
+  const thetaIsMockLike =
+    !thetaCore
+    || thetaCore.is_mock === true
+    || ['mock', 'degraded', 'down', 'unavailable'].includes(thetaCore.state)
+    || !thetaChain
+    || thetaChain.is_mock === true;
+
+  const expectedMove = deriveExpectedMoveRange(rawScenario);
+  const externalSpot = Number(spotContext.external_spot);
+  const flip = Number(rawScenario.flip_level);
+  const callWall = Number(rawScenario.call_wall);
+  const putWall = Number(rawScenario.put_wall);
+  const maxPain = Number(rawScenario.max_pain);
+  const hasRealSpot = spotContext.external_spot_is_real === true && Number.isFinite(externalSpot);
+  const hasScenarioLevels =
+    [flip, callWall, putWall, maxPain].every((value) => Number.isFinite(value));
+
+  const issues = [];
+  let status = 'coherent';
+
+  if (hasRealSpot && hasScenarioLevels) {
+    const maxDistance = Math.max(150, (expectedMove ?? 0) * 3);
+    const flipDistance = Math.abs(externalSpot - flip);
+    if (flipDistance > maxDistance) {
+      status = 'conflict';
+      issues.push(`真实现价与 Flip 偏差过大 (${Math.round(flipDistance)}pt)`);
+    }
+
+    const boundedRangeLow = Math.min(putWall, maxPain, callWall) - Math.max(100, (expectedMove ?? 0) * 0.5);
+    const boundedRangeHigh = Math.max(putWall, maxPain, callWall) + Math.max(100, (expectedMove ?? 0) * 0.5);
+    if (externalSpot < boundedRangeLow || externalSpot > boundedRangeHigh) {
+      status = 'conflict';
+      issues.push('真实现价与 Call/Put Wall / Max Pain 不在同一价格区间');
+    }
+  }
+
+  if (status !== 'conflict' && hasRealSpot && thetaIsMockLike) {
+    status = 'mixed';
+    issues.push('真实外部现价与 scenario/mock Dealer 地图混用');
+  }
+
+  if (!hasRealSpot && rawScenario.fetch_mode === 'mock_scenario') {
+    status = 'mock';
+    issues.push('演示场景｜不可交易');
+  }
+
+  return {
+    status,
+    issues,
+    theta_is_mock_like: thetaIsMockLike,
+    expected_move: expectedMove,
+    external_spot: hasRealSpot ? externalSpot : null,
+    external_spot_source: spotContext.external_spot_source ?? 'unavailable'
   };
 }
 
@@ -422,6 +499,7 @@ export function normalizeMockScenario(rawScenario) {
   const fmpStatus = source_status.find((item) => item.source === 'fmp_event');
   const eventContext = deriveEventContext(rawScenario, fmpStatus);
   const spotContext = deriveSpotContext(rawScenario);
+  const dataCoherence = deriveDataCoherence(rawScenario, source_status, spotContext);
   const tradingViewContext = deriveTradingViewContext(rawScenario);
   const notes = appendUniqueNote([], tradingViewContext.tradingview_note);
 
@@ -448,6 +526,10 @@ export function normalizeMockScenario(rawScenario) {
     spot_last_updated: spotContext.spot_last_updated,
     spot_is_real: spotContext.spot_is_real,
     price_health: spotContext.price_health,
+    external_spot: spotContext.external_spot,
+    external_spot_source: spotContext.external_spot_source,
+    external_spot_is_real: spotContext.external_spot_is_real,
+    data_coherence: dataCoherence,
     flip_level: rawScenario.flip_level,
     call_wall: rawScenario.call_wall,
     put_wall: rawScenario.put_wall,

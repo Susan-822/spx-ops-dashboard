@@ -3,7 +3,8 @@ export function runCommandInputAggregator({
   dealerConclusion,
   uwConclusion,
   tvSentinel,
-  dataHealth
+  dataHealth,
+  externalSpot = {}
 }) {
   const missing_inputs = [];
   const conflicts = [];
@@ -42,6 +43,12 @@ export function runCommandInputAggregator({
   if (uwConclusion?.dealer_crosscheck === 'conflict') {
     conflicts.push('UW 与 Dealer 主源交叉验证冲突');
   }
+  if (dataHealth?.coherence === 'mixed') {
+    conflicts.push('真实 Spot 与 scenario/mock Dealer 地图混用');
+  }
+  if (dataHealth?.coherence === 'conflict') {
+    conflicts.push('真实 Spot 与 Gamma / Wall 地图严重冲突');
+  }
 
   return {
     market: {
@@ -65,6 +72,12 @@ export function runCommandInputAggregator({
     },
     price_sentinel: {
       tv_sentinel: tvSentinel
+    },
+    externalSpot: {
+      source: externalSpot?.source ?? 'unavailable',
+      price: Number.isFinite(Number(externalSpot?.price)) ? Number(externalSpot.price) : null,
+      last_updated: externalSpot?.last_updated ?? null,
+      coherent: dataHealth?.coherence === 'live'
     },
     data_health: {
       data_health: dataHealth

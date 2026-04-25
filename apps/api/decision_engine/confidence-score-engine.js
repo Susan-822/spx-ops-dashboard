@@ -11,12 +11,18 @@ export function runConfidenceScoreEngine({
   dataHealth,
   conflictResolver
 }) {
-  if (dataHealth?.data_mode === 'mixed' || dataHealth?.data_mode === 'mock' || dataHealth?.price_conflict === true) {
+  if (
+    dataHealth?.data_mode === 'mixed'
+    || dataHealth?.data_mode === 'mock'
+    || dataHealth?.data_mode === 'conflict'
+    || dataHealth?.price_conflict === true
+    || dataHealth?.coherence_guard?.has_conflict === true
+  ) {
     return {
-      score: 0,
-      environment_score: 0,
+      score: 20,
+      environment_score: 20,
       executable: false,
-      plain_chinese: '数据模式不可信，禁止执行。'
+      plain_chinese: dataHealth?.coherence_guard?.plain_chinese || '数据模式不可信，禁止执行。'
     };
   }
 

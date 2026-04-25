@@ -73,6 +73,8 @@ function buildDisplaySpotSnapshot(normalized, gammaWall) {
 
   return {
     spot: displaySpot,
+    external_spot: normalized.external_spot ?? displaySpot,
+    external_spot_source: normalized.external_spot_source ?? normalized.spot_source ?? null,
     spot_source: normalized.spot_source ?? null,
     spot_last_updated: normalized.spot_last_updated ?? null,
     spot_is_real: normalized.spot_is_real ?? false,
@@ -298,10 +300,21 @@ export function runMasterEngine(normalized) {
     },
     dataHealth
   });
+  const derivedDataMode =
+    dataHealth.coherence === 'conflict' || dataHealth.coherence === 'mixed'
+      ? dataHealth.coherence
+      : dataHealth.state === 'healthy'
+        ? 'live'
+        : dataHealth.state === 'degraded'
+          ? 'partial'
+          : 'mixed';
   const commandEnvironmentDataHealth = {
     ...dataHealth,
-    data_mode: dataHealth.state === 'healthy' ? 'live' : dataHealth.state === 'degraded' ? 'partial' : 'mixed',
-    price_conflict: fmpConclusion.price_status === 'conflict'
+    data_mode: derivedDataMode,
+    price_conflict: fmpConclusion.price_status === 'conflict' || dataHealth.coherence === 'conflict',
+    coherence: dataHealth.coherence,
+    spot_structure_mismatch: dataHealth.spot_structure_mismatch,
+    external_spot_source: normalized.external_spot_source ?? 'unavailable'
   };
   const provisionalCommandEnvironment = runCommandEnvironmentEngine({
     data_health: commandEnvironmentDataHealth,
@@ -392,7 +405,7 @@ export function runMasterEngine(normalized) {
     dataHealth: {
       ...dataHealth,
       data_mode: commandEnvironment.data_mode,
-      price_conflict: fmpConclusion.price_status === 'conflict'
+      price_conflict: fmpConclusion.price_status === 'conflict' || dataHealth.coherence === 'conflict'
     },
     conflictResolver
   });
@@ -493,6 +506,8 @@ export function runMasterEngine(normalized) {
     gamma_regime: normalized.gamma_regime,
     market_snapshot: {
       spot: displaySpotSnapshot.spot,
+      external_spot: displaySpotSnapshot.external_spot,
+      external_spot_source: displaySpotSnapshot.external_spot_source,
       spot_source: displaySpotSnapshot.spot_source,
       spot_last_updated: displaySpotSnapshot.spot_last_updated,
       spot_is_real: displaySpotSnapshot.spot_is_real,
@@ -578,7 +593,9 @@ export function runMasterEngine(normalized) {
     data_health: {
       ...dataHealth,
       data_mode: commandEnvironment.data_mode,
-      executable: commandEnvironment.executable
+      executable: commandEnvironment.executable,
+      coherence: dataHealth.coherence,
+      spot_structure_mismatch: dataHealth.spot_structure_mismatch
     },
     conflict_resolver: conflictResolver,
     command_inputs: commandInputs,

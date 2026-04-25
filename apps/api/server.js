@@ -19,7 +19,10 @@ const BASIC_AUTH_USER = process.env.APP_BASIC_AUTH_USER || 'spx';
 const BASIC_AUTH_PASSWORD = process.env.APP_BASIC_AUTH_PASSWORD || '';
 
 function isAuthExempt(pathname) {
-  return pathname === '/health' || pathname === '/webhook/tradingview' || pathname === '/ingest/uw';
+  return pathname === '/health'
+    || pathname === '/webhook/tradingview'
+    || pathname === '/ingest/uw'
+    || pathname === '/ingest/theta';
 }
 
 function parseBasicAuth(authorizationHeader) {

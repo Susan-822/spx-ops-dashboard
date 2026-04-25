@@ -11,9 +11,19 @@ export function runCommandEnvironmentEngine(input = {}) {
   const blockers = [];
   const missingInputs = Array.isArray(commandInputs?.missing_inputs) ? commandInputs.missing_inputs : [];
   const uwStatus = String(uwConclusion?.status || 'unavailable');
+  const coherence = dataHealth?.coherence || 'aligned';
 
   if (dataHealth.hard_block || dataHealth.command_inputs_fresh === false) {
     blockers.push('数据健康不足');
+  }
+  if (coherence === 'mixed') {
+    blockers.push('演示场景与真实现价混用');
+  }
+  if (coherence === 'conflict') {
+    blockers.push('数据冲突｜禁止执行');
+  }
+  if (dataHealth?.demo_mode === true) {
+    blockers.push('演示场景｜不可交易');
   }
   if (missingInputs.some((item) => ['fmp', 'theta'].includes(item))) {
     blockers.push('缺少关键输入');
@@ -52,6 +62,7 @@ export function runCommandEnvironmentEngine(input = {}) {
       forbidden_zone: 'middle_chop',
       confidence_score: confidenceScore?.score ?? 0,
       data_mode: dataHealth?.data_mode ?? 'mixed',
+      trade_permission: 'no_trade',
       regime_note: blockers.join('；'),
       reason: blockers.join('；'),
       blockers,
@@ -152,6 +163,7 @@ export function runCommandEnvironmentEngine(input = {}) {
     forbidden_zone: dealerConclusion?.dealer_behavior === 'mixed' ? 'middle_chop' : 'none',
     confidence_score: confidenceScore?.score ?? 0,
     data_mode: dataHealth?.data_mode ?? 'partial',
+    trade_permission: 'wait',
     regime_note: regime_bias === 'income'
       ? '指挥部允许观察波动率与结构联动。'
       : '指挥部允许观察方向结构，但仍需价格触发。',

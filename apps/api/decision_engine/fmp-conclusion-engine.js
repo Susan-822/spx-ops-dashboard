@@ -38,6 +38,7 @@ export function runFmpConclusionEngine({ normalized, eventRisk }) {
   const priceSource = getSourceStatus(normalized.source_status, 'fmp_price');
   const status = statusFromSource(eventSource);
   const unavailableLike = status === 'unavailable' || status === 'stale' || status === 'error';
+  const externalSpotSource = normalized.external_spot_source || 'unavailable';
   const priceStatus =
     unavailableLike ? 'unavailable'
     : !priceSource ? 'unavailable'
@@ -67,6 +68,7 @@ export function runFmpConclusionEngine({ normalized, eventRisk }) {
     vix_signal: 'unavailable',
     event_risk,
     price_status: priceStatus,
+    external_spot_source: externalSpotSource,
     confidence_score,
     plain_chinese:
       status === 'live'

@@ -25,9 +25,19 @@ export function runActionEngine({
   tvSentinel,
   tradePlan
 }) {
+  if (commandEnvironment?.trade_permission === 'no_trade') {
+    return {
+      recommended_action: ACTIONS.NO_TRADE,
+      avoid_actions: [AVOID.TRADE_ON_STALE_DATA, AVOID.MIDDLE_ZONE_COUNTERTREND, AVOID.EARLY_IRON_CONDOR],
+      invalidation_level: tradePlan?.invalidation_text || `价格重新失守 flip ${normalized.flip_level}`,
+      confidence_score: Math.min(20, Number(commandEnvironment?.confidence_score ?? 0))
+    };
+  }
+
   const avoid = new Set();
   let confidence = conflict.adjusted_confidence;
   const marketState = marketRegime?.market_state || 'unknown';
+  const coherenceGuard = normalized?.data_coherence || {};
 
   if (marketState === 'negative_gamma_expand') {
     confidence -= 6;
@@ -43,6 +53,13 @@ export function runActionEngine({
   if (normalized.stale_flags.any_stale) {
     confidence -= 10;
     avoid.add(AVOID.TRADE_ON_STALE_DATA);
+  }
+
+  if (coherenceGuard.mode === 'mixed' || coherenceGuard.mode === 'conflict' || coherenceGuard.mode === 'mock') {
+    confidence = Math.min(confidence, 20);
+    avoid.add(AVOID.TRADE_ON_STALE_DATA);
+    avoid.add(AVOID.CHASING);
+    avoid.add(AVOID.EARLY_IRON_CONDOR);
   }
 
   if (eventRisk.risk_gate === 'blocked') {
@@ -80,7 +97,9 @@ export function runActionEngine({
   );
 
   let recommended_action = ACTIONS.WAIT;
-  if (normalized.stale_flags.any_stale) {
+  if (coherenceGuard.mode === 'mixed' || coherenceGuard.mode === 'conflict' || coherenceGuard.mode === 'mock') {
+    recommended_action = ACTIONS.NO_TRADE;
+  } else if (normalized.stale_flags.any_stale) {
     recommended_action = normalized.stale_flags.theta ? ACTIONS.NO_TRADE : ACTIONS.WAIT;
   } else if (tradePlan?.recommended_action && Object.values(ACTIONS).includes(tradePlan.recommended_action)) {
     recommended_action = tradePlan.recommended_action;
