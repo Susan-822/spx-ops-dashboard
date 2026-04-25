@@ -30,8 +30,8 @@ function readPresentFlag(value) {
   return Boolean(String(value || '').trim());
 }
 
-function getBridgeConfig() {
-  const envInfo = loadLocalEnv();
+async function getBridgeConfig() {
+  const envInfo = await loadLocalEnv();
   const cloudUrl = String(process.env.CLOUD_URL || '').trim().replace(/\/+$/, '');
   const apiKey = String(process.env.DATA_PUSH_API_KEY || '').trim();
   const thetaBaseUrl = String(process.env.THETADATA_BASE_URL || 'http://127.0.0.1:25503').trim();
@@ -51,11 +51,15 @@ function getBridgeConfig() {
 
 function printConfigSummary(config) {
   console.log(JSON.stringify({
-    env_file_used: config.envFileUsed,
+    env_file_used: config.env_file_used || null,
     CLOUD_URL_present: readPresentFlag(config.cloudUrl),
     DATA_PUSH_API_KEY_present: readPresentFlag(config.dataPushApiKey),
     UW_BEARER_TOKEN_present: readPresentFlag(process.env.UW_BEARER_TOKEN || '')
   }, null, 2));
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function createUnavailableThetaPayload({
@@ -235,8 +239,54 @@ async function postThetaPayload(config, payload) {
   };
 }
 
+async function postThetaPayloadWithRetry(config, payload) {
+  const delaysMs = [0, 2000, 5000];
+  let lastError = null;
+
+  for (let attempt = 0; attempt < delaysMs.length; attempt += 1) {
+    if (delaysMs[attempt] > 0) {
+      await sleep(delaysMs[attempt]);
+    }
+
+    try {
+      const result = await postThetaPayload(config, payload);
+      console.log(JSON.stringify({
+        mode: 'theta-only',
+        retry_attempt: attempt + 1,
+        push_status: result.status,
+        push_ok: result.ok
+      }, null, 2));
+
+      if (result.ok) {
+        return result;
+      }
+      lastError = new Error(`Theta ingest returned ${result.status}`);
+    } catch (error) {
+      lastError = error;
+      console.error(JSON.stringify({
+        mode: 'theta-only',
+        retry_attempt: attempt + 1,
+        status: 'push_error',
+        message: error.message
+      }, null, 2));
+    }
+  }
+
+  throw lastError ?? new Error('Theta ingest failed after retries.');
+}
+
+function assertThetaOnlyPushConfig(config) {
+  if (!config.cloudUrl) {
+    throw new Error('CLOUD_URL missing.');
+  }
+  if (!config.dataPushApiKey) {
+    throw new Error('DATA_PUSH_API_KEY missing.');
+  }
+}
+
 async function runThetaOnly(config, { once }) {
   printConfigSummary(config);
+  assertThetaOnlyPushConfig(config);
   const payload = await buildThetaPayload(config);
   console.log(JSON.stringify({
     mode: 'theta-only',
@@ -244,7 +294,7 @@ async function runThetaOnly(config, { once }) {
     payload
   }, null, 2));
 
-  const pushResult = await postThetaPayload(config, payload);
+  const pushResult = await postThetaPayloadWithRetry(config, payload);
   console.log(JSON.stringify({
     mode: 'theta-only',
     push_result: pushResult
@@ -257,7 +307,7 @@ async function runThetaOnly(config, { once }) {
   setInterval(async () => {
     try {
       const nextPayload = await buildThetaPayload(config);
-      const nextResult = await postThetaPayload(config, nextPayload);
+      const nextResult = await postThetaPayloadWithRetry(config, nextPayload);
       console.log(JSON.stringify({
         mode: 'theta-only',
         externalSpot_source: nextPayload.externalSpot_source || nextPayload.spot_source,
@@ -285,7 +335,7 @@ async function runUwOnly(config) {
 
 async function main() {
   const args = parseArgs();
-  const config = getBridgeConfig();
+  const config = await getBridgeConfig();
 
   if (args.thetaOnly) {
     await runThetaOnly(config, { once: args.once });

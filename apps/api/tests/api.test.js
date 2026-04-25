@@ -82,6 +82,8 @@ async function resetThetaStateEnv(overrides = {}) {
   delete process.env.THETA_SNAPSHOT_FILE;
   delete process.env.THETA_SNAPSHOT_TTL_SECONDS;
   delete process.env.THETA_SNAPSHOT_STALE_SECONDS;
+  delete process.env.THETA_TEST_SPOT;
+  delete process.env.MARKET_SNAPSHOT_PRICE;
   process.env.THETA_STATE_STORE = 'memory';
   Object.assign(process.env, overrides);
   await resetThetaSnapshotStoreForTests();
@@ -772,10 +774,11 @@ test('FMP stale forces medium event risk and stale source status semantics', asy
   delete process.env.FMP_API_KEY;
 });
 
-test('FMP price success replaces mock spot with real SPX price', async () => {
+test('FMP price success provides real SPX price in live fallback mode', async () => {
   process.env.FMP_API_KEY = 'test-key';
+  await resetThetaStateEnv();
 
-  const signal = await getCurrentSignal('breakout_pullback_pending', {
+  const signal = await getCurrentSignal(undefined, {
     fmp: {
       event: {
         fetchImpl: async () => ({
@@ -822,10 +825,11 @@ test('FMP price success replaces mock spot with real SPX price', async () => {
   delete process.env.FMP_API_KEY;
 });
 
-test('FMP price failure clears spot instead of falling back to mock price', async () => {
+test('FMP price failure leaves spot unavailable in live fallback mode', async () => {
   process.env.FMP_API_KEY = 'test-key';
+  await resetThetaStateEnv();
 
-  const signal = await getCurrentSignal('breakout_pullback_pending', {
+  const signal = await getCurrentSignal(undefined, {
     fmp: {
       event: {
         fetchImpl: async () => ({

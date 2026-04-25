@@ -206,6 +206,25 @@ function deriveEventContext(rawScenario, fmpStatus) {
 }
 
 function deriveSpotContext(rawScenario) {
+  const externalSpotPresent =
+    rawScenario.external_spot !== null
+    && rawScenario.external_spot !== undefined
+    && rawScenario.external_spot !== ''
+    && Number.isFinite(Number(rawScenario.external_spot));
+  if (externalSpotPresent) {
+    return {
+      spot: Number(rawScenario.external_spot),
+      spot_source: rawScenario.external_spot_source || rawScenario.spot_source || 'unavailable',
+      spot_last_updated:
+        rawScenario.external_spot_last_updated
+        || rawScenario.spot_last_updated
+        || rawScenario.last_updated?.fmp
+        || rawScenario.timestamp,
+      spot_is_real: Boolean(rawScenario.external_spot_is_real),
+      price_health: rawScenario.external_spot_is_real ? 'real' : 'manual'
+    };
+  }
+
   const priceSnapshot = rawScenario.fmp_price_snapshot;
   if (!priceSnapshot) {
     return {
