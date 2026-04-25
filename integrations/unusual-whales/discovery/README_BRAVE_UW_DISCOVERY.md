@@ -8,27 +8,27 @@
 
 ## 文件
 
-- `uw_discovery.sh`：调用 Brave Search API，生成 `uw_raw_results/raw_*.json`
-- `uw_parse.py`：清洗 raw JSON，生成 `uw_discovery_results.json`
-- `.env.example`：环境变量示例
+- `integrations/unusual-whales/discovery/uw_discovery.sh`：调用 Brave Search API，生成 `integrations/unusual-whales/discovery/uw_raw_results/raw_*.json`
+- `integrations/unusual-whales/discovery/uw_parse.py`：清洗 raw JSON，生成 `integrations/unusual-whales/discovery/uw_discovery_results.json`
+- `integrations/unusual-whales/.env.uw.example`：环境变量示例
 
 ## 运行方式
 
 ```bash
 export BRAVE_API_KEY="your_key_here"
-chmod +x uw_discovery.sh
-./uw_discovery.sh
-python3 uw_parse.py
+chmod +x integrations/unusual-whales/discovery/uw_discovery.sh
+./integrations/unusual-whales/discovery/uw_discovery.sh
+python3 integrations/unusual-whales/discovery/uw_parse.py
 ```
 
 ## 输出
 
 ```text
-uw_raw_results/raw_*.json
-uw_discovery_results.json
+integrations/unusual-whales/discovery/uw_raw_results/raw_*.json
+integrations/unusual-whales/discovery/uw_discovery_results.json
 ```
 
-`uw_discovery_results.json` 包含：
+`integrations/unusual-whales/discovery/uw_discovery_results.json` 包含：
 
 - `source_discovery`
 - `modules`
@@ -61,7 +61,7 @@ confidence >= 0.70
 
 ## Cursor 下一步
 
-读取 `uw_discovery_results.json`，选择 S 级高置信 URL。
+读取 `integrations/unusual-whales/discovery/uw_discovery_results.json`，选择 S 级高置信 URL。
 
 然后才开始本地 Playwright DOM Reader：
 

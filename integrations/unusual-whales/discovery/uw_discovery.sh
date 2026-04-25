@@ -7,13 +7,14 @@ set -euo pipefail
 #   Brave only discovers public Unusual Whales URLs and docs.
 #   It does NOT read member-only data, cookies, or logged-in pages.
 # Output:
-#   uw_raw_results/raw_*.json
+#   integrations/unusual-whales/discovery/uw_raw_results/raw_*.json
 # Then run:
-#   python3 uw_parse.py
+#   python3 integrations/unusual-whales/discovery/uw_parse.py
 # ============================================================
 
 BASE_URL="https://api.search.brave.com/res/v1/web/search"
-RAW_DIR="uw_raw_results"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RAW_DIR="$SCRIPT_DIR/uw_raw_results"
 COUNT="${BRAVE_SEARCH_COUNT:-20}"
 
 mkdir -p "$RAW_DIR"
@@ -100,4 +101,4 @@ search_brave "volatility_iv" "site:unusualwhales.com realized volatility term st
 # 6) Help / guide / docs
 search_brave "uw_help_docs" "site:unusualwhales.com help guide documentation options flow greek exposure dark pool" "$RAW_DIR/raw_6a_help.json"
 
-echo "Brave 搜索完成。下一步运行：python3 uw_parse.py"
+echo "Brave 搜索完成。下一步运行：python3 \"$SCRIPT_DIR/uw_parse.py\""

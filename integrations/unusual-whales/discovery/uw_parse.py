@@ -3,10 +3,10 @@
 Parse Brave Search raw JSON for Unusual Whales discovery.
 
 Input:
-  uw_raw_results/raw_*.json
+  discovery/uw_raw_results/raw_*.json
 
 Output:
-  uw_discovery_results.json
+  discovery/uw_discovery_results.json
 
 This parser only cleans public Brave search results. It does not read UW member data,
 store cookies, or access logged-in pages.
@@ -18,8 +18,9 @@ from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-RAW_DIR = Path("uw_raw_results")
-OUTPUT_FILE = Path("uw_discovery_results.json")
+BASE_DIR = Path(__file__).resolve().parent
+RAW_DIR = BASE_DIR / "uw_raw_results"
+OUTPUT_FILE = BASE_DIR / "uw_discovery_results.json"
 
 MODULE_CONFIG = {
     "spx_greek_exposure": {

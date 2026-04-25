@@ -4,8 +4,8 @@
 
 This whitelist is generated only from:
 
-- `UW_DISCOVERY_REVIEW.md`
-- `uw_discovery_review.json`
+- `integrations/unusual-whales/discovery/UW_DISCOVERY_REVIEW.md`
+- `integrations/unusual-whales/discovery/uw_discovery_review.json`
 
 This step does **not**:
 
@@ -407,9 +407,9 @@ These URLs are explicitly rejected.
 
 ## Raw File Submission Recommendation
 
-Current branch diff still includes:
+Current branch diff must not include:
 
-- `uw_raw_results/raw_*.json`
+- `integrations/unusual-whales/discovery/uw_raw_results/raw_*.json`
 
 Recommendation:
 
@@ -417,7 +417,7 @@ Recommendation:
 - add `.gitignore` entry:
 
 ```gitignore
-uw_raw_results/
+integrations/unusual-whales/discovery/uw_raw_results/
 ```
 
 - for long-term repo history, prefer committing only:
@@ -425,4 +425,4 @@ uw_raw_results/
   - whitelist outputs
   - any final curated manifests
 
-In other words: `uw_raw_results/` does **not** need to be submitted as part of the final curated DOM whitelist deliverable.
+In other words: `integrations/unusual-whales/discovery/uw_raw_results/` does **not** need to be submitted as part of the final curated DOM whitelist deliverable.
