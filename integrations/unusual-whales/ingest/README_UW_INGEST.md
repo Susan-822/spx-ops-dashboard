@@ -1,12 +1,31 @@
-# UW Ingest Placeholder
+# UW Ingest
 
-This directory is reserved for the future `/ingest/uw` contract implementation.
+This directory now contains the local runtime modules for the planned UW ingest chain.
 
-Current status:
+Current scope:
 
-- ingest is not implemented
-- no runtime code is added in this phase
-- no API wiring is added in this phase
+- validate a curated UW summary payload
+- enforce `UW_INGEST_SECRET`
+- reject raw HTML / cookie / token / member-table style payloads
+- write the accepted summary into `uwSnapshotStore`
+- support memory / file / redis-like adapter modes
+- compute stale state without breaking later consumers
+
+This directory still does **not**:
+
+- expose an actual web server route
+- wire into existing backend routing
+- bypass login
+- accept raw member-page HTML
+- accept cookies or account secrets
+
+Implemented local modules:
+
+- `ingest-contract.json`
+- `json-schema.js`
+- `uw-summary-schema.js`
+- `uw-snapshot-store.js`
+- `uw-ingest.js`
 
 Planned chain:
 

@@ -1,0 +1,29 @@
+{
+  "name": "spx-ops-dashboard",
+  "version": "1.0.0",
+  "description": "UW integration workspace for SPX Ops Lab",
+  "main": "integrations/unusual-whales/reader/uw_dom_reader_poc.js",
+  "scripts": {
+    "test": "node --test integrations/unusual-whales/tests/*.test.js",
+    "uw:reader:poc": "node integrations/unusual-whales/reader/uw_dom_reader_poc.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Susan-822/spx-ops-dashboard.git"
+  },
+  "keywords": [
+    "spx",
+    "unusual-whales",
+    "reader",
+    "ingest"
+  ],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Susan-822/spx-ops-dashboard/issues"
+  },
+  "homepage": "https://github.com/Susan-822/spx-ops-dashboard#readme",
+  "dependencies": {
+    "playwright-core": "^1.59.1"
+  }
+}

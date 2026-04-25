@@ -2,37 +2,262 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "integrations/unusual-whales/schemas/uw_summary.schema.json",
   "title": "UW Summary",
-  "description": "Placeholder summary schema for future Unusual Whales normalized payloads.",
+  "description": "Curated Unusual Whales summary payload accepted by the future /ingest/uw endpoint.",
   "type": "object",
+  "additionalProperties": false,
   "properties": {
     "source": {
       "type": "string",
-      "const": "unusual-whales"
+      "const": "unusual_whales_dom"
     },
-    "version": {
-      "type": "string"
+    "status": {
+      "type": "string",
+      "enum": [
+        "live",
+        "stale",
+        "error",
+        "partial"
+      ]
     },
-    "generated_at": {
-      "type": "string"
+    "last_update": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
-    "dealer_snapshot": {
-      "type": "object"
+    "dealer": {
+      "type": "object",
+      "$ref": "uw_dealer_snapshot.schema.json"
     },
-    "volatility_snapshot": {
-      "type": "object"
+    "volatility": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "iv_rank": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "implied_volatility": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "realized_volatility": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "implied_move": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "term_structure_state": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "front_hot",
+            "inverted",
+            "unknown"
+          ]
+        },
+        "volatility_activation_light": {
+          "type": "string",
+          "enum": [
+            "red",
+            "yellow",
+            "green",
+            "unknown"
+          ]
+        },
+        "volatility_activation_score": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "iv_rank",
+        "implied_volatility",
+        "realized_volatility",
+        "implied_move",
+        "term_structure_state",
+        "volatility_activation_light",
+        "volatility_activation_score"
+      ]
     },
-    "flow_snapshot": {
-      "type": "object"
+    "flow": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "not_implemented"
+          ]
+        },
+        "flow_bias": {
+          "type": "string",
+          "enum": [
+            "bullish",
+            "bearish",
+            "mixed",
+            "none",
+            "unknown"
+          ]
+        },
+        "flow_speed": {
+          "type": "string",
+          "enum": [
+            "accelerating",
+            "normal",
+            "fading",
+            "unknown"
+          ]
+        },
+        "flow_thrust": {
+          "type": "string",
+          "enum": [
+            "strong",
+            "medium",
+            "weak",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "flow_bias",
+        "flow_speed",
+        "flow_thrust"
+      ]
     },
-    "darkpool_snapshot": {
-      "type": "object"
+    "darkpool": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "not_implemented"
+          ]
+        },
+        "ticker": {
+          "type": "string"
+        },
+        "nearest_support": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "nearest_resistance": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "darkpool_bias": {
+          "type": "string",
+          "enum": [
+            "support",
+            "resistance",
+            "neutral",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "ticker",
+        "nearest_support",
+        "nearest_resistance",
+        "darkpool_bias"
+      ]
     },
-    "sentiment_snapshot": {
-      "type": "object"
+    "sentiment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "not_implemented"
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "risk_on",
+            "risk_off",
+            "mixed",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "state"
+      ]
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "uw_signal": {
+          "type": "string",
+          "enum": [
+            "confirm",
+            "conflict",
+            "neutral",
+            "unavailable"
+          ]
+        },
+        "conflict_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "data_quality": {
+          "type": "string",
+          "enum": [
+            "live",
+            "degraded",
+            "stale",
+            "unavailable"
+          ]
+        },
+        "missing_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "uw_signal",
+        "conflict_reason",
+        "data_quality",
+        "missing_fields"
+      ]
     }
   },
   "required": [
-    "source"
-  ],
-  "additionalProperties": true
+    "source",
+    "status",
+    "last_update",
+    "dealer",
+    "volatility",
+    "flow",
+    "darkpool",
+    "sentiment",
+    "quality"
+  ]
 }

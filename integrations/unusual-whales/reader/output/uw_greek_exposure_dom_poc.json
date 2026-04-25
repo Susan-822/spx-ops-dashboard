@@ -1,0 +1,51 @@
+{
+  "source": "unusual_whales_dom",
+  "ticker": "SPX",
+  "module": "spx_greek_exposure",
+  "status": "partial",
+  "last_update": null,
+  "page_url": "https://unusualwhales.com/stock/SPX/greek-exposure",
+  "raw_visible_fields": {},
+  "mapped_fields": {
+    "call_charm": null,
+    "call_delta": null,
+    "call_gamma": null,
+    "call_vanna": null,
+    "put_charm": null,
+    "put_delta": null,
+    "put_gamma": null,
+    "put_vanna": null
+  },
+  "derived": {
+    "net_gamma": null,
+    "net_delta": null,
+    "net_vanna": null,
+    "net_charm": null,
+    "gamma_regime": "unknown",
+    "dealer_behavior": "unknown"
+  },
+  "available_sections": {
+    "by_strike": false,
+    "by_expiry": false,
+    "zero_gamma_or_flip": false,
+    "last_update": false
+  },
+  "missing_fields": [
+    "call_charm",
+    "call_delta",
+    "call_gamma",
+    "call_vanna",
+    "put_charm",
+    "put_delta",
+    "put_gamma",
+    "put_vanna"
+  ],
+  "manual_confirmation_needed": [
+    "Greek Exposure DOM selectors have not been confirmed in a logged-in local UW browser yet."
+  ],
+  "notes": [
+    "This is a placeholder sample output for the DOM POC contract.",
+    "No fake dealer data is generated.",
+    "Unread fields remain null."
+  ]
+}

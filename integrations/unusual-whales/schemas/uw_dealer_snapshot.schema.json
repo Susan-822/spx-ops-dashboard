@@ -1,40 +1,136 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "integrations/unusual-whales/schemas/uw_dealer_snapshot.schema.json",
-  "title": "UW Dealer Snapshot",
+  "title": "UW Dealer Snapshot DOM POC",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "source": {
       "type": "string",
-      "const": "unusual_whales"
+      "const": "unusual_whales_dom"
+    },
+    "ticker": {
+      "type": "string",
+      "const": "SPX"
     },
     "module": {
       "type": "string",
       "const": "spx_greek_exposure"
     },
-    "captured_at": {
-      "type": "string"
-    },
-    "data_state": {
+    "status": {
       "type": "string",
       "enum": [
-        "placeholder",
-        "real",
-        "stale",
-        "partial"
+        "found",
+        "partial",
+        "not_found",
+        "error"
       ]
+    },
+    "last_update": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "page_url": {
+      "type": "string"
+    },
+    "raw_visible_fields": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "mapped_fields": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "call_charm": { "type": ["number", "null"] },
+        "call_delta": { "type": ["number", "null"] },
+        "call_gamma": { "type": ["number", "null"] },
+        "call_vanna": { "type": ["number", "null"] },
+        "put_charm": { "type": ["number", "null"] },
+        "put_delta": { "type": ["number", "null"] },
+        "put_gamma": { "type": ["number", "null"] },
+        "put_vanna": { "type": ["number", "null"] }
+      },
+      "required": [
+        "call_charm",
+        "call_delta",
+        "call_gamma",
+        "call_vanna",
+        "put_charm",
+        "put_delta",
+        "put_gamma",
+        "put_vanna"
+      ]
+    },
+    "derived": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "net_gamma": { "type": ["number", "null"] },
+        "net_delta": { "type": ["number", "null"] },
+        "net_vanna": { "type": ["number", "null"] },
+        "net_charm": { "type": ["number", "null"] },
+        "gamma_regime": {
+          "type": "string",
+          "enum": ["positive", "negative", "neutral", "unknown"]
+        },
+        "dealer_behavior": {
+          "type": "string",
+          "enum": ["pin", "expand", "mixed", "unknown"]
+        }
+      },
+      "required": [
+        "net_gamma",
+        "net_delta",
+        "net_vanna",
+        "net_charm",
+        "gamma_regime",
+        "dealer_behavior"
+      ]
+    },
+    "available_sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "by_strike": { "type": "boolean" },
+        "by_expiry": { "type": "boolean" },
+        "zero_gamma_or_flip": { "type": "boolean" },
+        "last_update": { "type": "boolean" }
+      },
+      "required": [
+        "by_strike",
+        "by_expiry",
+        "zero_gamma_or_flip",
+        "last_update"
+      ]
+    },
+    "missing_fields": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "manual_confirmation_needed": {
+      "type": "array",
+      "items": { "type": "string" }
     },
     "notes": {
       "type": "array",
-      "items": {
-        "type": "string"
-      }
+      "items": { "type": "string" }
     }
   },
   "required": [
     "source",
+    "ticker",
     "module",
-    "data_state"
+    "status",
+    "last_update",
+    "page_url",
+    "raw_visible_fields",
+    "mapped_fields",
+    "derived",
+    "available_sections",
+    "missing_fields",
+    "manual_confirmation_needed",
+    "notes"
   ]
 }

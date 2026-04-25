@@ -45,9 +45,9 @@ This file is a plan document only. It does **not** claim that live UW data has a
 5. Options Flow has not been read yet.
 6. Dark Pool / Off-Lit DOM pages are not fully confirmed yet.
 7. NOPE / Market Tide has not been read yet.
-8. `/ingest/uw` is not implemented yet.
-9. `uwSnapshotStore` is not implemented yet.
-10. UW data is not merged into `/signals/current` yet.
+8. `/ingest/uw` is not wired into an existing backend route yet.
+9. `uwSnapshotStore` is not attached to a production runtime yet.
+10. UW data is not merged into the repository's active `/signals/current` runtime yet.
 11. `command_environment` is not using UW data yet.
 
 ---
@@ -72,11 +72,16 @@ Goal:
 
 ### Phase 2 - DOM Reader design
 
-Status: not started
+Status: POC scaffold added, local runtime not validated against a real logged-in session in this repository
 
 Outputs:
 - `reader/README_UW_DOM_READER.md`
-- future reader implementation files
+- `reader/field-utils.js`
+- `reader/greek-exposure-poc.js`
+- `reader/volatility-poc.js`
+- `reader/run-uw-dom-poc.js`
+- `reader/output/uw_greek_exposure_dom_poc.json`
+- `reader/output/uw_volatility_dom_poc.json`
 
 Goal:
 - define how a local logged-in browser session may read visible UW page data
@@ -85,7 +90,7 @@ Goal:
 
 ### Phase 3 - Snapshot schemas
 
-Status: scaffold only
+Status: first-pass schemas added
 
 Outputs:
 - `schemas/uw_summary.schema.json`
@@ -100,18 +105,22 @@ Goal:
 
 ### Phase 4 - Ingest contract
 
-Status: scaffold only
+Status: local modules added, backend route not wired
 
 Outputs:
 - `ingest/README_UW_INGEST.md`
 - `ingest/ingest-contract.json`
+- `ingest/json-schema.js`
+- `ingest/uw-summary-schema.js`
+- `ingest/uw-snapshot-store.js`
+- `ingest/uw-ingest.js`
 
 Goal:
 - define what a local reader may POST into the backend later
 
 ### Phase 5 - Store and normalization
 
-Status: not started
+Status: local helper modules added, not connected to production runtime
 
 Goal:
 - persist UW snapshots
@@ -120,7 +129,7 @@ Goal:
 
 ### Phase 6 - Signal merge
 
-Status: not started
+Status: helper merge module added, not connected to active runtime
 
 Goal:
 - merge normalized UW outputs into `/signals/current`
@@ -142,14 +151,15 @@ At this time, the repository contains:
 - review outputs
 - whitelist outputs
 - planning and boundary docs
-- schema placeholders
+- first-pass schemas
+- reader POC scaffolding and example JSON outputs
+- local ingest/store/normalize/merge helper modules
 
 At this time, the repository does **not** contain:
-- confirmed UW live field ingestion
-- DOM Reader execution code
-- backend ingest implementation
-- UW snapshot storage
-- normalized UW signal merge
+- confirmed UW live field ingestion from a logged-in local session
+- a backend route already exposed at `/ingest/uw`
+- production-wired UW snapshot storage
+- production-wired normalized UW signal merge
 
 ---
 

@@ -5,52 +5,42 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "source": {
+    "status": {
       "type": "string",
-      "const": "unusual_whales"
-    },
-    "module": {
-      "type": "string",
-      "const": "spy_darkpool_offlit"
-    },
-    "captured_at": {
-      "type": "string",
-      "format": "date-time"
+      "enum": [
+        "not_implemented"
+      ]
     },
     "ticker": {
       "type": "string"
     },
-    "nearest_darkpool_support": {
-      "type": ["number", "null"]
+    "nearest_support": {
+      "type": [
+        "number",
+        "null"
+      ]
     },
-    "nearest_darkpool_resistance": {
-      "type": ["number", "null"]
-    },
-    "largest_darkpool_levels": {
-      "type": "array",
-      "items": {
-        "type": "object"
-      }
-    },
-    "off_lit_ratio": {
-      "type": ["number", "null"]
-    },
-    "recent_large_darkpool_trades": {
-      "type": "array",
-      "items": {
-        "type": "object"
-      }
+    "nearest_resistance": {
+      "type": [
+        "number",
+        "null"
+      ]
     },
     "darkpool_bias": {
-      "type": ["string", "null"]
-    },
-    "last_update": {
-      "type": ["string", "null"]
+      "type": "string",
+      "enum": [
+        "support",
+        "resistance",
+        "neutral",
+        "unknown"
+      ]
     }
   },
   "required": [
-    "source",
-    "module",
-    "captured_at"
+    "status",
+    "ticker",
+    "nearest_support",
+    "nearest_resistance",
+    "darkpool_bias"
   ]
 }

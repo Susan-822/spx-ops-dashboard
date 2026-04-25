@@ -1,27 +1,42 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "integrations/unusual-whales/schemas/uw_volatility_snapshot.schema.json",
-  "title": "UW Volatility Snapshot",
+  "title": "UW Volatility DOM POC",
+  "description": "Schema for the first-phase UW volatility DOM POC output.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "source": {
-      "const": "unusual_whales"
+      "type": "string",
+      "const": "unusual_whales_dom"
     },
-    "snapshot_type": {
-      "const": "volatility_snapshot"
+    "module": {
+      "type": "string",
+      "const": "volatility_iv"
     },
-    "symbol": {
-      "type": "string"
+    "status": {
+      "type": "string",
+      "enum": [
+        "found",
+        "partial",
+        "not_found",
+        "error"
+      ]
     },
-    "timestamp": {
-      "type": "string"
+    "tickers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
-    "volatility": {
+    "fields": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "iv_rank": {
+          "type": ["number", "null"]
+        },
+        "iv_rank_1y": {
           "type": ["number", "null"]
         },
         "iv_percentile": {
@@ -33,28 +48,136 @@
         "realized_volatility": {
           "type": ["number", "null"]
         },
-        "term_structure": {
-          "type": ["string", "null"]
+        "implied_move": {
+          "type": ["number", "null"]
         },
-        "statistics_summary": {
+        "implied_move_perc": {
+          "type": ["number", "null"]
+        },
+        "term_structure": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "last_update": {
           "type": ["string", "null"]
         }
       },
       "required": [
         "iv_rank",
+        "iv_rank_1y",
         "iv_percentile",
         "implied_volatility",
         "realized_volatility",
+        "implied_move",
+        "implied_move_perc",
         "term_structure",
-        "statistics_summary"
+        "last_update"
       ]
+    },
+    "volatility_activation_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "data_quality": {
+          "type": "string",
+          "enum": [
+            "live",
+            "degraded",
+            "stale",
+            "unavailable"
+          ]
+        },
+        "light": {
+          "type": "string",
+          "enum": [
+            "red",
+            "yellow",
+            "green",
+            "unknown"
+          ]
+        },
+        "score": {
+          "type": ["number", "null"]
+        },
+        "strength": {
+          "type": "string",
+          "enum": [
+            "off",
+            "lifting",
+            "active",
+            "strong",
+            "extreme",
+            "unknown"
+          ]
+        },
+        "single_leg_permission": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "wait",
+            "block",
+            "unknown"
+          ]
+        },
+        "vertical_permission": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "wait",
+            "block",
+            "unknown"
+          ]
+        },
+        "iron_condor_permission": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "wait",
+            "block",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "data_quality",
+        "light",
+        "score",
+        "strength",
+        "single_leg_permission",
+        "vertical_permission",
+        "iron_condor_permission"
+      ]
+    },
+    "missing_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "manual_confirmation_needed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "required": [
     "source",
-    "snapshot_type",
-    "symbol",
-    "timestamp",
-    "volatility"
+    "module",
+    "status",
+    "tickers",
+    "fields",
+    "volatility_activation_candidate",
+    "missing_fields",
+    "manual_confirmation_needed",
+    "notes"
   ]
 }
