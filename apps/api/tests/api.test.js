@@ -12,6 +12,13 @@ const { clearTradingViewSnapshot } = await import('../storage/tradingview-snapsh
 const { getCurrentSignal } = await import('../decision_engine/current-signal.js');
 const { buildAlertMessage } = await import('../alerts/build-alert-message.js');
 const { resetTvSnapshotStoreForTests } = await import('../state/tvSnapshotStore.js');
+const {
+  getTelegramAlertDedupeKey,
+  shouldBypassTelegramDedupe,
+  markTelegramAlertSent,
+  isTelegramAlertDuplicate,
+  resetTelegramAlertDedupeStoreForTests
+} = await import('../state/telegramAlertDedupeStore.js');
 
 const EXPECTED_ACTIONS = {
   negative_gamma_wait_pullback: 'wait',
@@ -674,4 +681,23 @@ test('TV sentinel only upgrades to directional plan when command environment all
   assert.equal(signal.engines.tv_sentinel.direction, 'bullish');
   assert.equal(signal.engines.trade_plan.plan_family, 'A');
   assert.equal(signal.recommended_action, 'long_on_pullback');
+});
+
+test('telegram dedupe bypasses structure invalidated, stale, and data_mixed alerts', async () => {
+  assert.equal(shouldBypassTelegramDedupe({ event_type: 'structure_invalidated' }), true);
+  assert.equal(shouldBypassTelegramDedupe({ event_type: 'stale' }), true);
+  assert.equal(shouldBypassTelegramDedupe({ event_type: 'data_mixed' }), true);
+});
+
+test('telegram dedupe bypasses direction reversal and status transition alerts', async () => {
+  assert.equal(shouldBypassTelegramDedupe({ event_type: 'breakout_confirmed', direction_changed: true }), true);
+  assert.equal(shouldBypassTelegramDedupe({ event_type: 'breakout_confirmed', status_changed: true }), true);
+});
+
+test('telegram dedupe blocks ordinary repeated alerts within five minutes', async () => {
+  resetTelegramAlertDedupeStoreForTests();
+  const key = getTelegramAlertDedupeKey(['SPX', '3m', 'breakout_confirmed', 'bullish', 'A_breakout', 'ready']);
+  assert.equal(isTelegramAlertDuplicate(key), false);
+  markTelegramAlertSent(key);
+  assert.equal(isTelegramAlertDuplicate(key), true);
 });
