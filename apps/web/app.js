@@ -123,17 +123,19 @@ function displaySpotContext(snapshot = {}) {
   if (snapshot?.spot_is_real === true) {
     return `FMP · ${minutesAgo(snapshot.spot_last_updated)}`;
   }
+
   if (snapshot?.spot_source === 'fmp') {
-    return 'FMP unavailable';
+    return '未接入';
   }
-  return spotPositionLabel(snapshot.spot_position);
+
+  return spotPositionLabel(snapshot?.spot_position);
 }
 
 function shortTime(value) {
   if (!value) return '--';
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return '--';
-  return date.toLocaleTimeString('zh-CN', { hour12: false });
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 function minutesAgo(value) {
@@ -158,51 +160,71 @@ async function loadSignal() {
 
 function sourceStateLabel(state) {
   return {
-    real: 'REAL',
-    mock: 'MOCK',
-    delayed: 'DELAY',
-    degraded: 'DEGRADE',
-    down: 'DOWN'
-  }[state] || String(state || 'UNKNOWN').toUpperCase();
+    real: '正常',
+    mock: '模拟',
+    delayed: '延迟',
+    degraded: '降级',
+    down: '不可用',
+    unavailable: '未接入',
+    error: '异常'
+  }[state] || '未知';
+}
+
+function sourceNameLabel(source) {
+  return {
+    tradingview: 'TradingView',
+    fmp: 'FMP',
+    fmp_event: 'FMP',
+    fmp_price: 'FMP',
+    theta_core: 'Theta',
+    theta_full_chain: 'Theta',
+    uw: 'UW',
+    telegram: 'Telegram',
+    dashboard: 'Dashboard'
+  }[source] || String(source || '数据源');
 }
 
 function marketStateLabel(value) {
   return {
-    positive_gamma_grind: '正Gamma｜磨盘',
-    negative_gamma_expand: '负Gamma｜等扩张',
-    flip_chop: 'Flip附近｜拉扯',
-    event_risk: '事件风险｜先收手',
-    unknown: '环境不明｜少做'
-  }[value] || value || '环境不明｜少做';
+    positive_gamma_grind: '做市商对冲压制波动，价格倾向窄幅磨',
+    negative_gamma_expand: '做市商顺势对冲，波动容易放大',
+    flip_chop: '价格在多空分界线附近拉锯，方向未定',
+    event_risk: '重大事件临近，波动不可控，先收手',
+    unknown: '状态未明'
+  }[value] || value || '状态未明';
 }
 
 function gammaLabel(value) {
   return {
-    positive: '正Gamma',
-    negative: '负Gamma',
-    critical: 'Gamma临界',
-    unknown: 'Gamma未知'
-  }[value] || value || 'Gamma未知';
+    positive: '做市商压波动 (正Gamma)',
+    negative: '做市商放波动 (负Gamma)',
+    critical: '多空临界，随时切换',
+    unknown: '状态未知'
+  }[value] || value || '状态未知';
 }
 
 function spotPositionLabel(value) {
   return {
-    below_flip: '现价在 Flip 下方',
-    above_flip_below_call_wall: 'Flip 上方，Call Wall 下方',
-    above_call_wall: '突破 Call Wall 上方',
-    below_put_wall: '跌破 Put Wall 下方',
-    between_walls: '墙内震荡区'
-  }[value] || value || '位置未知';
+    above_call_wall: '突破上方压力位',
+    below_put_wall: '跌破下方支撑位',
+    below_flip: '多空分界线下方 (偏空)',
+    above_flip: '多空分界线上方 (偏多)',
+    above_flip_below_call_wall: '多空分界线上方，仍在压力位下方',
+    between_walls: '处于支撑与压力之间'
+  }[value] || '未接入';
 }
 
 function flowLabel(value) {
   return {
     call_strong: 'Call 偏强',
     put_strong: 'Put 偏强',
+    bullish: '偏多',
+    bearish: '偏空',
     mixed: '多空混合',
     neutral: '中性',
+    unavailable: '未接入',
     unknown: '未知'
-  }[value] || value || '未知';
+  }[value] || '未接入';
 }
 
 function darkPoolLabel(value) {
@@ -211,8 +233,12 @@ function darkPoolLabel(value) {
     resistance_above: '上方压力资金区',
     accumulation: '偏吸筹',
     distribution: '偏派发',
+    support: '偏支撑',
+    resistance: '偏压制',
+    neutral: '中性',
+    unavailable: '未接入',
     unclear: '不明显'
-  }[value] || value || '不明显';
+  }[value] || '未接入';
 }
 
 function dealerLabel(value) {
@@ -222,8 +248,15 @@ function dealerLabel(value) {
     sweep_up: '往上扫空',
     sweep_down: '往下扫多',
     hedge: '对冲为主',
-    unclear: '不清楚'
-  }[value] || value || '不清楚';
+    pin: '偏控波动',
+    expand: '偏放波动',
+    supportive: '偏支持',
+    confirm: '偏确认',
+    conflict: '有冲突',
+    mixed: '多空拉扯',
+    unavailable: '未接入',
+    unclear: '不明显'
+  }[value] || '未接入';
 }
 
 function eventRiskLabel(value) {
@@ -231,8 +264,11 @@ function eventRiskLabel(value) {
     high: '高风险',
     medium: '中风险',
     low: '低风险',
-    none: '无重大事件'
-  }[value] || value || '未知';
+    none: '无重大事件',
+    normal: '正常',
+    caution: '谨慎',
+    blocked: '禁止'
+  }[value] || '未知';
 }
 
 function conflictLabel(value) {
@@ -241,23 +277,15 @@ function conflictLabel(value) {
     low: '轻微冲突',
     medium: '中等冲突',
     high: '高冲突'
-  }[value] || value || '未知';
+  }[value] || '未知';
 }
 
-function deriveDataQuality(signal) {
-  const snap = signal?.market_snapshot || {};
-  const hasRealPrice = snap.spot_is_real === true && snap.spot_source === 'fmp' && Number.isFinite(Number(snap.spot));
-  const mapIsMock = signal?.fetch_mode === 'mock_scenario';
-  const coherence = hasRealPrice && mapIsMock ? 'mixed' : 'coherent';
-  return {
-    price_source: hasRealPrice ? 'fmp' : safeText(snap.spot_source, 'unknown'),
-    map_source: mapIsMock ? 'mock' : 'real',
-    coherence,
-    executable: coherence !== 'mixed',
-    reason: coherence === 'mixed'
-      ? 'FMP real price is mixed with mock gamma map.'
-      : 'Sources are coherent.'
-  };
+function distanceLabel(value) {
+  return Number.isFinite(Number(value)) ? `${fmt(value, 1)} pt` : '--';
+}
+
+function qualityScore(signal) {
+  return fmtInt(signal.confidence_score || signal.conflict?.adjusted_confidence || 0);
 }
 
 function getAction(signal) {
@@ -267,9 +295,7 @@ function getAction(signal) {
 }
 
 function hasHardBlock(signal) {
-  const dataQuality = deriveDataQuality(signal);
-  return dataQuality.coherence === 'mixed'
-    || signal?.recommended_action === 'no_trade'
+  return signal?.recommended_action === 'no_trade'
     || signal?.conflict?.conflict_level === 'high'
     || signal?.stale_flags?.any_stale
     || signal?.source_status?.some((s) => s.state === 'down');
@@ -311,10 +337,6 @@ function getStrategyCard(signal, type) {
 }
 
 function strategyState(signal, type) {
-  const dataQuality = deriveDataQuality(signal);
-  if (dataQuality.coherence === 'mixed') {
-    return { text: '禁止', cls: 'block' };
-  }
   if (hasHardBlock(signal)) return { text: '不可执行', cls: 'block' };
   if (type === '铁鹰') {
     if (signal.recommended_action === 'income_ok') return { text: '观察可做', cls: 'go' };
@@ -333,7 +355,6 @@ function strategyState(signal, type) {
 }
 
 function buildTrigger(signal) {
-  if (deriveDataQuality(signal).coherence === 'mixed') return '--';
   const snap = signal.market_snapshot || {};
   if (signal.recommended_action === 'long_on_pullback') return `回踩 ${fmtInt(snap.flip_level)} 上方不破`;
   if (signal.recommended_action === 'short_on_retest') return `反抽 ${fmtInt(snap.call_wall || snap.flip_level)} 不过`;
@@ -343,7 +364,6 @@ function buildTrigger(signal) {
 }
 
 function buildTarget(signal) {
-  if (deriveDataQuality(signal).coherence === 'mixed') return '--';
   const snap = signal.market_snapshot || {};
   if (signal.recommended_action === 'long_on_pullback') return `${fmtInt(snap.call_wall)} / 上方流动性`;
   if (signal.recommended_action === 'short_on_retest') return `${fmtInt(snap.put_wall)} / 下方流动性`;
@@ -352,103 +372,83 @@ function buildTarget(signal) {
 }
 
 function buildInvalidation(signal) {
-  if (deriveDataQuality(signal).coherence === 'mixed') return '--';
   if (signal.plain_language?.invalidation) return signal.plain_language.invalidation;
   const snap = signal.market_snapshot || {};
   if (signal.invalidation_level) return `跌破 / 站回 ${fmtInt(signal.invalidation_level)}`;
-  return `Flip ${fmtInt(snap.flip_level)} 失效`;
+  return `Flip ${fmtInt(snap.flip_level)} 失效`; 
 }
 
 function buildAvoid(signal) {
-  if (deriveDataQuality(signal).coherence === 'mixed') {
-    return '禁止单腿 / 垂直 / 铁鹰；等待真实 Gamma 地图或人工输入关键位。';
-  }
   if (signal.plain_language?.avoid) return signal.plain_language.avoid;
   if (Array.isArray(signal.avoid_actions) && signal.avoid_actions.length) return signal.avoid_actions.join(' / ');
   return '不追单，不提前卖波';
 }
 
-function summarizeEngine(name, engine) {
-  const directText = safeText(
-    engine?.output
-    || engine?.state
-    || engine?.summary
-    || engine?.plain_chinese
-    || engine?.note
-    || engine?.message,
-    ''
-  );
-  if (directText) {
-    return directText;
-  }
-
-  switch (name) {
-    case 'market_regime':
-      return marketStateLabel(engine?.market_state);
-    case 'gamma_wall':
-      if (engine?.wall_position === 'above_call_wall') return '价格已到 Call Wall 上方，关注上方压力。';
-      if (engine?.wall_position === 'below_put_wall') return '价格已到 Put Wall 下方，关注下方支撑。';
-      if (engine?.wall_position === 'below_flip') return '现价在 Flip 下方，偏弱。';
-      if (engine?.wall_position === 'above_flip') return '现价在 Flip 上方，偏强。';
-      return '墙位压力/支撑摘要';
-    case 'volatility':
-      if (engine?.vol_state === 'expanding') return '波动扩张';
-      if (engine?.vol_state === 'contained') return '波动收缩';
-      if (engine?.vol_state === 'event_loaded') return '禁止卖波';
-      return '波动状态待确认';
-    case 'price_structure':
-      if (engine?.confirmation_status === 'confirmed' && engine?.price_signal === 'long_pullback_ready') return '突破确认，等回踩。';
-      if (engine?.confirmation_status === 'confirmed' && engine?.price_signal === 'short_retest_ready') return '跌破确认，等反抽。';
-      if (engine?.price_signal === 'structure_invalidated') return '结构失效';
-      return '等回踩确认';
-    case 'uw_dealer_flow':
-      if (engine?.uw_signal === 'bullish_flow') return 'UW 偏多';
-      if (engine?.uw_signal === 'bearish_flow') return 'UW 偏空';
-      return 'UW 混合';
-    case 'event_risk':
-      if (engine?.risk_gate === 'blocked') return '高风险';
-      if (engine?.risk_gate === 'caution') return '中风险';
-      if (safeText(engine?.event_note, '')?.includes('FMP 异常')) return 'FMP 异常';
-      return '低风险';
-    case 'conflict':
-      return engine?.has_conflict ? '有冲突' : '无明显冲突';
-    case 'action':
-      if (engine?.recommended_action === 'no_trade') return '禁做';
-      if (engine?.recommended_action === 'income_ok') return '可做';
-      return '等确认';
-    default:
-      return '--';
-  }
+function getSentimentClass(signal) {
+  const gamma = signal.gamma_regime;
+  const conflict = signal.conflict?.conflict_level;
+  const action = getAction(signal);
+  if (conflict === 'high') return 'conflict';
+  if (action.badge === 'block') return 'bear';
+  if (gamma === 'positive' && action.badge === 'go') return 'bull';
+  if (gamma === 'negative') return 'bear';
+  return 'neutral';
 }
 
-function renderTopbar(currentPath, currentScenario, signal) {
-  const query = window.location.search || '';
-  const dataQuality = deriveDataQuality(signal);
-  const heartbeatLabel = dataQuality.coherence === 'mixed'
-    ? 'MIXED DATA · PRICE REAL · MAP MOCK'
-    : signal.is_mock
-      ? 'MOCK DATA'
-      : 'LIVE';
+function getSentimentFill(signal) {
+  const score = Number(signal.confidence_score || signal.conflict?.adjusted_confidence || 50);
+  return Math.min(Math.max(score, 10), 95);
+}
+
+function getSentimentText(signal) {
+  const cls = getSentimentClass(signal);
+  const score = Number(signal.confidence_score || signal.conflict?.adjusted_confidence || 50);
+  const map = {
+    bull:     `看多情绪 · 信心 ${score}`,
+    bear:     `看空情绪 · 信心 ${score}`,
+    conflict: `多空冲突 · 信心 ${score}`,
+    neutral:  `中性观望 · 信心 ${score}`
+  };
+  return map[cls] || `中性 · 信心 ${score}`;
+}
+
+function renderTopbar(path, signal) {
+  const scenario = getScenario();
+  const sourceBad = signal.source_status?.some((s) => s.state === 'down' || s.stale);
+  const sourceWarn = signal.source_status?.some((s) => ['delayed', 'degraded'].includes(s.state));
+  const dotClass = sourceBad ? 'bad' : sourceWarn ? 'warn' : '';
+  const sentCls = getSentimentClass(signal);
+  const sentFill = getSentimentFill(signal);
+  const sentText = getSentimentText(signal);
   return `
     <header class="topbar">
-      <div class="brand">
-        <div class="logo-mark">SP</div>
-        <div>
-          <div class="brand-title">SPX Ops Dashboard</div>
-          <div class="brand-subtitle">White Glass Lab · 0DTE Command Console</div>
+      <div class="topbar-inner">
+        <a class="brand" href="/?scenario=${escapeHtml(scenario)}">
+          <div class="logo-mark">SP</div>
+          <div>
+            <div class="brand-title">SPX Ops Dashboard</div>
+            <div class="brand-subtitle">0DTE Command Console</div>
+          </div>
+        </a>
+        <nav class="nav" aria-label="primary navigation">
+          <a class="${path === '/' ? 'active' : ''}" href="/?scenario=${escapeHtml(scenario)}">主操作页</a>
+          <a class="${path === '/radar' ? 'active' : ''}" href="/radar?scenario=${escapeHtml(scenario)}">Radar 支撑页</a>
+        </nav>
+        <div class="system-right">
+          <div class="heartbeat"><i class="heartbeat-dot ${dotClass}"></i><span>${escapeHtml(signal.is_mock ? 'MOCK' : 'LIVE')}</span><span>${shortTime(signal.received_at)}</span></div>
+          <select class="scenario-select" id="scenario-select" aria-label="mock scenario">
+            ${SCENARIOS.map((item) => `<option value="${item}" ${item === scenario ? 'selected' : ''}>${item}</option>`).join('')}
+          </select>
         </div>
       </div>
-
-      <nav class="nav">
-        <a class="${currentPath === '/' ? 'active' : ''}" href="/${query}">主操作页</a>
-        <a class="${currentPath === '/radar' ? 'active' : ''}" href="/radar${query}">Radar 支撑页</a>
-      </nav>
-
-      <div class="system-right">
-        <div class="heartbeat"><i class="heartbeat-dot ${qualityClass(signal)}"></i><span>${escapeHtml(heartbeatLabel)}</span><span>${shortTime(signal.received_at)}</span></div>
-        <select class="scenario-select" id="scenario-select" aria-label="mock scenario">
-          ${SCENARIOS.map((item) => `<option value="${item}" ${item === currentScenario ? 'selected' : ''}>${item}</option>`).join('')}
-        </select>
+      <div class="sentiment-row">
+        <div class="sentiment-label">市场情绪</div>
+        <div class="sentiment-track">
+          <div class="sentiment-fill ${sentCls}" style="width:${sentFill}%"></div>
+        </div>
+        <div class="sentiment-chips">
+          <span class="sentiment-chip ${sentCls}">${escapeHtml(sentText)}</span>
+        </div>
       </div>
     </header>
   `;
@@ -457,11 +457,11 @@ function renderTopbar(currentPath, currentScenario, signal) {
 function renderSourceStrip(signal) {
   return `
     <section class="source-row">
-      <div class="section-label">Source State</div>
+      <div class="section-label">数据状态</div>
       <div class="source-list">
-        ${(signal.source_status || []).filter((item) => ['tradingview', 'fmp_event', 'fmp_price', 'theta_core', 'theta_full_chain', 'uw', 'telegram', 'dashboard'].includes(item.source)).map((item) => `
+        ${(signal.source_status || []).filter((item) => ['tradingview', 'fmp', 'theta_core', 'theta_full_chain', 'uw', 'telegram', 'dashboard'].includes(item.source)).map((item) => `
           <span class="source-chip ${statusClassForSource(item)}">
-            ${escapeHtml(item.source)} · ${sourceStateLabel(item.state)} · ${minutesAgo(item.last_updated)}
+            ${escapeHtml(sourceNameLabel(item.source))} · ${sourceStateLabel(item.state)}${item.last_updated ? ` · ${minutesAgo(item.last_updated)}` : ''}
           </span>
         `).join('')}
       </div>
@@ -471,21 +471,144 @@ function renderSourceStrip(signal) {
 
 function renderMetricCards(signal) {
   const snap = signal.market_snapshot || {};
+  const vix = signal.vix || {};
+  const vixVal = Number(vix.value ?? 18);
+  const vixPrev = Number(vix.prev_close ?? vixVal);
+  const vixChange = vixVal - vixPrev;
+  const vixChangeStr = (vixChange >= 0 ? '+' : '') + vixChange.toFixed(2);
+  const vixChangeColor = vixChange > 0 ? 'var(--red)' : 'var(--green)';
+  let vixZone, vixZoneLabel;
+  if (vixVal < 15)      { vixZone = 'calm';     vixZoneLabel = '低波动'; }
+  else if (vixVal < 20) { vixZone = 'elevated'; vixZoneLabel = '偏高'; }
+  else if (vixVal < 30) { vixZone = 'fear';     vixZoneLabel = '恐慌区'; }
+  else                  { vixZone = 'extreme';  vixZoneLabel = '极端恐慌'; }
+
+  // VIX gauge SVG
+  const MAX_VIX = 50, cx = 100, cy = 90, r = 72;
+  const clamp = Math.min(Math.max(vixVal, 0), MAX_VIX);
+  const angleDeg = (clamp / MAX_VIX) * 180;
+  function pxy(deg) {
+    const rad = (deg - 180) * Math.PI / 180;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+  }
+  const zones = [
+    { s:0,   e:54,  c:'#059669' },
+    { s:54,  e:72,  c:'#d97706' },
+    { s:72,  e:108, c:'#dc2626' },
+    { s:108, e:180, c:'#7c3aed' },
+  ];
+  function arc(s,e,col) {
+    const a = pxy(s), b = pxy(e), lg = e-s>90?1:0;
+    return `<path d="M ${a.x.toFixed(1)} ${a.y.toFixed(1)} A ${r} ${r} 0 ${lg} 1 ${b.x.toFixed(1)} ${b.y.toFixed(1)}" stroke="${col}" stroke-width="11" fill="none" stroke-linecap="butt" opacity="0.9"/>`;
+  }
+  const arcPaths = zones.map(z => arc(z.s, z.e, z.c)).join('');
+  const np = pxy(angleDeg);
+  const p0 = pxy(0), p180 = pxy(180);
+  function tick(v) {
+    const deg = (v/MAX_VIX)*180, rad = (deg-180)*Math.PI/180;
+    const ix = cx+(r-14)*Math.cos(rad), iy = cy+(r-14)*Math.sin(rad);
+    const ox = cx+(r+3)*Math.cos(rad),  oy = cy+(r+3)*Math.sin(rad);
+    const lx = cx+(r+14)*Math.cos(rad), ly = cy+(r+14)*Math.sin(rad);
+    return `<line x1="${ix.toFixed(1)}" y1="${iy.toFixed(1)}" x2="${ox.toFixed(1)}" y2="${oy.toFixed(1)}" stroke="#d1d5db" stroke-width="1.5"/><text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="8" font-family="JetBrains Mono,monospace" fill="#9ca3af">${v}</text>`;
+  }
+  const ticks = [15,20,30].map(tick).join('');
+
   return `
-    <div class="price-stack">
+    <div class="price-vix-col">
       <div class="metric-card">
-        <div class="metric-label">SPX Spot</div>
+        <div class="metric-label">SPX 现价</div>
         <div class="big-number">${displaySpot(snap)}</div>
-        <div class="delta-line"><i class="pulse-bar"></i><span>${escapeHtml(displaySpotContext(snap))}</span></div>
+        <div class="delta-line"><i class="pulse-bar"></i><span>${displaySpotContext(snap)}</span></div>
+        <div class="tag-row" style="margin-top:8px">
+          <span class="tag ${chipClassByRisk(signal.gamma_regime)}">${gammaLabel(signal.gamma_regime)}</span>
+          <span class="tag blue" title="多空分界线：价格在此上方偏多，下方偏空">多空线 ${fmtInt(snap.flip_level)}</span>
+        </div>
+        <div class="metric-sublabel" style="margin-top:6px">${marketStateLabel(signal.market_state)}</div>
       </div>
-      <div class="metric-card">
-        <div class="metric-label">Gamma Regime</div>
-        <div class="big-number">${gammaLabel(signal.gamma_regime)}</div>
-        <div class="tag-row">
-          <span class="tag ${chipClassByRisk(signal.gamma_regime)}">${marketStateLabel(signal.market_state)}</span>
-          <span class="tag blue">Flip ${fmtInt(snap.flip_level)}</span>
+      <div class="vix-inline">
+        <div class="vix-header">
+          <div class="metric-label">VIX 恐慌指数</div>
+          <span class="vix-zone-pill ${vixZone}">${escapeHtml(vixZoneLabel)}</span>
+        </div>
+        <svg class="vix-gauge-svg" viewBox="28 18 144 78" xmlns="http://www.w3.org/2000/svg">
+          <path d="M ${p0.x.toFixed(1)} ${p0.y.toFixed(1)} A ${r} ${r} 0 0 1 ${p180.x.toFixed(1)} ${p180.y.toFixed(1)}" stroke="#e5e7eb" stroke-width="11" fill="none" stroke-linecap="butt"/>
+          ${arcPaths}
+          ${ticks}
+          <line x1="${cx}" y1="${cy}" x2="${np.x.toFixed(1)}" y2="${np.y.toFixed(1)}" stroke="#1f2937" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="${cx}" cy="${cy}" r="4" fill="#1f2937"/>
+          <text x="${(cx-r-2).toFixed(0)}" y="${cy+16}" text-anchor="middle" font-size="8" font-family="JetBrains Mono,monospace" fill="#9ca3af">0</text>
+          <text x="${(cx+r+2).toFixed(0)}" y="${cy+16}" text-anchor="middle" font-size="8" font-family="JetBrains Mono,monospace" fill="#9ca3af">50</text>
+        </svg>
+        <div class="vix-val-row">
+          <span class="vix-number">${fmt(vixVal, 2)}</span>
+          <span class="vix-unit">pts</span>
+          <span style="font-family:var(--mono);font-size:11px;font-weight:600;color:${vixChangeColor}">${escapeHtml(vixChangeStr)}</span>
+        </div>
+        <div class="vix-meta-row">
+          <div class="vix-meta-item"><div class="vix-meta-label">昨收</div><div class="vix-meta-value">${fmt(vixPrev,2)}</div></div>
+          <div class="vix-meta-item"><div class="vix-meta-label">卖波许可</div><div class="vix-meta-value" style="font-size:11px;color:${vixVal<20?'var(--green)':'var(--red)'}">${vixVal<20?'可评估':'暂禁'}</div></div>
         </div>
       </div>
+    </div>
+  `;
+}
+
+function renderVolLights(signal) {
+  const snap = signal.market_snapshot || {};
+  const vix = signal.vix || {};
+  const vixVal = Number(vix.value ?? 18);
+  const gamma = signal.gamma_regime;
+  const conflict = signal.conflict?.conflict_level;
+  const eventRisk = signal.event_context?.event_risk;
+  const uwFlow = signal.uw_context?.flow_bias || signal.signals?.uw_signal;
+  const confidence = Number(signal.confidence_score || signal.conflict?.adjusted_confidence || 50);
+
+  // Evaluate each condition
+  const lights = [
+    {
+      name: 'VIX 波动率',
+      sub: vixVal >= 15 ? `当前 ${vixVal.toFixed(1)}，市场有足够波动` : `当前 ${vixVal.toFixed(1)}，波动偏低`,
+      state: vixVal >= 15 ? 'on' : 'off',
+      label: vixVal >= 15 ? '放行' : '偏低'
+    },
+    {
+      name: '做市商方向',
+      sub: gamma === 'negative' ? '放波动，利于卖方' : gamma === 'positive' ? '压波动，不利卖方' : '临界，方向未定',
+      state: gamma === 'negative' ? 'on' : gamma === 'critical' ? 'warn' : 'off',
+      label: gamma === 'negative' ? '放行' : gamma === 'critical' ? '注意' : '压制'
+    },
+    {
+      name: '信号冲突',
+      sub: conflict === 'none' || conflict === 'low' ? '冲突低，信号干净' : `冲突${conflict === 'medium' ? '中等' : '较高'}，谨慎`,
+      state: (conflict === 'none' || conflict === 'low') ? 'on' : conflict === 'medium' ? 'warn' : 'off',
+      label: (conflict === 'none' || conflict === 'low') ? '放行' : conflict === 'medium' ? '注意' : '冲突'
+    },
+    {
+      name: '事件风险',
+      sub: eventRisk === 'none' || eventRisk === 'low' ? '无重大事件' : `事件风险${eventRisk === 'medium' ? '中等' : '高'}`,
+      state: (eventRisk === 'none' || eventRisk === 'low') ? 'on' : eventRisk === 'medium' ? 'warn' : 'off',
+      label: (eventRisk === 'none' || eventRisk === 'low') ? '放行' : eventRisk === 'medium' ? '注意' : '禁止'
+    },
+    {
+      name: '主动资金流',
+      sub: uwFlow === 'bullish' || uwFlow === 'call_strong' ? '买方主导' : uwFlow === 'bearish' || uwFlow === 'put_strong' ? '卖方主导' : '中性/混合',
+      state: (uwFlow === 'bullish' || uwFlow === 'call_strong' || uwFlow === 'bearish' || uwFlow === 'put_strong') ? 'on' : 'warn',
+      label: (uwFlow === 'bullish' || uwFlow === 'call_strong') ? '看多' : (uwFlow === 'bearish' || uwFlow === 'put_strong') ? '看空' : '中性'
+    },
+  ];
+
+  const rows = lights.map(l => `
+    <div class="vol-light-row">
+      <div class="vol-dot ${l.state}"></div>
+      <div class="vol-light-name">${l.name}<small>${l.sub}</small></div>
+      <span class="vol-light-badge ${l.state}">${l.label}</span>
+    </div>
+  `).join('');
+
+  return `
+    <div class="vol-lights-card">
+      <div class="vol-lights-title">波动率起爆条件</div>
+      ${rows}
     </div>
   `;
 }
@@ -494,17 +617,18 @@ function renderRiskStack(signal) {
   const cls = qualityClass(signal);
   const conflicts = signal.conflict?.conflict_points || [];
   return `
-    <div class="risk-stack">
-      <div class="metric-card ${qualityClass(signal) === 'good' ? 'risk-low' : qualityClass(signal) === 'warn' ? 'risk-mid' : 'risk-high'}">
-        <div class="metric-label">Signal Quality</div>
-        <div class="big-number">${fmtInt(signal.confidence_score || signal.conflict?.adjusted_confidence || 0)}</div>
+    <div class="risk-col">
+      <div class="metric-card">
+        <div class="metric-label">执行把握</div>
+        <div class="big-number">${qualityScore(signal)}</div>
         <div class="tag-row">
           <span class="quality-chip ${cls}">${conflictLabel(signal.conflict?.conflict_level)}</span>
           <span class="quality-chip ${signal.event_context?.event_risk === 'high' ? 'bad' : 'ok'}">${eventRiskLabel(signal.event_context?.event_risk)}</span>
         </div>
       </div>
-      <div class="alert-panel">
-        <div class="section-label">Do Not Violate</div>
+      ${renderVolLights(signal)}
+      <div class="alert-card">
+        <div class="section-label">执行底线</div>
         <ul class="alert-list">
           <li>${escapeHtml(buildAvoid(signal))}</li>
           <li>${escapeHtml(buildInvalidation(signal))}</li>
@@ -516,30 +640,25 @@ function renderRiskStack(signal) {
 }
 
 function renderCommandHero(signal) {
-  const dataQuality = deriveDataQuality(signal);
   const action = getAction(signal);
   const trigger = buildTrigger(signal);
   const target = buildTarget(signal);
   const invalidation = buildInvalidation(signal);
   const avoid = buildAvoid(signal);
-  const summary = dataQuality.coherence === 'mixed'
-    ? 'FMP 现价为真实，但 Gamma / Wall / Max Pain 仍为 mock 地图，不能计算距离，不能生成交易指令。'
-    : safeText(signal.plain_language?.user_action, action.summary);
-  const title = dataQuality.coherence === 'mixed' ? '数据混合，禁止执行' : action.title;
-  const planLabel = dataQuality.coherence === 'mixed' ? 'PRICE REAL · MAP MOCK' : action.plan;
+  const summary = signal.plain_language?.user_action || action.summary;
 
   return `
     <section class="command-hero">
       ${renderMetricCards(signal)}
       <div class="main-command">
         <div class="command-status-line">
-          <div class="section-label">Current Command</div>
+          <div class="section-label">当前主操作</div>
           <div class="permission-badge ${action.badge}">${action.permission}</div>
         </div>
-        <h1 class="command-title">${escapeHtml(title)}</h1>
+        <h1 class="command-title">${escapeHtml(action.title)}</h1>
         <p class="command-subtitle">${escapeHtml(summary)}</p>
         <div class="tag-row">
-          <span class="tag blue">${escapeHtml(planLabel)}</span>
+          <span class="tag blue">${escapeHtml(action.plan)}</span>
           <span class="tag ${chipClassByRisk(signal.event_context?.event_risk)}">${eventRiskLabel(signal.event_context?.event_risk)}</span>
           <span class="tag ${chipClassByRisk(signal.gamma_regime)}">${gammaLabel(signal.gamma_regime)}</span>
           <span class="tag violet">${dealerLabel(signal.uw_context?.dealer_bias || signal.signals?.dealer_behavior)}</span>
@@ -557,32 +676,17 @@ function renderCommandHero(signal) {
 }
 
 function renderStrategyCards(signal) {
-  const dataQuality = deriveDataQuality(signal);
   const strategyTypes = ['单腿', '垂直', '铁鹰'];
   return `
     <section class="grid-3">
       ${strategyTypes.map((type) => {
         const card = getStrategyCard(signal, type);
         const state = strategyState(signal, type);
-        const target = dataQuality.coherence === 'mixed'
-          ? '--'
-          : type === '垂直'
-            ? card.target_zone || buildTarget(signal)
-            : card.target_zone || '等待';
-        const entry = dataQuality.coherence === 'mixed'
-          ? '--'
-          : type === '垂直'
-            ? card.entry_condition || buildTrigger(signal)
-            : card.entry_condition || buildTrigger(signal);
-        const suitable = dataQuality.coherence === 'mixed'
-          ? '现价真实但地图位 mock，不能计算入场、目标、作废。'
-          : card.suitable_when || '只在结构、Gamma、事件风险同时支持时考虑。';
-        const invalidation = dataQuality.coherence === 'mixed'
-          ? '--'
-          : card.invalidation || buildInvalidation(signal);
-        const avoid = dataQuality.coherence === 'mixed'
-          ? '禁止单腿 / 垂直 / 铁鹰；等待真实 Gamma 地图或人工输入关键位。'
-          : card.avoid_when || buildAvoid(signal);
+        const target = type === '垂直' ? card.target_zone || buildTarget(signal) : card.target_zone || '等待';
+        const entry = type === '垂直' ? card.entry_condition || buildTrigger(signal) : card.entry_condition || buildTrigger(signal);
+        const suitable = card.suitable_when || '只在结构、Gamma、事件风险同时支持时考虑。';
+        const invalidation = card.invalidation || buildInvalidation(signal);
+        const avoid = card.avoid_when || buildAvoid(signal);
 
         return `
           <article class="strategy-card ${state.cls}">
@@ -608,19 +712,18 @@ function renderStrategyCards(signal) {
 }
 
 function renderLevelMatrix(signal) {
-  const dataQuality = deriveDataQuality(signal);
   const snap = signal.market_snapshot || {};
   const items = [
-    ['SPX', displaySpot(snap), snap.spot_is_real ? `当前现价 · ${snap.spot_source || 'fmp'}` : '当前现价 unavailable'],
-    ['Flip', fmtInt(snap.flip_level), dataQuality.coherence === 'mixed' ? '地图未接真实数据' : `距离 ${fmt(snap.distance_to_flip, 1)} pt`],
-    ['Call Wall', fmtInt(snap.call_wall), dataQuality.coherence === 'mixed' ? '地图未接真实数据' : `距离 ${fmt(snap.distance_to_call_wall, 1)} pt`],
-    ['Put Wall', fmtInt(snap.put_wall), dataQuality.coherence === 'mixed' ? '地图未接真实数据' : `距离 ${fmt(snap.distance_to_put_wall, 1)} pt`],
+    ['SPX', displaySpot(snap), displaySpotContext(snap)],
+    ['Flip', fmtInt(snap.flip_level), `距离 ${distanceLabel(snap.distance_to_flip)}`],
+    ['Call Wall', fmtInt(snap.call_wall), `距离 ${distanceLabel(snap.distance_to_call_wall)}`],
+    ['Put Wall', fmtInt(snap.put_wall), `距离 ${distanceLabel(snap.distance_to_put_wall)}`],
     ['Max Pain', fmtInt(snap.max_pain), '中轴参考'],
-    ['Confidence', fmtInt(signal.confidence_score), '指令可信度']
+    ['把握度', qualityScore(signal), '当前执行把握']
   ];
   return `
     <section class="matrix-panel">
-      <div class="matrix-title"><div class="section-label">Key Levels</div><span class="tag blue">No Chart · Data Matrix</span></div>
+      <div class="matrix-title"><div class="section-label">关键位置</div><span class="tag blue">只看位置，不猜方向</span></div>
       <div class="matrix-list">
         ${items.map(([name, value, note]) => `
           <div class="matrix-item">
@@ -636,16 +739,16 @@ function renderLevelMatrix(signal) {
 
 function renderIntelMatrix(signal) {
   const items = [
-    ['Theta', signal.signals?.theta_signal || gammaLabel(signal.gamma_regime), 'Gamma 主环境'],
-    ['TradingView', signal.signals?.tv_signal || '等待结构确认', '价格确认'],
-    ['UW Flow', flowLabel(signal.uw_context?.flow_bias), '主动流向'],
-    ['Dark Pool', darkPoolLabel(signal.uw_context?.dark_pool_bias), '资金区'],
-    ['Dealer', dealerLabel(signal.uw_context?.dealer_bias || signal.signals?.dealer_behavior), '做市商路径'],
-    ['FMP', signal.event_context?.event_note || eventRiskLabel(signal.event_context?.event_risk), '事件过滤']
+    ['Dealer', safeText(signal.engines?.dealer_conclusion, gammaLabel(signal.gamma_regime)), '做市商主判断'],
+    ['TradingView', safeText(signal.engines?.tv_sentinel, '等待价格确认'), '价格确认'],
+    ['UW', safeText(signal.engines?.uw_conclusion, 'UW 未接入'), '辅助情报'],
+    ['FMP', safeText(signal.engines?.fmp_conclusion, eventRiskLabel(signal.event_context?.event_risk)), '事件与市场气氛'],
+    ['冲突', safeText(signal.engines?.conflict_resolver, conflictLabel(signal.conflict?.conflict_level)), '跨源一致性'],
+    ['执行环境', safeText(signal.engines?.command_environment, '等待价格触发'), '是否允许观察/执行']
   ];
   return `
     <section class="matrix-panel">
-      <div class="matrix-title"><div class="section-label">Decision Inputs</div><span class="tag ${chipClassByRisk(signal.conflict?.conflict_level)}">${conflictLabel(signal.conflict?.conflict_level)}</span></div>
+      <div class="matrix-title"><div class="section-label">辅助判断</div><span class="tag ${chipClassByRisk(signal.conflict?.conflict_level)}">${conflictLabel(signal.conflict?.conflict_level)}</span></div>
       <div class="matrix-list">
         ${items.map(([name, value, note]) => `
           <div class="matrix-item">
@@ -659,6 +762,8 @@ function renderIntelMatrix(signal) {
   `;
 }
 
+
+
 function renderHome(signal) {
   return `
     <main class="page">
@@ -669,65 +774,54 @@ function renderHome(signal) {
         ${renderIntelMatrix(signal)}
       </section>
       ${renderSourceStrip(signal)}
-      <div class="footer-note">schema ${escapeHtml(signal.schema_version)} · scenario ${escapeHtml(signal.scenario)} · ${escapeHtml(signal.fetch_mode)}</div>
+      <div class="footer-note">本页只展示操作结论与关键位置，场景切换仅用于本地验收。</div>
     </main>
   `;
 }
 
 function renderRadarSummary(signal) {
-  const dataQuality = deriveDataQuality(signal);
   const snap = signal.market_snapshot || {};
   const conflictPoints = signal.conflict?.conflict_points || [];
+  const dealerConclusion = safeText(signal.engines?.dealer_conclusion, signal.plain_language?.dealer_behavior || '等待做市商方向确认。');
+  const uwConclusion = safeText(signal.engines?.uw_conclusion, 'UW 未接入，当前只作为后续辅助位。');
+  const fmpConclusion = safeText(signal.engines?.fmp_conclusion, signal.event_context?.event_note || '无重大事件风险。');
+  const conflictConclusion = safeText(signal.engines?.conflict_resolver, signal.plain_language?.market_status || '暂无明显冲突说明。');
   return `
     <section class="radar-layout">
-      ${dataQuality.coherence === 'mixed' ? `
-        <article class="radar-card">
-          <div class="radar-title">
-            <h2>Data Quality Guard</h2>
-            <span class="tag amber">PRICE REAL · MAP MOCK</span>
-          </div>
-          <p class="radar-note">FMP 现价真实，但 Gamma / Wall / Max Pain 仍为 mock 地图，不能计算距离，不能生成交易指令。</p>
-          <ul class="alert-list">
-            <li>数据混合，禁止执行</li>
-            <li>等真实 Gamma / UW / Theta 地图接入后再执行</li>
-            <li>不要把 mock 墙位和真实现价混算</li>
-          </ul>
-        </article>
-      ` : ''}
       <article class="radar-card">
         <div class="radar-title">
-          <h2>Gamma / Dealer Radar</h2>
+          <h2>Dealer / 结构说明</h2>
           <span class="tag ${chipClassByRisk(signal.gamma_regime)}">${gammaLabel(signal.gamma_regime)}</span>
         </div>
-        <p class="radar-note">${escapeHtml(safeText(signal.radar_summary?.dealer, safeText(signal.plain_language?.dealer_behavior, '等待 dealer 行为确认。')))}</p>
+        <p class="radar-note">${escapeHtml(safeText(signal.radar_summary?.dealer, dealerConclusion))}</p>
         <div class="matrix-list">
-          <div class="matrix-item"><div class="matrix-name">现价位置</div><div class="matrix-value">${escapeHtml(dataQuality.coherence === 'mixed' ? '地图未接真实数据' : displaySpotContext(snap))}</div><div class="matrix-number">${displaySpot(snap)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Flip</div><div class="matrix-value">${dataQuality.coherence === 'mixed' ? '--' : fmt(snap.distance_to_flip, 1) + ' pt'}</div><div class="matrix-number">${fmtInt(snap.flip_level)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Call Wall</div><div class="matrix-value">${dataQuality.coherence === 'mixed' ? '--' : fmt(snap.distance_to_call_wall, 1) + ' pt'}</div><div class="matrix-number">${fmtInt(snap.call_wall)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Put Wall</div><div class="matrix-value">${dataQuality.coherence === 'mixed' ? '--' : fmt(snap.distance_to_put_wall, 1) + ' pt'}</div><div class="matrix-number">${fmtInt(snap.put_wall)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">现价位置</div><div class="matrix-value">${displaySpotContext(snap)}</div><div class="matrix-number">${displaySpot(snap)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Flip</div><div class="matrix-value">${distanceLabel(snap.distance_to_flip)}</div><div class="matrix-number">${fmtInt(snap.flip_level)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Call Wall</div><div class="matrix-value">${distanceLabel(snap.distance_to_call_wall)}</div><div class="matrix-number">${fmtInt(snap.call_wall)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Put Wall</div><div class="matrix-value">${distanceLabel(snap.distance_to_put_wall)}</div><div class="matrix-number">${fmtInt(snap.put_wall)}</div></div>
         </div>
       </article>
 
       <article class="radar-card">
         <div class="radar-title">
-          <h2>Flow / UW Radar</h2>
-          <span class="tag violet">${dealerLabel(signal.uw_context?.dealer_bias)}</span>
+          <h2>Flow / UW 辅助</h2>
+          <span class="tag violet">${flowLabel(signal.engines?.uw_conclusion?.flow_bias || signal.uw_context?.flow_bias)}</span>
         </div>
-        <p class="radar-note">${escapeHtml(safeText(signal.radar_summary?.order_flow, 'UW 只作为辅助情报，不直接替代价格确认。'))}</p>
+        <p class="radar-note">${escapeHtml(safeText(signal.radar_summary?.order_flow, uwConclusion))}</p>
         <div class="tag-row">
-          <span class="tag blue">Flow ${flowLabel(signal.uw_context?.flow_bias)}</span>
-          <span class="tag green">Dark Pool ${darkPoolLabel(signal.uw_context?.dark_pool_bias)}</span>
-          <span class="tag amber">Theta Weight ${fmtInt((signal.weights?.theta || 0) * 100)}%</span>
-          <span class="tag violet">UW Weight ${fmtInt((signal.weights?.uw || 0) * 100)}%</span>
+          <span class="tag blue">Flow ${flowLabel(signal.engines?.uw_conclusion?.flow_bias || signal.uw_context?.flow_bias)}</span>
+          <span class="tag green">Dark Pool ${darkPoolLabel(signal.engines?.uw_conclusion?.darkpool_bias || signal.uw_context?.dark_pool_bias)}</span>
+          <span class="tag amber">波动灯 ${safeText(signal.engines?.uw_conclusion?.volatility_light, '未接入')}</span>
+          <span class="tag violet">机构 ${safeText(signal.engines?.uw_conclusion?.institutional_entry, '未接入')}</span>
         </div>
       </article>
 
       <article class="radar-card">
         <div class="radar-title">
-          <h2>Event Risk</h2>
+          <h2>事件过滤</h2>
           <span class="tag ${chipClassByRisk(signal.event_context?.event_risk)}">${eventRiskLabel(signal.event_context?.event_risk)}</span>
         </div>
-        <p class="radar-note">${escapeHtml(safeText(signal.event_context?.event_note, '无重大事件风险。'))}</p>
+        <p class="radar-note">${escapeHtml(fmpConclusion)}</p>
         <div class="matrix-list">
           <div class="matrix-item"><div class="matrix-name">卖波许可</div><div class="matrix-value">${signal.event_context?.event_risk === 'high' ? '禁止提前铁鹰 / 裸卖' : '仅在波动回落后评估'}</div><div class="matrix-number">FMP</div></div>
           <div class="matrix-item"><div class="matrix-name">主操作页影响</div><div class="matrix-value">${escapeHtml(getAction(signal).title)}</div><div class="matrix-number">${getAction(signal).permission}</div></div>
@@ -736,51 +830,39 @@ function renderRadarSummary(signal) {
 
       <article class="radar-card">
         <div class="radar-title">
-          <h2>Signal Conflict</h2>
+          <h2>当前限制</h2>
           <span class="quality-chip ${qualityClass(signal)}">${conflictLabel(signal.conflict?.conflict_level)}</span>
         </div>
-        <p class="radar-note">${escapeHtml(dataQuality.coherence === 'mixed' ? 'FMP 现价真实，但 Gamma 地图仍为 mock，禁止执行。' : safeText(signal.radar_summary?.plan_alignment, safeText(signal.plain_language?.market_status, '暂无冲突说明。')))}</p>
+        <p class="radar-note">${escapeHtml(safeText(signal.radar_summary?.plan_alignment, conflictConclusion))}</p>
         <ul class="alert-list">
-          ${((dataQuality.coherence === 'mixed'
-            ? ['真实现价与 mock Gamma 地图不一致，禁止执行。', '等待真实 Gamma / UW / Theta 地图接入后再执行。']
-            : (conflictPoints.length ? conflictPoints : ['没有强冲突，但仍必须等触发。']))).map((item) => `<li>${escapeHtml(safeText(item))}</li>`).join('')}
+          ${(conflictPoints.length ? conflictPoints : ['没有强冲突，但仍必须等触发。']).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
         </ul>
       </article>
     </section>
   `;
 }
 
-function renderEngineMatrix(signal) {
-  const engines = signal.engines || {};
-  const rows = Object.entries(engines).map(([name, engine]) => {
-    const output = summarizeEngine(name, engine);
-    const weight = typeof engine === 'object' && engine.weight != null ? fmtInt(Number(engine.weight) * 100) + '%' : '--';
-    return `
-      <div class="matrix-item">
-        <div class="matrix-name">${escapeHtml(name)}</div>
-        <div class="matrix-value">${escapeHtml(output)}</div>
-        <div class="matrix-number">${weight}</div>
-      </div>
-    `;
-  }).join('');
+function renderRadarContext(signal) {
+  const items = [
+    ['Dealer 结论', safeText(signal.engines?.dealer_conclusion, gammaLabel(signal.gamma_regime)), '做市商主判断'],
+    ['FMP 结论', safeText(signal.engines?.fmp_conclusion, 'FMP 未接入'), '事件与市场气氛'],
+    ['UW 结论', safeText(signal.engines?.uw_conclusion, 'UW 未接入'), '辅助情报'],
+    ['价格哨兵', safeText(signal.engines?.tv_sentinel, '等待价格确认'), '只做触发，不单独定方向'],
+    ['执行环境', safeText(signal.engines?.command_environment, '等待价格触发'), '是否允许观察/执行'],
+    ['冲突处理', safeText(signal.engines?.conflict_resolver, '暂无明显冲突'), '跨源一致性']
+  ];
 
   return `
-    <section class="matrix-grid">
-      <div class="matrix-panel">
-        <div class="matrix-title"><div class="section-label">Engine Outputs</div><span class="tag blue">Pure Data</span></div>
-        <div class="matrix-list">${rows || '<div class="matrix-item"><div class="matrix-value">No engine data</div></div>'}</div>
-      </div>
-      <div class="matrix-panel">
-        <div class="matrix-title"><div class="section-label">Raw Notes</div><span class="tag amber">只看结论，不看图表</span></div>
-        <div class="matrix-list">
-          ${(signal.notes || []).map((note, index) => `
-            <div class="matrix-item">
-              <div class="matrix-name">NOTE ${index + 1}</div>
-              <div class="matrix-value">${escapeHtml(safeText(note))}</div>
-              <div class="matrix-number">LOG</div>
-            </div>
-          `).join('') || '<div class="matrix-item"><div class="matrix-value">No notes</div></div>'}
-        </div>
+    <section class="matrix-panel">
+      <div class="matrix-title"><div class="section-label">支撑说明</div><span class="tag blue">只读结论，不读原始字段</span></div>
+      <div class="matrix-list">
+        ${items.map(([name, value, note]) => `
+          <div class="matrix-item">
+            <div class="matrix-name">${escapeHtml(name)}</div>
+            <div class="matrix-value">${escapeHtml(value)}</div>
+            <div class="matrix-number">${escapeHtml(note)}</div>
+          </div>
+        `).join('')}
       </div>
     </section>
   `;
@@ -790,9 +872,9 @@ function renderRadar(signal) {
   return `
     <main class="page">
       ${renderRadarSummary(signal)}
-      ${renderEngineMatrix(signal)}
+      ${renderRadarContext(signal)}
       ${renderSourceStrip(signal)}
-      <div class="footer-note">Radar only supports Page 1 command. It does not create separate trade signals.</div>
+      <div class="footer-note">Radar 只负责解释支撑与限制，不单独生成交易指令。</div>
     </main>
   `;
 }
@@ -825,21 +907,19 @@ function renderError(error) {
   `;
 }
 
-function renderPage(signal) {
-  const path = window.location.pathname === '/radar' ? '/radar' : '/';
-  document.getElementById('app').innerHTML = `
-    ${renderTopbar(path, getScenario(), signal)}
-    ${path === '/radar' ? renderRadar(signal) : renderHome(signal)}
-  `;
-  bindScenarioSelector();
-}
-
-document.addEventListener('DOMContentLoaded', async () => {
+async function main() {
   renderLoading();
   try {
     const signal = await loadSignal();
-    renderPage(signal);
+    const path = window.location.pathname === '/radar' ? '/radar' : '/';
+    document.getElementById('app').innerHTML = `
+      ${renderTopbar(path, signal)}
+      ${path === '/radar' ? renderRadar(signal) : renderHome(signal)}
+    `;
+    bindScenarioSelector();
   } catch (error) {
     renderError(error);
   }
-});
+}
+
+main();
