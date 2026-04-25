@@ -14,6 +14,7 @@ export function runConfidenceScoreEngine({
   if (dataHealth?.data_mode === 'mixed' || dataHealth?.data_mode === 'mock' || dataHealth?.price_conflict === true) {
     return {
       score: 0,
+      environment_score: 0,
       executable: false,
       plain_chinese: '数据模式不可信，禁止执行。'
     };
@@ -72,16 +73,30 @@ export function runConfidenceScoreEngine({
     score -= 30;
   }
 
+  const environment_score = boundedScore(score);
+  const executable =
+    environment_score >= 80
+    && tvSentinel?.fresh === true
+    && tvSentinel?.matched_allowed_setup === true
+    && fmpConclusion?.event_risk !== 'blocked'
+    && fmpConclusion?.event_risk !== 'unavailable'
+    && dataHealth?.data_mode === 'live'
+    && dataHealth?.price_conflict !== true
+    && dataHealth?.executable !== false;
+
   return {
-    score: boundedScore(score),
-    executable: boundedScore(score) >= 80,
+    score: environment_score,
+    environment_score,
+    executable,
     plain_chinese:
-      boundedScore(score) >= 80
-        ? '强确认，可进入 ready。'
-        : boundedScore(score) >= 65
-          ? '可观察，等待触发。'
-          : boundedScore(score) >= 50
-            ? '弱确认，保持等待。'
-            : '确认度不足，禁止执行。'
+      executable
+        ? '环境分高，且 TV 与风控条件齐备，可进入 ready。'
+        : environment_score >= 80
+          ? '环境分高，但缺少 TV 触发 / 数据源 / 风控字段，不能 ready。'
+          : environment_score >= 65
+            ? '可观察，等待触发。'
+            : environment_score >= 50
+              ? '弱确认，保持等待。'
+              : '确认度不足，禁止执行。'
   };
 }

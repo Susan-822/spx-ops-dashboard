@@ -1,4 +1,10 @@
 export function runDealerConclusionEngine({ normalized, gammaWall }) {
+  const sourceItems = Array.isArray(normalized?.source_status) ? normalized.source_status : [];
+  const thetaCore = sourceItems.find((item) => item.source === 'theta_core');
+  const thetaChain = sourceItems.find((item) => item.source === 'theta_full_chain');
+  const hasRealTheta = thetaCore?.state === 'real' || thetaChain?.state === 'real';
+  const hasStaleTheta = thetaCore?.stale === true || thetaChain?.stale === true;
+  const status = hasRealTheta ? 'live' : hasStaleTheta ? 'stale' : 'mock';
   const expectedMoveUpper = normalized.call_wall != null ? normalized.call_wall : null;
   const expectedMoveLower = normalized.put_wall != null ? normalized.put_wall : null;
 
@@ -33,7 +39,7 @@ export function runDealerConclusionEngine({ normalized, gammaWall }) {
 
   return {
     source: 'theta',
-    status: normalized.stale_flags.theta ? 'stale' : 'live',
+    status,
     gamma_regime: normalized.gamma_regime || 'unknown',
     dealer_behavior,
     least_resistance_path,
@@ -45,7 +51,9 @@ export function runDealerConclusionEngine({ normalized, gammaWall }) {
     expected_move_lower: expectedMoveLower,
     vanna_charm_bias,
     plain_chinese:
-      normalized.gamma_regime === 'positive'
+      status === 'mock'
+        ? 'Dealer 地图仍来自 mock/scenario，只能观察，不得直接执行。'
+      : normalized.gamma_regime === 'positive'
         ? 'Dealer 偏控波，价格更容易围绕关键位磨盘。'
         : normalized.gamma_regime === 'negative'
           ? 'Dealer 偏放波，路径更容易扩张。'

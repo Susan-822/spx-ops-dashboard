@@ -11,14 +11,26 @@ export function runUwConclusionEngine({ normalized, uwFlow, volatility }) {
           ? 'partial'
           : 'unavailable';
 
+  if (['unavailable', 'stale', 'error'].includes(status)) {
+    return {
+      source: 'uw',
+      status,
+      flow_bias: 'unavailable',
+      institutional_entry: 'unavailable',
+      darkpool_bias: 'unavailable',
+      volatility_light: 'unavailable',
+      market_tide: 'unavailable',
+      dealer_crosscheck: 'unavailable',
+      plain_chinese: 'UW 不可用，当前无法确认机构 Flow / Dark Pool / 波动配合。'
+    };
+  }
+
   const flow_bias =
     uwFlow?.uw_signal === 'bullish_flow'
       ? 'bullish'
       : uwFlow?.uw_signal === 'bearish_flow'
         ? 'bearish'
-        : status === 'unavailable'
-          ? 'unavailable'
-          : 'mixed';
+        : 'mixed';
 
   const institutional_entry =
     uwFlow?.flow_quality_score >= 75
@@ -34,9 +46,7 @@ export function runUwConclusionEngine({ normalized, uwFlow, volatility }) {
       ? 'support'
       : normalized?.uw_dark_pool_bias === 'bearish'
         ? 'resistance'
-        : status === 'unavailable'
-          ? 'unavailable'
-          : 'neutral';
+        : 'neutral';
 
   const volatility_light =
     volatility?.vol_state === 'contained'
@@ -52,27 +62,23 @@ export function runUwConclusionEngine({ normalized, uwFlow, volatility }) {
       ? 'risk_on'
       : flow_bias === 'bearish'
         ? 'risk_off'
-        : status === 'unavailable'
-          ? 'unavailable'
-          : 'mixed';
+        : 'mixed';
 
   const dealer_crosscheck =
     normalized?.gamma_regime === 'positive' && flow_bias === 'bullish'
       ? 'confirm'
       : normalized?.gamma_regime === 'negative' && flow_bias === 'bearish'
         ? 'confirm'
-        : flow_bias === 'mixed' || status === 'unavailable'
+        : flow_bias === 'mixed'
           ? 'unavailable'
           : 'conflict';
 
   const plain_chinese =
-    status === 'unavailable'
-      ? 'UW 不可用，当前无法确认机构 Flow / Dark Pool / 波动配合。'
-      : flow_bias === 'bullish'
-        ? 'UW 偏多，机构有入场迹象。'
-        : flow_bias === 'bearish'
-          ? 'UW 偏空，机构卖压更主动。'
-          : 'UW 混合，暂不提供明确方向。';
+    flow_bias === 'bullish'
+      ? 'UW 偏多，机构有入场迹象。'
+      : flow_bias === 'bearish'
+        ? 'UW 偏空，机构卖压更主动。'
+        : 'UW 混合，暂不提供明确方向。';
 
   return {
     source: 'uw',

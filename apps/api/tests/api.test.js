@@ -22,12 +22,12 @@ const {
 
 const EXPECTED_ACTIONS = {
   negative_gamma_wait_pullback: 'wait',
-  positive_gamma_income_watch: 'income_ok',
+  positive_gamma_income_watch: 'wait',
   flip_conflict_wait: 'wait',
   theta_stale_no_trade: 'no_trade',
   fmp_event_no_short_vol: 'wait',
   uw_call_strong_unconfirmed: 'wait',
-  breakout_pullback_pending: 'long_on_pullback'
+  breakout_pullback_pending: 'wait'
 };
 
 const ALLOWED_MARKET_STATES = new Set([
@@ -621,7 +621,7 @@ test('buildAlertMessage renders Chinese intraday reminder from current signal', 
     body: { session: 'intraday' }
   });
 
-  assert.match(message, /【SPX 指挥台｜A多准备】/);
+  assert.match(message, /【SPX 指挥台｜突破不追】/);
   assert.match(message, /指挥部：/);
   assert.match(message, /哨兵：/);
   assert.match(message, /进场：/);
@@ -663,9 +663,9 @@ test('command environment can allow setups while TV sentinel still blocks execut
   const signal = await getCurrentSignal('uw_call_strong_unconfirmed');
 
   assert.equal(signal.recommended_action, 'wait');
-  assert.equal(signal.engines.command_environment.allowed, true);
-  assert.equal(signal.engines.allowed_setups.single_leg.allowed, true);
-  assert.equal(signal.engines.allowed_setups.vertical.allowed, true);
+  assert.equal(signal.engines.command_environment.allowed, false);
+  assert.equal(signal.engines.allowed_setups.single_leg.allowed, false);
+  assert.equal(signal.engines.allowed_setups.vertical.allowed, false);
   assert.equal(signal.engines.allowed_setups.iron_condor.allowed, false);
   assert.equal(signal.engines.tv_sentinel.triggered, false);
   assert.equal(signal.engines.trade_plan.triggered_by_tv, false);
@@ -674,13 +674,13 @@ test('command environment can allow setups while TV sentinel still blocks execut
 test('TV sentinel only upgrades to directional plan when command environment allows it', async () => {
   const signal = await getCurrentSignal('breakout_pullback_pending');
 
-  assert.equal(signal.engines.command_environment.allowed, true);
-  assert.equal(signal.engines.allowed_setups.single_leg.allowed, true);
-  assert.equal(signal.engines.allowed_setups.vertical.allowed, true);
+  assert.equal(signal.engines.command_environment.allowed, false);
+  assert.equal(signal.engines.allowed_setups.single_leg.allowed, false);
+  assert.equal(signal.engines.allowed_setups.vertical.allowed, false);
   assert.equal(signal.engines.tv_sentinel.triggered, true);
   assert.equal(signal.engines.tv_sentinel.direction, 'bullish');
-  assert.equal(signal.engines.trade_plan.plan_family, 'A');
-  assert.equal(signal.recommended_action, 'long_on_pullback');
+  assert.equal(signal.engines.trade_plan.plan_family, null);
+  assert.equal(signal.recommended_action, 'wait');
 });
 
 test('telegram dedupe bypasses structure invalidated, stale, and data_mixed alerts', async () => {
@@ -700,4 +700,100 @@ test('telegram dedupe blocks ordinary repeated alerts within five minutes', asyn
   assert.equal(isTelegramAlertDuplicate(key), false);
   markTelegramAlertSent(key);
   assert.equal(isTelegramAlertDuplicate(key), true);
+});
+
+test('FMP unavailable keeps fmp_conclusion event_risk unavailable', async () => {
+  delete process.env.FMP_API_KEY;
+  const signal = await getCurrentSignal('breakout_pullback_pending');
+
+  assert.equal(signal.fmp_conclusion.status, 'unavailable');
+  assert.equal(signal.fmp_conclusion.event_risk, 'unavailable');
+  assert.equal(['unavailable', 'mixed'].includes(signal.fmp_conclusion.market_bias), true);
+  assert.equal(signal.fmp_conclusion.index_sync, 'unavailable');
+  assert.equal(signal.fmp_conclusion.vix_signal, 'unavailable');
+  assert.equal(signal.fmp_conclusion.price_status, 'unavailable');
+});
+
+test('missing inputs force executable false even when observation is allowed', async () => {
+  delete process.env.FMP_API_KEY;
+  const signal = await getCurrentSignal('breakout_pullback_pending');
+
+  assert.equal(signal.command_inputs.missing_inputs.includes('fmp'), true);
+  assert.equal(signal.command_inputs.missing_inputs.includes('uw'), true);
+  assert.equal(signal.data_health.executable, false);
+  assert.equal(signal.command_environment.allowed, false);
+  assert.equal(signal.command_environment.executable, false);
+  assert.equal(['waiting', 'blocked'].includes(signal.trade_plan.status), true);
+});
+
+test('tv_sentinel without matched setup cannot produce ready trade plan', async () => {
+  const signal = await getCurrentSignal('uw_call_strong_unconfirmed');
+  assert.equal(signal.tv_sentinel.event_type, null);
+  assert.equal(signal.tv_sentinel.matched_allowed_setup, false);
+  assert.notEqual(signal.trade_plan.status, 'ready');
+});
+
+test('matched_allowed_setup false keeps trade plan out of ready state', async () => {
+  delete process.env.FMP_API_KEY;
+  const signal = await getCurrentSignal('breakout_pullback_pending');
+  assert.equal(signal.tv_sentinel.matched_allowed_setup, false);
+  assert.notEqual(signal.trade_plan.status, 'ready');
+});
+
+test('stop loss level zero is treated as missing and blocks ready plan', async () => {
+  process.env.FMP_API_KEY = 'test-key';
+  const signal = await getCurrentSignal('breakout_pullback_pending', {
+    fmp: {
+      event: {
+        fetchImpl: async () => ({ ok: true, async json() { return []; } })
+      },
+      price: {
+        quoteShortFetchImpl: async () => ({
+          ok: true,
+          async json() {
+            return [{ symbol: '^GSPC', price: 5342.25 }];
+          }
+        }),
+        quoteFetchImpl: async () => { throw new Error('unused'); },
+        historicalFetchImpl: async () => { throw new Error('unused'); }
+      }
+    }
+  });
+
+  assert.equal(signal.trade_plan.stop_loss.level, null);
+  assert.notEqual(signal.trade_plan.status, 'ready');
+  delete process.env.FMP_API_KEY;
+});
+
+test('mock dealer conclusion cannot produce executable command environment', async () => {
+  delete process.env.FMP_API_KEY;
+  const signal = await getCurrentSignal('breakout_pullback_pending');
+  assert.notEqual(signal.dealer_conclusion.status, 'live');
+  assert.equal(signal.command_environment.executable, false);
+});
+
+test('Telegram message must not include stop loss zero', async () => {
+  process.env.FMP_API_KEY = 'test-key';
+  const signal = await getCurrentSignal('breakout_pullback_pending', {
+    fmp: {
+      event: {
+        fetchImpl: async () => ({ ok: true, async json() { return []; } })
+      },
+      price: {
+        quoteShortFetchImpl: async () => ({
+          ok: true,
+          async json() {
+            return [{ symbol: '^GSPC', price: 5342.25 }];
+          }
+        }),
+        quoteFetchImpl: async () => { throw new Error('unused'); },
+        historicalFetchImpl: async () => { throw new Error('unused'); }
+      }
+    }
+  });
+  const message = buildAlertMessage({ signal, body: { session: 'intraday' } });
+  assert.equal(message.includes('止损 0'), false);
+  assert.equal(message.includes('以 TV 失效位 0 为止损'), false);
+  assert.match(message, /止损：--|止损：缺少有效失效位/);
+  delete process.env.FMP_API_KEY;
 });

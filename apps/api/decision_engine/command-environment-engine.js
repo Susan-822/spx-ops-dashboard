@@ -9,9 +9,13 @@ export function runCommandEnvironmentEngine(input = {}) {
   const priceSignal = input.priceSignal || input.price_signal || '';
   const tvSentinel = input.tvSentinel || input.tv_sentinel || {};
   const blockers = [];
+  const missingInputs = Array.isArray(commandInputs?.missing_inputs) ? commandInputs.missing_inputs : [];
 
   if (dataHealth.hard_block || dataHealth.command_inputs_fresh === false) {
     blockers.push('数据健康不足');
+  }
+  if (missingInputs.some((item) => ['fmp', 'uw', 'theta'].includes(item))) {
+    blockers.push('缺少关键输入');
   }
   if (fmpConclusion?.event_risk === 'blocked') {
     blockers.push('事件风险阻断');
@@ -21,6 +25,9 @@ export function runCommandEnvironmentEngine(input = {}) {
   }
   if (dataHealth.data_mode === 'mixed' || dataHealth.data_mode === 'mock') {
     blockers.push('数据模式不可执行');
+  }
+  if (dealerConclusion?.status && dealerConclusion.status !== 'live') {
+    blockers.push('Dealer 主源不可执行');
   }
 
   if (blockers.length > 0) {
@@ -124,7 +131,10 @@ export function runCommandEnvironmentEngine(input = {}) {
   return {
     state: 'ready',
     allowed: true,
-    executable: confidenceScore?.executable !== false,
+    executable:
+      dataHealth?.executable === true
+      && dealerConclusion?.status === 'live'
+      && confidenceScore?.executable !== false,
     bias: regime_bias === 'long' ? 'bullish' : regime_bias === 'short' ? 'bearish' : regime_bias === 'income' ? 'mixed' : 'neutral',
     regime_bias,
     day_type,

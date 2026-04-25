@@ -122,6 +122,22 @@ export function createNormalizedSignal(partial = {}) {
     invalidation_level: partial.invalidation_level ?? 'N/A',
     confidence_score: partial.confidence_score ?? 50,
     strategy_cards: partial.strategy_cards ?? [],
+    fmp_conclusion: partial.fmp_conclusion ?? {},
+    dealer_conclusion: partial.dealer_conclusion ?? {},
+    uw_conclusion: partial.uw_conclusion ?? {},
+    data_health: partial.data_health ?? {},
+    conflict_resolver: partial.conflict_resolver ?? {},
+    command_inputs: partial.command_inputs ?? {},
+    command_environment: partial.command_environment ?? {},
+    tv_sentinel: partial.tv_sentinel ?? {},
+    trade_plan: partial.trade_plan ?? {},
+    report_state: partial.report_state ?? {},
+    projection: partial.projection ?? {
+      premarket_summary: '',
+      intraday_summary: '',
+      breaking_summary: '',
+      trade_plan_summary: ''
+    },
     engines: partial.engines ?? {},
     notes: partial.notes ?? []
   };

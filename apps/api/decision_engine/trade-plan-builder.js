@@ -152,6 +152,27 @@ function emptyTargets() {
   ];
 }
 
+function hasValidNumber(value) {
+  return Number.isFinite(Number(value)) && Number(value) !== 0;
+}
+
+function hasValidEntryZone(entryZone) {
+  return hasValidNumber(entryZone?.from) || hasValidNumber(entryZone?.to);
+}
+
+function hasValidStopLoss(stopLoss) {
+  return hasValidNumber(stopLoss?.level);
+}
+
+function hasValidInvalidation(invalidation) {
+  return Boolean(invalidation?.text) && invalidation.text !== '--';
+}
+
+function hasValidTargetOne(targets = []) {
+  const tp1 = Array.isArray(targets) ? targets.find((item) => item?.name === 'TP1') : null;
+  return hasValidNumber(tp1?.level);
+}
+
 function buildEntryZone(setupCode, normalized) {
   switch (setupCode) {
     case 'A_LONG_PULLBACK':
@@ -189,6 +210,7 @@ function buildEntryZone(setupCode, normalized) {
 
 function buildStopLoss(setupCode, normalized, tradingviewSentinel) {
   const invalidationLevel = Number.isFinite(Number(tradingviewSentinel?.invalidation_level))
+    && Number(tradingviewSentinel.invalidation_level) !== 0
     ? Number(tradingviewSentinel.invalidation_level)
     : null;
 
@@ -451,6 +473,54 @@ export function runTradePlanBuilder({ normalized, commandEnvironment, allowedSet
             ? 'B_iron_condor'
             : 'none';
   const directionLabelText = directionLabel(setupCode);
+  const entryZone = buildEntryZone(setupCode, normalized);
+  const stopLoss = buildStopLoss(setupCode, normalized, tradingviewSentinel);
+  const invalidation = buildInvalidation(setupCode, normalized);
+  const targets = buildTargets(setupCode, normalized);
+  const canReady =
+    commandEnvironment?.executable === true
+    && tradingviewSentinel?.fresh === true
+    && tradingviewSentinel?.matched_allowed_setup === true
+    && hasValidEntryZone(entryZone)
+    && hasValidStopLoss(stopLoss)
+    && hasValidInvalidation(invalidation)
+    && hasValidTargetOne(targets);
+
+  if (!canReady) {
+    return {
+      active: false,
+      status: 'waiting',
+      has_trade_plan: false,
+      triggered_by_tv: Boolean(tradingviewSentinel?.triggered),
+      plan_family: planFamilyFromSetup(setupCode),
+      setup_code: setupCode,
+      setup_type: setupType,
+      direction_label: directionLabelText,
+      side: sideFromSetup(setupCode),
+      bias: commandEnvironment?.bias || 'neutral',
+      recommended_action: ACTIONS.WAIT,
+      trigger_status: 'waiting',
+      title: '环境支持，但关键执行字段不足',
+      trigger_text: sentinelReason,
+      target_text: '未生成目标位。',
+      invalidation_text: hasValidInvalidation(invalidation) ? invalidation.text : '等待新的有效失效位',
+      entry_zone: hasValidEntryZone(entryZone) ? entryZone : emptyPriceField(),
+      entry_trigger: hasValidEntryZone(entryZone) ? buildTriggerText(setupCode, normalized) : '--',
+      stop_loss: hasValidStopLoss(stopLoss)
+        ? stopLoss
+        : { level: null, basis: '', text: '止损：--，缺少有效失效位，不能执行' },
+      invalidation: hasValidInvalidation(invalidation)
+        ? invalidation
+        : { level: null, condition: '缺少有效失效位', text: '缺少有效失效位，不能执行' },
+      targets,
+      strategy_permission: strategyPermissionFromSetup(setupCode, commandEnvironment),
+      confidence_score: commandEnvironment?.confidence_score ?? 0,
+      supporting_factors: [commandEnvironment?.plain_chinese || commandEnvironment?.reason, tradingviewSentinel?.plain_chinese || tradingviewSentinel?.reason].filter(Boolean),
+      conflicts: ['环境分高，但缺少 TV 触发 / 数据源 / 风控字段，不能 ready。'],
+      forbidden_actions: ['不追高', '不得按缺失止损位开仓'],
+      plain_chinese: '环境分高，但缺少 TV 触发 / 数据源 / 风控字段，不能 ready。'
+    };
+  }
 
   return {
     active: true,
@@ -469,11 +539,11 @@ export function runTradePlanBuilder({ normalized, commandEnvironment, allowedSet
     trigger_text: buildTriggerText(setupCode, normalized),
     target_text: buildTargetText(setupCode, normalized),
     invalidation_text: buildInvalidationText(setupCode, normalized),
-    entry_zone: buildEntryZone(setupCode, normalized),
+    entry_zone: entryZone,
     entry_trigger: buildTriggerText(setupCode, normalized),
-    stop_loss: buildStopLoss(setupCode, normalized, tradingviewSentinel),
-    invalidation: buildInvalidation(setupCode, normalized),
-    targets: buildTargets(setupCode, normalized),
+    stop_loss: stopLoss,
+    invalidation,
+    targets,
     strategy_permission: strategyPermissionFromSetup(setupCode, commandEnvironment),
     confidence_score: commandEnvironment?.confidence_score ?? 0,
     supporting_factors: [commandEnvironment?.plain_chinese || commandEnvironment?.reason, tradingviewSentinel?.plain_chinese || tradingviewSentinel?.reason].filter(Boolean),

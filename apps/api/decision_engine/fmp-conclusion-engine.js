@@ -37,19 +37,23 @@ export function runFmpConclusionEngine({ normalized, eventRisk }) {
   const eventSource = getSourceStatus(normalized.source_status, 'fmp_event');
   const priceSource = getSourceStatus(normalized.source_status, 'fmp_price');
   const status = statusFromSource(eventSource);
+  const unavailableLike = status === 'unavailable' || status === 'stale' || status === 'error';
   const priceStatus =
-    !priceSource ? 'unavailable'
+    unavailableLike ? 'unavailable'
+    : !priceSource ? 'unavailable'
     : priceSource.state === 'down' ? 'unavailable'
     : priceSource.stale || priceSource.state === 'delayed' ? 'stale'
     : normalized.spot_is_real ? 'valid'
     : priceSource.state === 'degraded' ? 'conflict'
     : 'unavailable';
-  const market_bias = deriveMarketBias({
-    event_risk: deriveEventRiskLevel(eventRisk?.risk_gate),
-    fmp_signal: normalized.fmp_signal,
-    day_change: normalized.day_change
-  });
-  const event_risk = deriveEventRiskLevel(eventRisk?.risk_gate);
+  const market_bias = unavailableLike
+    ? 'unavailable'
+    : deriveMarketBias({
+        event_risk: deriveEventRiskLevel(eventRisk?.risk_gate),
+        fmp_signal: normalized.fmp_signal,
+        day_change: normalized.day_change
+      });
+  const event_risk = unavailableLike ? 'unavailable' : deriveEventRiskLevel(eventRisk?.risk_gate);
   const confidence_score =
     status === 'live' && priceStatus === 'valid' ? 75
     : status === 'live' ? 60
