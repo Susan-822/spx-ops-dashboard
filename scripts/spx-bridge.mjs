@@ -222,7 +222,8 @@ async function postThetaPayload(config, payload) {
   const response = await fetch(config.thetaIngestUrl, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'x-api-key': config.dataPushApiKey
     },
     body: JSON.stringify(body)
   });

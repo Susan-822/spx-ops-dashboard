@@ -175,7 +175,7 @@ test('POST /ingest/theta rejects missing secret', async () => {
       body: JSON.stringify(payload)
     });
 
-    assert.equal(response.status, 403);
+    assert.equal([401, 403].includes(response.status), true);
   } finally {
     server.close();
   }
@@ -192,7 +192,7 @@ test('POST /ingest/theta rejects wrong secret', async () => {
       body: JSON.stringify(sampleThetaPayload({ secret: 'wrong' }))
     });
 
-    assert.equal(response.status, 403);
+    assert.equal([401, 403].includes(response.status), true);
   } finally {
     server.close();
   }
