@@ -2,3 +2,4 @@ integrations/unusual-whales/discovery/uw_raw_results/
 integrations/unusual-whales/reader/raw/
 integrations/unusual-whales/reader/screenshots/
 integrations/unusual-whales/reader/tmp/
+node_modules/
