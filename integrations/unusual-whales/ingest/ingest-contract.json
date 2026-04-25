@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UW Ingest Contract Placeholder",
+  "description": "Placeholder contract for the future /ingest/uw payload. This file documents the planned boundary only and does not indicate implementation is complete.",
+  "type": "object",
+  "required": [
+    "source",
+    "snapshot_type",
+    "generated_at",
+    "summary"
+  ],
+  "properties": {
+    "source": {
+      "type": "string",
+      "const": "unusual_whales"
+    },
+    "snapshot_type": {
+      "type": "string",
+      "enum": [
+        "dealer_snapshot",
+        "volatility_snapshot",
+        "flow_snapshot",
+        "darkpool_snapshot",
+        "sentiment_snapshot",
+        "summary"
+      ]
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}

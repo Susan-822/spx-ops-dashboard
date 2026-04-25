@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "integrations/unusual-whales/schemas/uw_summary.schema.json",
+  "title": "UW Summary",
+  "description": "Placeholder summary schema for future Unusual Whales normalized payloads.",
+  "type": "object",
+  "properties": {
+    "source": {
+      "type": "string",
+      "const": "unusual-whales"
+    },
+    "version": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "dealer_snapshot": {
+      "type": "object"
+    },
+    "volatility_snapshot": {
+      "type": "object"
+    },
+    "flow_snapshot": {
+      "type": "object"
+    },
+    "darkpool_snapshot": {
+      "type": "object"
+    },
+    "sentiment_snapshot": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "source"
+  ],
+  "additionalProperties": true
+}

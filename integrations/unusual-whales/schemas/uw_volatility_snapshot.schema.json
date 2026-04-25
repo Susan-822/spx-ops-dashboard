@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "integrations/unusual-whales/schemas/uw_volatility_snapshot.schema.json",
+  "title": "UW Volatility Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "source": {
+      "const": "unusual_whales"
+    },
+    "snapshot_type": {
+      "const": "volatility_snapshot"
+    },
+    "symbol": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string"
+    },
+    "volatility": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "iv_rank": {
+          "type": ["number", "null"]
+        },
+        "iv_percentile": {
+          "type": ["number", "null"]
+        },
+        "implied_volatility": {
+          "type": ["number", "null"]
+        },
+        "realized_volatility": {
+          "type": ["number", "null"]
+        },
+        "term_structure": {
+          "type": ["string", "null"]
+        },
+        "statistics_summary": {
+          "type": ["string", "null"]
+        }
+      },
+      "required": [
+        "iv_rank",
+        "iv_percentile",
+        "implied_volatility",
+        "realized_volatility",
+        "term_structure",
+        "statistics_summary"
+      ]
+    }
+  },
+  "required": [
+    "source",
+    "snapshot_type",
+    "symbol",
+    "timestamp",
+    "volatility"
+  ]
+}

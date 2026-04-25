@@ -4,7 +4,7 @@
 
 This review only checks public URL quality based on:
 
-- Brave discovery output in `uw_discovery_results.json`
+- Brave discovery output in `integrations/unusual-whales/discovery/uw_discovery_results.json`
 - public page titles and snippets
 - public docs pages that can be fetched without login
 

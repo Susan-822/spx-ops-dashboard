@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "integrations/unusual-whales/schemas/uw_dealer_snapshot.schema.json",
+  "title": "UW Dealer Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "source": {
+      "type": "string",
+      "const": "unusual_whales"
+    },
+    "module": {
+      "type": "string",
+      "const": "spx_greek_exposure"
+    },
+    "captured_at": {
+      "type": "string"
+    },
+    "data_state": {
+      "type": "string",
+      "enum": [
+        "placeholder",
+        "real",
+        "stale",
+        "partial"
+      ]
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "source",
+    "module",
+    "data_state"
+  ]
+}

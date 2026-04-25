@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "integrations/unusual-whales/schemas/uw_sentiment_snapshot.schema.json",
+  "title": "UW Sentiment Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "source": {
+      "type": "string",
+      "const": "unusual-whales"
+    },
+    "module": {
+      "type": "string",
+      "enum": [
+        "nope",
+        "market_tide"
+      ]
+    },
+    "symbol": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sentiment_fields": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "source",
+    "module"
+  ]
+}

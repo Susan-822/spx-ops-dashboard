@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "integrations/unusual-whales/schemas/uw_flow_snapshot.schema.json",
+  "title": "UW Flow Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "source": {
+      "const": "unusual_whales"
+    },
+    "module": {
+      "const": "options_flow_alerts"
+    },
+    "captured_at": {
+      "type": "string"
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "source",
+    "module",
+    "captured_at",
+    "fields"
+  ]
+}

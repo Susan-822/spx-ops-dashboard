@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "integrations/unusual-whales/schemas/uw_darkpool_snapshot.schema.json",
+  "title": "UW Dark Pool Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "source": {
+      "type": "string",
+      "const": "unusual_whales"
+    },
+    "module": {
+      "type": "string",
+      "const": "spy_darkpool_offlit"
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ticker": {
+      "type": "string"
+    },
+    "nearest_darkpool_support": {
+      "type": ["number", "null"]
+    },
+    "nearest_darkpool_resistance": {
+      "type": ["number", "null"]
+    },
+    "largest_darkpool_levels": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "off_lit_ratio": {
+      "type": ["number", "null"]
+    },
+    "recent_large_darkpool_trades": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "darkpool_bias": {
+      "type": ["string", "null"]
+    },
+    "last_update": {
+      "type": ["string", "null"]
+    }
+  },
+  "required": [
+    "source",
+    "module",
+    "captured_at"
+  ]
+}
