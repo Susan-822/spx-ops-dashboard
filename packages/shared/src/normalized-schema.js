@@ -57,6 +57,33 @@ export function createNormalizedSignal(partial = {}) {
       no_short_vol_window: partial.event_context?.no_short_vol_window ?? false,
       trade_permission_adjustment: partial.event_context?.trade_permission_adjustment ?? 'none'
     },
+    theta: {
+      status: partial.theta?.status ?? 'unavailable',
+      calculation_scope: partial.theta?.calculation_scope ?? 'single_expiry_test',
+      test_expiration: partial.theta?.test_expiration ?? null,
+      quality: partial.theta?.quality ?? {
+        data_quality: 'unavailable',
+        missing_fields: [],
+        warnings: [],
+        calculation_scope: 'single_expiry_test',
+        raw_rows_sent: false
+      }
+    },
+    dealer_conclusion: {
+      source: partial.dealer_conclusion?.source ?? 'theta',
+      status: partial.dealer_conclusion?.status ?? 'unavailable',
+      gamma_regime: partial.dealer_conclusion?.gamma_regime ?? 'unknown',
+      dealer_behavior: partial.dealer_conclusion?.dealer_behavior ?? 'unknown',
+      least_resistance_path: partial.dealer_conclusion?.least_resistance_path ?? 'unknown',
+      call_wall: partial.dealer_conclusion?.call_wall ?? null,
+      put_wall: partial.dealer_conclusion?.put_wall ?? null,
+      max_pain: partial.dealer_conclusion?.max_pain ?? null,
+      zero_gamma: partial.dealer_conclusion?.zero_gamma ?? null,
+      expected_move_upper: partial.dealer_conclusion?.expected_move_upper ?? null,
+      expected_move_lower: partial.dealer_conclusion?.expected_move_lower ?? null,
+      vanna_charm_bias: partial.dealer_conclusion?.vanna_charm_bias ?? 'unknown',
+      plain_chinese: partial.dealer_conclusion?.plain_chinese ?? 'Theta dealer unavailable.'
+    },
     radar_summary: {
       order_flow: {
         call_buy_premium: partial.radar_summary?.order_flow?.call_buy_premium ?? 0,
@@ -121,6 +148,35 @@ export function createNormalizedSignal(partial = {}) {
     avoid_actions: partial.avoid_actions ?? [],
     invalidation_level: partial.invalidation_level ?? 'N/A',
     confidence_score: partial.confidence_score ?? 50,
+    execution_constraints: partial.execution_constraints ?? {
+      theta: {
+        available: false,
+        executable: false,
+        reason: 'ThetaData dealer unavailable.'
+      }
+    },
+    command_inputs: partial.command_inputs ?? {
+      dealer: {
+        dealer_conclusion: {
+          status: 'unavailable',
+          gamma_regime: 'unknown',
+          dealer_behavior: 'unknown',
+          least_resistance_path: 'unknown',
+          call_wall: null,
+          put_wall: null,
+          max_pain: null,
+          zero_gamma: null,
+          expected_move_upper: null,
+          expected_move_lower: null
+        }
+      }
+    },
+    projection: partial.projection ?? {
+      dealer_summary: {
+        status: 'unavailable',
+        text: 'Theta dealer unavailable.'
+      }
+    },
     strategy_cards: partial.strategy_cards ?? [],
     engines: partial.engines ?? {},
     notes: partial.notes ?? []

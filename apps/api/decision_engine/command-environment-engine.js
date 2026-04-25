@@ -1,4 +1,5 @@
 export function runCommandEnvironmentEngine({
+  normalized,
   dataHealth,
   marketRegime,
   gammaWall,
@@ -18,6 +19,9 @@ export function runCommandEnvironmentEngine({
   }
   if (conflict.conflict_level === 'high') {
     blockers.push('多源冲突过高');
+  }
+  if (normalized?.theta_execution_constraint?.executable === false) {
+    blockers.push(normalized.theta_execution_constraint.reason || 'ThetaData dealer 不可执行');
   }
 
   if (blockers.length > 0) {

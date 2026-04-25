@@ -6,12 +6,26 @@ import path from 'node:path';
 process.env.NODE_ENV = 'test';
 process.env.TRADINGVIEW_WEBHOOK_SECRET = '000d3b57-e521-479c-addd-cc672dec00be';
 process.env.STATE_STORE = 'memory';
+process.env.THETA_INGEST_SECRET = 'local-theta-secret';
 
 const { createServer } = await import('../server.js');
 const { clearTradingViewSnapshot } = await import('../storage/tradingview-snapshot.js');
+const {
+  clearThetaSnapshot,
+  describeThetaSnapshotStore,
+  getThetaSnapshot,
+  resetThetaSnapshotStoreForTests,
+  writeThetaSnapshot
+} = await import('../storage/theta-snapshot.js');
 const { getCurrentSignal } = await import('../decision_engine/current-signal.js');
 const { buildAlertMessage } = await import('../alerts/build-alert-message.js');
 const { resetTvSnapshotStoreForTests } = await import('../state/tvSnapshotStore.js');
+const {
+  buildDealerConclusionEngine,
+  calculateThetaDealerSummary,
+  deriveThetaExecutionConstraint,
+  mapThetaSnapshotToSourceStatus
+} = await import('../decision_engine/dealer-conclusion-engine.js');
 
 const EXPECTED_ACTIONS = {
   negative_gamma_wait_pullback: 'wait',
@@ -61,7 +75,60 @@ async function resetTvStateEnv(overrides = {}) {
   await resetTvSnapshotStoreForTests();
 }
 
+async function resetThetaStateEnv(overrides = {}) {
+  delete process.env.THETA_REDIS_URL;
+  delete process.env.THETA_SNAPSHOT_FILE;
+  delete process.env.THETA_SNAPSHOT_TTL_SECONDS;
+  delete process.env.THETA_SNAPSHOT_STALE_SECONDS;
+  process.env.THETA_STATE_STORE = 'memory';
+  Object.assign(process.env, overrides);
+  await resetThetaSnapshotStoreForTests();
+  await clearThetaSnapshot();
+}
+
+function sampleThetaPayload(overrides = {}) {
+  return {
+    secret: process.env.THETA_INGEST_SECRET,
+    source: 'thetadata_terminal',
+    status: 'live',
+    last_update: new Date().toISOString(),
+    ticker: 'SPX',
+    spot_source: 'fmp',
+    spot: 5310,
+    test_expiration: '2026-04-24',
+    dealer: {
+      net_gex: 150000000,
+      call_gex: 190000000,
+      put_gex: -40000000,
+      gamma_regime: 'positive',
+      dealer_behavior: 'pin',
+      least_resistance_path: 'range',
+      call_wall: 5340,
+      put_wall: 5280,
+      max_pain: 5310,
+      zero_gamma: 5298,
+      expected_move_upper: 5348,
+      expected_move_lower: 5272,
+      vanna_charm_bias: 'bullish'
+    },
+    quality: {
+      data_quality: 'live',
+      missing_fields: [],
+      warnings: [],
+      calculation_scope: 'single_expiry_test',
+      raw_rows_sent: false
+    },
+    ...overrides
+  };
+}
+
+async function seedDefaultThetaLiveSnapshot() {
+  await writeThetaSnapshot(sampleThetaPayload({ secret: undefined }));
+}
+
 test('GET /signals/current returns required protocol fields for dashboard and radar', async () => {
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
   const { server, baseUrl } = await startServer();
 
   try {
@@ -81,16 +148,224 @@ test('GET /signals/current returns required protocol fields for dashboard and ra
     assert.equal(ALLOWED_ACTIONS.has(json.recommended_action), true);
     assert.equal(Array.isArray(json.conflict.conflict_points), true);
     assert.equal(Boolean(json.radar_summary), true);
+    assert.equal(Boolean(json.theta), true);
+    assert.equal(Boolean(json.dealer_conclusion), true);
+    assert.equal(Boolean(json.execution_constraints?.theta), true);
+    assert.equal(Boolean(json.command_inputs?.dealer?.dealer_conclusion), true);
+    assert.equal(Boolean(json.projection?.dealer_summary), true);
   } finally {
     server.close();
   }
 });
 
+test('POST /ingest/theta rejects missing secret', async () => {
+  await resetThetaStateEnv();
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const payload = sampleThetaPayload();
+    delete payload.secret;
+    const response = await fetch(`${baseUrl}/ingest/theta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    assert.equal(response.status, 403);
+  } finally {
+    server.close();
+  }
+});
+
+test('POST /ingest/theta rejects wrong secret', async () => {
+  await resetThetaStateEnv();
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/ingest/theta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sampleThetaPayload({ secret: 'wrong' }))
+    });
+
+    assert.equal(response.status, 403);
+  } finally {
+    server.close();
+  }
+});
+
+test('POST /ingest/theta accepts curated summary and reflects it in current signal', async () => {
+  await resetThetaStateEnv();
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/ingest/theta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sampleThetaPayload())
+    });
+
+    assert.equal(response.status, 202);
+
+    const signalResponse = await fetch(`${baseUrl}/signals/current?scenario=breakout_pullback_pending`);
+    const signal = await signalResponse.json();
+
+    assert.equal(signal.theta.status, 'live');
+    assert.equal(signal.dealer_conclusion.status, 'live');
+    assert.equal(signal.execution_constraints.theta.executable, true);
+    assert.equal(signal.command_inputs.dealer.dealer_conclusion.call_wall, 5340);
+    assert.equal(signal.projection.dealer_summary.expected_move_upper, 5348);
+  } finally {
+    server.close();
+  }
+});
+
+test('POST /ingest/theta rejects raw option chain tables', async () => {
+  await resetThetaStateEnv();
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/ingest/theta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sampleThetaPayload({
+        option_chain: [{ strike: 5300, right: 'C' }]
+      }))
+    });
+
+    assert.equal(response.status, 400);
+  } finally {
+    server.close();
+  }
+});
+
+test('POST /ingest/theta rejects raw greeks tables and forbidden auth fields', async () => {
+  await resetThetaStateEnv();
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const greeksResponse = await fetch(`${baseUrl}/ingest/theta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sampleThetaPayload({
+        raw_greeks: [{ strike: 5300, gamma: 0.01 }]
+      }))
+    });
+    assert.equal(greeksResponse.status, 400);
+
+    const authResponse = await fetch(`${baseUrl}/ingest/theta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sampleThetaPayload({
+        authorization: 'Bearer secret'
+      }))
+    });
+    assert.equal(authResponse.status, 400);
+  } finally {
+    server.close();
+  }
+});
+
+test('thetaSnapshotStore supports memory and file modes with stale handling', async () => {
+  await resetThetaStateEnv({ THETA_STATE_STORE: 'memory' });
+
+  const memorySnapshot = await writeThetaSnapshot(sampleThetaPayload({ secret: undefined }));
+  assert.equal(memorySnapshot.status, 'live');
+
+  const memoryMeta = await describeThetaSnapshotStore();
+  assert.equal(memoryMeta.mode, 'memory');
+
+  const filePath = path.join(os.tmpdir(), `theta-snapshot-${Date.now()}.json`);
+  await resetThetaStateEnv({
+    THETA_STATE_STORE: 'file',
+    THETA_SNAPSHOT_FILE: filePath.replace('/tmp/', '/var/tmp/'),
+    THETA_SNAPSHOT_STALE_SECONDS: '1'
+  });
+
+  await writeThetaSnapshot(sampleThetaPayload({
+    secret: undefined,
+    last_update: new Date(Date.now() - 5 * 1000).toISOString()
+  }));
+
+  const fileSnapshot = await getThetaSnapshot();
+  const fileMeta = await describeThetaSnapshotStore();
+  assert.equal(fileMeta.mode, 'file');
+  assert.equal(fileSnapshot.status, 'stale');
+  assert.equal(fileSnapshot.stale, true);
+});
+
+test('dealer conclusion handles unavailable partial live and mock states safely', async () => {
+  const unavailable = buildDealerConclusionEngine({
+    thetaSnapshot: { status: 'unavailable' }
+  });
+  assert.equal(unavailable.status, 'unavailable');
+
+  const partial = buildDealerConclusionEngine({
+    thetaSnapshot: sampleThetaPayload({
+      secret: undefined,
+      status: 'partial',
+      spot: null
+    })
+  });
+  assert.equal(partial.status, 'partial');
+
+  const live = buildDealerConclusionEngine({
+    thetaSnapshot: sampleThetaPayload({ secret: undefined }),
+    externalSpot: 5310
+  });
+  assert.equal(live.status, 'live');
+  assert.equal(live.gamma_regime, 'positive');
+
+  const mock = buildDealerConclusionEngine({
+    thetaSnapshot: sampleThetaPayload({
+      secret: undefined,
+      status: 'mock'
+    })
+  });
+  assert.equal(mock.status, 'mock');
+  assert.equal(deriveThetaExecutionConstraint(mock).executable, false);
+  assert.equal(mapThetaSnapshotToSourceStatus({ status: 'mock' }).state, 'mock');
+});
+
+test('theta dealer algorithm computes expected move and key levels or leaves them null', async () => {
+  const summary = calculateThetaDealerSummary({
+    status: 'live',
+    spot_source: 'fmp',
+    spot: 5305,
+    test_expiration: '2026-04-24',
+    contracts: [
+      { strike: 5300, right: 'C', bid: 18, ask: 20, gamma: 0.01, open_interest: 1000, iv: 0.22, volume: 50 },
+      { strike: 5300, right: 'P', bid: 17, ask: 19, gamma: 0.012, open_interest: 1200, iv: 0.25, volume: 60 },
+      { strike: 5320, right: 'C', bid: 9, ask: 10, gamma: 0.02, open_interest: 1500, iv: 0.21, volume: 30 },
+      { strike: 5280, right: 'P', bid: 8, ask: 9, gamma: 0.018, open_interest: 1800, iv: 0.24, volume: 35 }
+    ]
+  });
+
+  assert.equal(summary.status, 'live');
+  assert.equal(summary.test_expiration, '2026-04-24');
+  assert.equal(typeof summary.dealer.net_gex, 'number');
+  assert.equal(typeof summary.dealer.expected_move_upper, 'number');
+  assert.equal(typeof summary.dealer.expected_move_lower, 'number');
+  assert.equal(summary.dealer.call_wall !== null, true);
+  assert.equal(summary.dealer.put_wall !== null, true);
+});
+
 test('all 7 scenarios return expected actions and radar-supporting fields', async () => {
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
   const { server, baseUrl } = await startServer();
 
   try {
     for (const [scenario, expectedAction] of Object.entries(EXPECTED_ACTIONS)) {
+      if (scenario === 'theta_stale_no_trade') {
+        await writeThetaSnapshot(sampleThetaPayload({
+          secret: undefined,
+          status: 'live',
+          last_update: new Date(Date.now() - 10 * 60 * 1000).toISOString()
+        }));
+      } else {
+        await seedDefaultThetaLiveSnapshot();
+      }
       const response = await fetch(`${baseUrl}/signals/current?scenario=${scenario}`);
       assert.equal(response.status, 200);
       const json = await response.json();
@@ -124,6 +399,8 @@ test('strategy cards expose exactly the required five strategy names', async () 
 });
 
 test('sources status exposes required source fields for footer strip', async () => {
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
   const { server, baseUrl } = await startServer();
 
   try {
@@ -152,6 +429,8 @@ test('sources status exposes required source fields for footer strip', async () 
 });
 
 test('frontend serves only dashboard and radar routes as user-visible pages', async () => {
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
   const { server, baseUrl } = await startServer();
 
   try {
@@ -165,6 +444,8 @@ test('frontend serves only dashboard and radar routes as user-visible pages', as
 });
 
 test('tradingview webhook returns 401 when secret is invalid', async () => {
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
   const { server, baseUrl } = await startServer();
 
   try {
@@ -191,6 +472,8 @@ test('tradingview webhook returns 401 when secret is invalid', async () => {
 });
 
 test('tradingview webhook returns 400 when event_type is not allowed', async () => {
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
   const { server, baseUrl } = await startServer();
 
   try {
@@ -218,6 +501,8 @@ test('tradingview webhook returns 400 when event_type is not allowed', async () 
 
 test('tradingview webhook returns 202 and updates snapshot on accepted event', async () => {
   await resetTvStateEnv();
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
   const { server, baseUrl } = await startServer();
 
   try {
@@ -263,6 +548,8 @@ test('TradingView snapshot persists in file mode across store reset and is still
     TV_SNAPSHOT_TTL_SECONDS: '21600',
     TV_SNAPSHOT_STALE_SECONDS: '900'
   });
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
 
   const { server, baseUrl } = await startServer();
 
@@ -321,6 +608,8 @@ test('stale TradingView snapshot remains visible but is marked stale in source s
     TV_SNAPSHOT_TTL_SECONDS: '21600',
     TV_SNAPSHOT_STALE_SECONDS: '900'
   });
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
 
   const { server, baseUrl } = await startServer();
 
@@ -365,6 +654,8 @@ test('stale TradingView snapshot remains visible but is marked stale in source s
 });
 
 test('health endpoint still exposes all seven scenarios', async () => {
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
   const { server, baseUrl } = await startServer();
 
   try {

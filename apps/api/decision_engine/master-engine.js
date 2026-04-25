@@ -14,6 +14,7 @@ import { runCommandEnvironmentEngine } from './command-environment-engine.js';
 import { runAllowedSetupsEngine } from './allowed-setups-engine.js';
 import { runTvSentinelEngine } from './tv-sentinel-engine.js';
 import { runTradePlanBuilder } from './trade-plan-builder.js';
+import { deriveThetaExecutionConstraint } from './dealer-conclusion-engine.js';
 
 function buildDisplaySpotSnapshot(normalized, gammaWall) {
   const hasDisplaySpot =
@@ -327,6 +328,25 @@ export function runMasterEngine(normalized) {
     gammaWall
   });
 
+  const thetaExecutionConstraint =
+    normalized.theta_execution_constraint
+    || deriveThetaExecutionConstraint(normalized.theta_dealer_conclusion);
+  const projection = {
+    dealer_summary: {
+      status: normalized.theta_dealer_conclusion?.status || 'unavailable',
+      text: normalized.theta_dealer_conclusion?.plain_chinese || 'Theta dealer unavailable.',
+      gamma_regime: normalized.theta_dealer_conclusion?.gamma_regime || 'unknown',
+      dealer_behavior: normalized.theta_dealer_conclusion?.dealer_behavior || 'unknown',
+      least_resistance_path: normalized.theta_dealer_conclusion?.least_resistance_path || 'unknown',
+      call_wall: normalized.theta_dealer_conclusion?.call_wall ?? null,
+      put_wall: normalized.theta_dealer_conclusion?.put_wall ?? null,
+      max_pain: normalized.theta_dealer_conclusion?.max_pain ?? null,
+      zero_gamma: normalized.theta_dealer_conclusion?.zero_gamma ?? null,
+      expected_move_upper: normalized.theta_dealer_conclusion?.expected_move_upper ?? null,
+      expected_move_lower: normalized.theta_dealer_conclusion?.expected_move_lower ?? null
+    }
+  };
+
   return createNormalizedSignal({
     timestamp: normalized.timestamp,
     data_timestamp: normalized.data_timestamp,
@@ -372,6 +392,8 @@ export function runMasterEngine(normalized) {
       no_short_vol_window: normalized.no_short_vol_window ?? false,
       trade_permission_adjustment: normalized.trade_permission_adjustment ?? 'normal'
     },
+    theta: normalized.theta,
+    dealer_conclusion: normalized.theta_dealer_conclusion,
     radar_summary,
     tv_structure_event: normalized.tv_structure_event,
     signals: {
@@ -397,6 +419,26 @@ export function runMasterEngine(normalized) {
     avoid_actions: action.avoid_actions,
     invalidation_level: action.invalidation_level,
     confidence_score: action.confidence_score,
+    execution_constraints: {
+      theta: thetaExecutionConstraint
+    },
+    command_inputs: {
+      dealer: {
+        dealer_conclusion: {
+          status: normalized.theta_dealer_conclusion?.status || 'unavailable',
+          gamma_regime: normalized.theta_dealer_conclusion?.gamma_regime || 'unknown',
+          dealer_behavior: normalized.theta_dealer_conclusion?.dealer_behavior || 'unknown',
+          least_resistance_path: normalized.theta_dealer_conclusion?.least_resistance_path || 'unknown',
+          call_wall: normalized.theta_dealer_conclusion?.call_wall ?? null,
+          put_wall: normalized.theta_dealer_conclusion?.put_wall ?? null,
+          max_pain: normalized.theta_dealer_conclusion?.max_pain ?? null,
+          zero_gamma: normalized.theta_dealer_conclusion?.zero_gamma ?? null,
+          expected_move_upper: normalized.theta_dealer_conclusion?.expected_move_upper ?? null,
+          expected_move_lower: normalized.theta_dealer_conclusion?.expected_move_lower ?? null
+        }
+      }
+    },
+    projection,
     strategy_cards: buildStrategyCards({
       normalized,
       action,
@@ -416,7 +458,8 @@ export function runMasterEngine(normalized) {
       trade_plan: tradePlan,
       event_risk: eventRisk,
       conflict,
-      action
+      action,
+      dealer_conclusion: normalized.theta_dealer_conclusion
     },
     notes: [
       normalized.tv_last_event_note

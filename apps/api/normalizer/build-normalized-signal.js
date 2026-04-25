@@ -244,6 +244,56 @@ function deriveSpotContext(rawScenario) {
   };
 }
 
+function deriveThetaContext(rawScenario) {
+  const snapshot = rawScenario.theta_snapshot;
+  const dealerConclusion = rawScenario.theta_dealer_conclusion;
+  const executionConstraint = rawScenario.theta_execution_constraint;
+  const thetaSourceStatus = rawScenario.theta_source_status;
+
+  return {
+    theta_snapshot: snapshot ?? null,
+    theta: {
+      status: snapshot?.status || 'unavailable',
+      calculation_scope: snapshot?.quality?.calculation_scope || 'single_expiry_test',
+      test_expiration: snapshot?.test_expiration || null,
+      quality: snapshot?.quality || {
+        data_quality: 'unavailable',
+        missing_fields: [],
+        warnings: [],
+        calculation_scope: 'single_expiry_test',
+        raw_rows_sent: false
+      }
+    },
+    theta_dealer_conclusion: dealerConclusion ?? {
+      source: 'theta',
+      status: 'unavailable',
+      gamma_regime: 'unknown',
+      dealer_behavior: 'unknown',
+      least_resistance_path: 'unknown',
+      call_wall: null,
+      put_wall: null,
+      max_pain: null,
+      zero_gamma: null,
+      expected_move_upper: null,
+      expected_move_lower: null,
+      vanna_charm_bias: 'unknown',
+      plain_chinese: 'ThetaData unavailable.'
+    },
+    theta_execution_constraint: executionConstraint ?? {
+      available: false,
+      executable: false,
+      reason: 'ThetaData unavailable.'
+    },
+    theta_source_status: thetaSourceStatus ?? {
+      source: 'theta',
+      state: 'unavailable',
+      stale: false,
+      last_update: null,
+      message: 'ThetaData unavailable.'
+    }
+  };
+}
+
 function deriveTradingViewContext(rawScenario) {
   const snapshot = rawScenario.tradingview_snapshot;
   if (!snapshot) {
@@ -276,6 +326,7 @@ function appendUniqueNote(notes, note) {
 
 export function normalizeMockScenario(rawScenario) {
   const receivedAt = new Date().toISOString();
+  const thetaContext = deriveThetaContext(rawScenario);
 
   const source_status = [
     createSourceEntry({
@@ -365,7 +416,7 @@ export function normalizeMockScenario(rawScenario) {
   }
 
   const stale_flags = {
-    theta: source_status.find((item) => item.source === 'theta_core')?.stale ?? true,
+    theta: thetaContext.theta.status === 'stale',
     tradingview: source_status.find((item) => item.source === 'tradingview')?.stale ?? true,
     uw: source_status.find((item) => item.source === 'uw_dom')?.stale ?? true,
     fmp: source_status.find((item) => item.source === 'fmp_event')?.stale ?? true
@@ -379,6 +430,38 @@ export function normalizeMockScenario(rawScenario) {
   const spotContext = deriveSpotContext(rawScenario);
   const tradingViewContext = deriveTradingViewContext(rawScenario);
   const notes = appendUniqueNote([], tradingViewContext.tradingview_note);
+
+  const thetaCoreIndex = source_status.findIndex((item) => item.source === 'theta_core');
+  if (thetaCoreIndex >= 0) {
+    source_status[thetaCoreIndex] = {
+      ...source_status[thetaCoreIndex],
+      configured: thetaContext.theta.status !== 'unavailable',
+      available: thetaContext.theta_execution_constraint.available,
+      is_mock: thetaContext.theta.status === 'mock',
+      stale: thetaContext.theta.status === 'stale',
+      state: thetaContext.theta_source_status.state,
+      message: thetaContext.theta_source_status.message,
+      last_updated: thetaContext.theta_source_status.last_update || source_status[thetaCoreIndex].last_updated,
+      data_timestamp: thetaContext.theta_source_status.last_update || source_status[thetaCoreIndex].data_timestamp,
+      fetch_mode: thetaContext.theta.status === 'live' ? 'bridge_ingest' : source_status[thetaCoreIndex].fetch_mode
+    };
+  }
+
+  const thetaFullChainIndex = source_status.findIndex((item) => item.source === 'theta_full_chain');
+  if (thetaFullChainIndex >= 0) {
+    source_status[thetaFullChainIndex] = {
+      ...source_status[thetaFullChainIndex],
+      configured: thetaContext.theta.status !== 'unavailable',
+      available: thetaContext.theta_execution_constraint.available,
+      is_mock: thetaContext.theta.status === 'mock',
+      stale: thetaContext.theta.status === 'stale',
+      state: thetaContext.theta_source_status.state,
+      message: 'Theta single-expiry dealer summary only; full chain not enabled.',
+      last_updated: thetaContext.theta_source_status.last_update || source_status[thetaFullChainIndex].last_updated,
+      data_timestamp: thetaContext.theta_source_status.last_update || source_status[thetaFullChainIndex].data_timestamp,
+      fetch_mode: 'single_expiry_test'
+    };
+  }
 
   return {
     scenario: rawScenario.scenario,
@@ -417,6 +500,11 @@ export function normalizeMockScenario(rawScenario) {
     trade_permission_adjustment: eventContext.trade_permission_adjustment,
     fmp_signal: rawScenario.fmp_signal,
     theta_signal: rawScenario.theta_signal,
+    theta: thetaContext.theta,
+    theta_snapshot: thetaContext.theta_snapshot,
+    theta_dealer_conclusion: thetaContext.theta_dealer_conclusion,
+    theta_execution_constraint: thetaContext.theta_execution_constraint,
+    theta_source_status: thetaContext.theta_source_status,
     tv_structure_event: tradingViewContext.tv_structure_event,
     tradingview_snapshot: tradingViewContext.tradingview_snapshot,
     tv_event_type: tradingViewContext.tv_event_type,

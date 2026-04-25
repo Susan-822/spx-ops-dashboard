@@ -2,7 +2,14 @@ import { getMockScenario } from './mock-scenarios.js';
 import { normalizeMockScenario } from '../normalizer/build-normalized-signal.js';
 import { runMasterEngine } from './master-engine.js';
 import { getTradingViewSnapshot } from '../storage/tradingview-snapshot.js';
+import { getThetaSnapshot } from '../storage/theta-snapshot.js';
 import { getFmpSnapshot } from '../adapters/fmp/index.js';
+import {
+  buildDealerConclusionEngine,
+  deriveThetaExecutionConstraint,
+  deriveThetaSignalFromSnapshot,
+  mapThetaSnapshotToSourceStatus
+} from './dealer-conclusion-engine.js';
 
 function isFmpRiskDegraded(snapshot) {
   if (!snapshot) {
@@ -105,16 +112,59 @@ function applyFmpPriceSnapshot(baseScenario, snapshot) {
   };
 }
 
+function applyThetaSnapshot(baseScenario, snapshot) {
+  if (!snapshot) {
+    return baseScenario;
+  }
+
+  const dealerConclusion = buildDealerConclusionEngine({
+    thetaSnapshot: snapshot,
+    externalSpot: baseScenario.spot
+  });
+  const executionConstraint = deriveThetaExecutionConstraint(dealerConclusion);
+  const thetaSourceStatus = mapThetaSnapshotToSourceStatus(snapshot);
+  const callWall = dealerConclusion.call_wall ?? baseScenario.call_wall;
+  const putWall = dealerConclusion.put_wall ?? baseScenario.put_wall;
+  const maxPain = dealerConclusion.max_pain ?? baseScenario.max_pain;
+  const gammaRegime = dealerConclusion.gamma_regime !== 'unknown'
+    ? dealerConclusion.gamma_regime
+    : baseScenario.gamma_regime;
+  const thetaSignal = deriveThetaSignalFromSnapshot(snapshot) || baseScenario.theta_signal;
+  const lastUpdate = snapshot.last_update || snapshot.last_updated || baseScenario.last_updated.theta;
+
+  return {
+    ...baseScenario,
+    last_updated: {
+      ...baseScenario.last_updated,
+      theta: lastUpdate,
+      theta_full_chain: lastUpdate
+    },
+    gamma_regime: gammaRegime,
+    call_wall: callWall,
+    put_wall: putWall,
+    max_pain: maxPain,
+    theta_signal: thetaSignal,
+    theta_snapshot: snapshot,
+    theta_dealer_conclusion: dealerConclusion,
+    theta_execution_constraint: executionConstraint,
+    theta_source_status: thetaSourceStatus
+  };
+}
+
 export async function getCurrentSignal(requestedScenario, options = {}) {
   const scenario = getMockScenario(requestedScenario);
   const snapshot = await getTradingViewSnapshot();
+  const thetaSnapshot = await getThetaSnapshot();
   const fmpSnapshot = await getFmpSnapshot(options.fmp);
-  const enrichedScenario = applyFmpPriceSnapshot(
-    applyFmpEventSnapshot(
-      applyTradingViewSnapshot(scenario, snapshot),
-      fmpSnapshot.event
+  const enrichedScenario = applyThetaSnapshot(
+    applyFmpPriceSnapshot(
+      applyFmpEventSnapshot(
+        applyTradingViewSnapshot(scenario, snapshot),
+        fmpSnapshot.event
+      ),
+      fmpSnapshot.price
     ),
-    fmpSnapshot.price
+    thetaSnapshot
   );
   const normalized = normalizeMockScenario(enrichedScenario);
   return runMasterEngine(normalized);
