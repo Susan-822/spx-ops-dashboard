@@ -501,6 +501,8 @@ export function normalizeMockScenario(rawScenario) {
     gamma_regime: rawScenario.gamma_regime,
     external_spot: rawScenario.external_spot ?? null,
     external_spot_source: rawScenario.external_spot_source ?? 'unavailable',
+    external_spot_last_updated: rawScenario.external_spot_last_updated ?? rawScenario.spot_last_updated ?? null,
+    external_spot_is_real: rawScenario.external_spot_is_real ?? false,
     spot: spotContext.spot,
     spot_source: spotContext.spot_source,
     spot_last_updated: spotContext.spot_last_updated,

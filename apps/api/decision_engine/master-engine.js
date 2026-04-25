@@ -457,6 +457,39 @@ export function runMasterEngine(normalized) {
       theta: thetaExecutionConstraint
     },
     command_inputs: {
+      external_spot: {
+        spot: normalized.external_spot ?? normalized.spot ?? null,
+        source:
+          (normalized.external_spot ?? normalized.spot) != null
+            ? (normalized.spot_source && normalized.spot != null
+                ? normalized.spot_source
+                : normalized.external_spot_source && normalized.external_spot_source !== 'unavailable'
+                  ? normalized.external_spot_source
+                  : 'unavailable')
+            : 'unavailable',
+        is_real:
+          (normalized.external_spot ?? normalized.spot) != null
+            ? (normalized.spot_source === 'fmp' && normalized.spot != null)
+              || (normalized.spot != null && normalized.spot_is_real === true)
+              || (normalized.external_spot_source === 'fmp' && normalized.external_spot != null)
+              || (normalized.external_spot_is_real === true)
+            : false,
+        status:
+          (normalized.external_spot ?? normalized.spot) != null
+            ? (
+                (normalized.spot_source === 'fmp' && normalized.spot != null)
+                || (normalized.spot != null && normalized.spot_is_real === true)
+                || (normalized.external_spot_source === 'fmp' && normalized.external_spot != null)
+                || normalized.external_spot_is_real === true
+              )
+              ? 'real'
+              : 'degraded'
+            : 'unavailable',
+        last_updated:
+          normalized.external_spot_last_updated
+          || normalized.spot_last_updated
+          || null
+      },
       dealer: {
         dealer_conclusion: {
           status: normalized.theta_dealer_conclusion?.status || 'unavailable',
@@ -481,6 +514,7 @@ export function runMasterEngine(normalized) {
       commandEnvironment,
       thetaExecutionConstraint
     }),
+    trade_plan: tradePlan,
     engines: {
       market_regime: marketRegime,
       gamma_wall: gammaWall,

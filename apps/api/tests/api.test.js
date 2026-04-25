@@ -814,6 +814,11 @@ test('FMP price success provides real SPX price in live fallback mode', async ()
   assert.equal(signal.market_snapshot.spot_source, 'fmp');
   assert.equal(signal.market_snapshot.spot_is_real, true);
   assert.equal(typeof signal.market_snapshot.spot_last_updated, 'string');
+  assert.equal(signal.command_inputs.external_spot.source, 'fmp');
+  assert.equal(signal.command_inputs.external_spot.spot, 5342.25);
+  assert.equal(signal.command_inputs.external_spot.is_real, true);
+  assert.equal(signal.command_inputs.external_spot.status, 'real');
+  assert.equal(typeof signal.command_inputs.external_spot.last_updated, 'string');
 
   const fmpPriceStatus = signal.source_status.find((item) => item.source === 'fmp_price');
   assert.ok(fmpPriceStatus);
@@ -856,6 +861,10 @@ test('FMP price failure leaves spot unavailable in live fallback mode', async ()
   assert.equal(signal.market_snapshot.spot, null);
   assert.equal(signal.market_snapshot.spot_is_real, false);
   assert.equal(signal.market_snapshot.spot_source, 'fmp');
+  assert.equal(signal.command_inputs.external_spot.source, 'unavailable');
+  assert.equal(signal.command_inputs.external_spot.spot, null);
+  assert.equal(signal.command_inputs.external_spot.is_real, false);
+  assert.equal(signal.command_inputs.external_spot.status, 'unavailable');
 
   const fmpPriceStatus = signal.source_status.find((item) => item.source === 'fmp_price');
   assert.ok(fmpPriceStatus);
@@ -1027,7 +1036,13 @@ test('coherence guard marks distant real spot vs gamma map as conflict and block
   assert.equal(signal.engines.data_coherence.data_mode, 'conflict');
   assert.equal(signal.engines.data_coherence.executable, false);
   assert.equal(signal.engines.data_coherence.trade_permission, 'no_trade');
+  assert.equal(signal.command_inputs.external_spot.source, 'fmp');
+  assert.equal(signal.command_inputs.external_spot.spot, 7165.08);
+  assert.equal(signal.command_inputs.external_spot.is_real, true);
   assert.equal(signal.engines.trade_plan.entry_zone.text, '--');
+  assert.equal(signal.engines.trade_plan.target_text, '--');
+  assert.equal(signal.engines.trade_plan.invalidation_text, '--');
+  assert.equal(signal.engines.trade_plan.stop_loss.text, '--');
   assert.equal(signal.engines.trade_plan.targets.every((item) => item.level == null), true);
   assert.equal(['--', '等待指挥部允许'].includes(signal.engines.trade_plan.invalidation.text), true);
   for (const card of signal.strategy_cards.filter((item) => ['单腿', '看涨价差', '看跌价差', '铁鹰'].includes(item.strategy_name))) {
@@ -1066,6 +1081,22 @@ test('coherence guard marks scenario mixed with real fmp price as mixed and clam
   assert.equal(coherence.executable, false);
   assert.equal(coherence.trade_permission, 'no_trade');
   assert.equal(coherence.confidence_cap <= 20, true);
+});
+
+test('scenario/mock trade plan remains fully blank-safe', async () => {
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
+  const signal = await getCurrentSignal('negative_gamma_wait_pullback');
+
+  assert.equal(signal.engines.data_coherence.scenario_mode, true);
+  assert.equal(signal.trade_plan.entry_zone.text, '--');
+  assert.equal(signal.trade_plan.target_text, '--');
+  assert.equal(signal.trade_plan.invalidation_text, '--');
+  assert.equal(signal.trade_plan.stop_loss.text, '--');
+  assert.equal(signal.trade_plan.targets.every((item) => item.action === '--'), true);
+  assert.equal(JSON.stringify(signal.trade_plan).includes('flip 5285'), false);
+  assert.equal(JSON.stringify(signal.trade_plan).includes('5320'), false);
+  assert.equal(JSON.stringify(signal.trade_plan).includes('5275'), false);
 });
 
 test('coherence guard blocks mock dealer plus real spot', () => {
