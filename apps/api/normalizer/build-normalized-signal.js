@@ -250,14 +250,20 @@ function deriveTradingViewContext(rawScenario) {
     return {
       tv_structure_event: rawScenario.tv_structure_event,
       tradingview_note: '',
-      tradingview_last_updated: rawScenario.last_updated.tradingview
+      tradingview_last_updated: rawScenario.last_updated.tradingview,
+      tradingview_snapshot: null,
+      tv_event_type: null,
+      tv_invalidation_level: null
     };
   }
 
   return {
     tv_structure_event: snapshot.tv_structure_event || mapTradingViewEventToStructure(snapshot.event_type) || rawScenario.tv_structure_event,
     tradingview_note: snapshot.stale ? TV_STALE_NOTE : `最近 TV 事件：${snapshot.event_type || 'unknown_event'}。`,
-    tradingview_last_updated: snapshot.last_updated || snapshot.received_at || rawScenario.last_updated.tradingview
+    tradingview_last_updated: snapshot.last_updated || snapshot.received_at || rawScenario.last_updated.tradingview,
+    tradingview_snapshot: snapshot,
+    tv_event_type: snapshot.event_type || null,
+    tv_invalidation_level: snapshot.invalidation_level ?? snapshot.level ?? null
   };
 }
 
@@ -412,6 +418,9 @@ export function normalizeMockScenario(rawScenario) {
     fmp_signal: rawScenario.fmp_signal,
     theta_signal: rawScenario.theta_signal,
     tv_structure_event: tradingViewContext.tv_structure_event,
+    tradingview_snapshot: tradingViewContext.tradingview_snapshot,
+    tv_event_type: tradingViewContext.tv_event_type,
+    tv_invalidation_level: tradingViewContext.tv_invalidation_level,
     tradingview_note: tradingViewContext.tradingview_note,
     notes
   };

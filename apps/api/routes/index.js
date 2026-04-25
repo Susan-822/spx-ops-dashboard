@@ -9,6 +9,16 @@ import {
 import { sendTelegramTestMessage } from '../adapters/telegram/index.js';
 import { getRecentLogs } from '../logs/index.js';
 import { buildAlertMessage } from '../alerts/build-alert-message.js';
+import {
+  buildTradePlanTelegramMessage,
+  buildTelegramDedupeKey,
+  determineTelegramLevel,
+  getTelegramAlertMeta
+} from '../alerts/telegram-plan-alert.js';
+import {
+  isTelegramAlertDuplicate,
+  markTelegramAlertSent
+} from '../state/telegramAlertDedupeStore.js';
 import { sendJson, readJsonBody, secureCompare } from './helpers.js';
 
 function buildTelegramTestText(body = {}) {
@@ -20,18 +30,6 @@ function buildTelegramTestText(body = {}) {
     '作废：无',
     '禁做：无',
     '原因：验证 Telegram 通知通道'
-  ].join('\n');
-}
-
-function buildTradingViewWebhookText(body = {}) {
-  return [
-    '【SPX 指挥台】',
-    '状态：TradingView 触发',
-    `动作：收到 ${body.event_type || 'unknown_event'} 结构信号`,
-    `触发：${body.symbol || 'SPX'} ${body.timeframe || '1m'}`,
-    `作废：若价格重新失守 ${body.level || body.price || '关键位'}，重新评估`,
-    '禁做：不要直接追单，先看 /signals/current',
-    '原因：验证 webhook → signals/current → Telegram 链路'
   ].join('\n');
 }
 
@@ -144,8 +142,26 @@ export async function handleApiRoute(req, res) {
     });
 
     // Fire-and-forget Telegram notification so the webhook stays fast.
-    sendTelegramTestMessage(buildTradingViewWebhookText(body)).catch((error) => {
-      console.error('TradingView webhook Telegram notify failed:', error.message);
+    queueMicrotask(async () => {
+      try {
+        const signal = await getCurrentSignal(scenario);
+        const meta = getTelegramAlertMeta({ signal });
+        if (meta.level === 'L1') {
+          return;
+        }
+
+        if (meta.dedupeKey && isTelegramAlertDuplicate(meta.dedupeKey)) {
+          return;
+        }
+
+        const alertText = buildTradePlanTelegramMessage({ signal });
+        await sendTelegramTestMessage(alertText);
+        if (meta.dedupeKey) {
+          markTelegramAlertSent(meta.dedupeKey);
+        }
+      } catch (error) {
+        console.error('TradingView webhook Telegram notify failed:', error.message);
+      }
     });
 
     return sendJson(res, 202, {
@@ -231,3 +247,5 @@ export async function handleApiRoute(req, res) {
 
   return false;
 }
+
+export { resetTelegramAlertDedupeStoreForTests } from '../state/telegramAlertDedupeStore.js';

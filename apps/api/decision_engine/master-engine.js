@@ -272,7 +272,9 @@ export function runMasterEngine(normalized) {
   });
   const tvSentinel = runTvSentinelEngine({
     priceStructure,
-    tv_structure_event: normalized.tv_structure_event
+    tv_structure_event: normalized.tv_structure_event,
+    snapshotFresh: normalized.stale_flags.tradingview !== true,
+    snapshot: normalized.tradingview_snapshot
   });
   const tradePlan = runTradePlanBuilder({
     normalized,

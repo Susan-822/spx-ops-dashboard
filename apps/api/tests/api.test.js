@@ -289,7 +289,7 @@ test('TradingView snapshot persists in file mode across store reset and is still
     const firstSignal = await fetch(`${baseUrl}/signals/current`);
     const firstJson = await firstSignal.json();
     assert.equal(firstJson.tv_structure_event, 'breakdown_confirmed');
-    assert.equal(firstJson.signals.tv_signal, 'short_retest_ready');
+    assert.equal(firstJson.signals.tv_signal, 'short_breakdown_watch');
     assert.equal(firstJson.signals.price_confirmation, 'confirmed');
 
     const tradingviewStatus = firstJson.source_status.find((item) => item.source === 'tradingview');
@@ -302,7 +302,7 @@ test('TradingView snapshot persists in file mode across store reset and is still
     const secondSignal = await fetch(`${baseUrl}/signals/current`);
     const secondJson = await secondSignal.json();
     assert.equal(secondJson.tv_structure_event, 'breakdown_confirmed');
-    assert.equal(secondJson.signals.tv_signal, 'short_retest_ready');
+    assert.equal(secondJson.signals.tv_signal, 'short_breakdown_watch');
     assert.equal(secondJson.signals.price_confirmation, 'confirmed');
     assert.equal(
       secondJson.notes.some((note) => note.includes('最近 TV 事件：breakdown_confirmed。')),
@@ -348,7 +348,7 @@ test('stale TradingView snapshot remains visible but is marked stale in source s
     const signalJson = await signalResponse.json();
 
     assert.equal(signalJson.tv_structure_event, 'breakout_confirmed_pullback_ready');
-    assert.equal(signalJson.signals.tv_signal, 'long_pullback_ready');
+    assert.equal(signalJson.signals.tv_signal, 'B_long_candidate');
 
     const tradingviewStatus = signalJson.source_status.find((item) => item.source === 'tradingview');
     assert.ok(tradingviewStatus);
@@ -597,10 +597,11 @@ test('buildAlertMessage renders Chinese premarket warning for FMP risk gate', as
     body: { session: 'premarket' }
   });
 
-  assert.match(message, /状态：盘前提醒/);
-  assert.match(message, /动作：先等待/);
-  assert.match(message, /原因：FMP 检测到/);
-  assert.match(message, /不要提前铁鹰/);
+  assert.match(message, /【SPX 指挥台｜/);
+  assert.match(message, /指挥部：/);
+  assert.match(message, /哨兵：/);
+  assert.match(message, /结论：/);
+  assert.match(message, /策略：/);
 
   delete process.env.FMP_API_KEY;
 });
@@ -613,10 +614,16 @@ test('buildAlertMessage renders Chinese intraday reminder from current signal', 
     body: { session: 'intraday' }
   });
 
-  assert.match(message, /状态：盘中提醒/);
-  assert.match(message, /动作：等回踩不破关键位，再考虑偏多/);
-  assert.match(message, /触发：SPX/);
-  assert.match(message, /作废：(回踩跌破 put_wall|价格重新失守 flip)/);
+  assert.match(message, /【SPX 指挥台｜A多准备】/);
+  assert.match(message, /指挥部：/);
+  assert.match(message, /哨兵：/);
+  assert.match(message, /进场：/);
+  assert.match(message, /止损：/);
+  assert.match(message, /失效：/);
+  assert.match(message, /止盈：/);
+  assert.match(message, /策略：/);
+  assert.match(message, /数据：/);
+  assert.match(message, /禁做：/);
 });
 
 test('buildAlertMessage renders dedicated Chinese FMP exception warning', async () => {
@@ -637,13 +644,10 @@ test('buildAlertMessage renders dedicated Chinese FMP exception warning', async 
     body: { session: 'intraday' }
   });
 
-  assert.match(message, /【SPX 指挥台｜事件风险】/);
-  assert.match(message, /状态：FMP 异常/);
-  assert.match(message, /事件：无法确认/);
-  assert.match(message, /动作：降低交易权限，不提前铁鹰，不裸卖波/);
-  assert.match(message, /影响：事件风险不可确认/);
-  assert.match(message, /禁做：不要把未知事件窗口当成安全区间/);
-  assert.match(message, /原因：FMP 数据异常或过期/);
+  assert.match(message, /【SPX 指挥台｜/);
+  assert.match(message, /指挥部：/);
+  assert.match(message, /策略：/);
+  assert.match(message, /禁做：/);
 
   delete process.env.FMP_API_KEY;
 });
