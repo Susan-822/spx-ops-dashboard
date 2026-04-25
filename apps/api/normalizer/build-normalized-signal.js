@@ -285,7 +285,7 @@ function createUwSourceEntry({ timestamp, snapshot, staleSeconds }) {
     normalizedUw?.status === 'error'
       ? 'down'
       : normalizedUw?.status === 'unavailable'
-        ? 'down'
+        ? 'unavailable'
         : normalizedUw?.status === 'partial' || stale
           ? SOURCE_STATE.DELAYED
           : SOURCE_STATE.REAL;
@@ -453,6 +453,7 @@ export function normalizeMockScenario(rawScenario) {
     put_wall: rawScenario.put_wall,
     max_pain: rawScenario.max_pain,
     iv_state: rawScenario.iv_state,
+    uw: normalizedUw,
     uw_snapshot: rawScenario.uw_snapshot ?? null,
     uw_flow_bias: normalizedUw.flow.flow_bias,
     uw_dark_pool_bias: normalizedUw.darkpool.darkpool_bias,

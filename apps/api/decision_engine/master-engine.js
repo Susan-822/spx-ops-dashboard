@@ -574,7 +574,7 @@ export function runMasterEngine(normalized) {
     fmp_conclusion: fmpConclusion,
     dealer_conclusion: dealerConclusion,
     uw_conclusion: uwConclusion,
-    uw: normalized.uw,
+    uw: normalizedForDecision.uw,
     data_health: {
       ...dataHealth,
       data_mode: commandEnvironment.data_mode,
@@ -583,6 +583,7 @@ export function runMasterEngine(normalized) {
     conflict_resolver: conflictResolver,
     command_inputs: commandInputs,
     command_environment: commandEnvironment,
+    allowed_setups: allowedSetups,
     tv_sentinel: tvSentinel,
     trade_plan: {
       ...tradePlan,

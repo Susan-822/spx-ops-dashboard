@@ -13,6 +13,12 @@ const { getCurrentSignal } = await import('../decision_engine/current-signal.js'
 const { buildAlertMessage } = await import('../alerts/build-alert-message.js');
 const { resetTvSnapshotStoreForTests } = await import('../state/tvSnapshotStore.js');
 const {
+  readUwSnapshot,
+  writeUwSnapshot,
+  clearUwSnapshot,
+  resetUwSnapshotStoreForTests
+} = await import('../state/uwSnapshotStore.js');
+const {
   getTelegramAlertDedupeKey,
   shouldBypassTelegramDedupe,
   markTelegramAlertSent,
@@ -40,7 +46,7 @@ const ALLOWED_MARKET_STATES = new Set([
 
 const ALLOWED_GAMMA_REGIMES = new Set(['positive', 'negative', 'critical', 'unknown']);
 const ALLOWED_ACTIONS = new Set(['wait', 'long_on_pullback', 'short_on_retest', 'income_ok', 'no_trade']);
-const ALLOWED_SOURCE_STATES = new Set(['real', 'mock', 'delayed', 'degraded', 'down']);
+const ALLOWED_SOURCE_STATES = new Set(['real', 'mock', 'delayed', 'degraded', 'down', 'unavailable']);
 const REQUIRED_STRATEGIES = ['单腿', '看涨价差', '看跌价差', '铁鹰', '观望'];
 
 function startServer() {
@@ -66,6 +72,85 @@ async function resetTvStateEnv(overrides = {}) {
   Object.assign(process.env, overrides);
   await clearTradingViewSnapshot();
   await resetTvSnapshotStoreForTests();
+}
+
+async function resetUwStateEnv(overrides = {}) {
+  delete process.env.UW_INGEST_SECRET;
+  delete process.env.UW_STATE_STORE;
+  delete process.env.UW_SNAPSHOT_FILE;
+  delete process.env.UW_SNAPSHOT_TTL_SECONDS;
+  delete process.env.UW_SNAPSHOT_STALE_SECONDS;
+  delete process.env.UW_REDIS_URL;
+  Object.assign(process.env, overrides);
+  await clearUwSnapshot();
+  await resetUwSnapshotStoreForTests();
+}
+
+function buildUwPayload(statusOrOverrides = {}, maybeOverrides = {}) {
+  const status = typeof statusOrOverrides === 'string'
+    ? statusOrOverrides
+    : statusOrOverrides?.status || 'partial';
+  const overrides = typeof statusOrOverrides === 'string'
+    ? maybeOverrides
+    : statusOrOverrides;
+
+  const base = {
+    secret: process.env.UW_INGEST_SECRET || 'local-test-secret',
+    source: 'unusual_whales_test',
+    status,
+    last_update: new Date().toISOString(),
+    flow: {
+      flow_bias: status === 'live' ? 'bullish' : 'unavailable',
+      institutional_entry: status === 'live' ? 'building' : 'unavailable'
+    },
+    darkpool: {
+      darkpool_bias: status === 'live' ? 'support' : 'unavailable'
+    },
+    volatility: {
+      volatility_light: status === 'live' ? 'yellow' : 'unavailable'
+    },
+    sentiment: {
+      market_tide: status === 'live' ? 'risk_on' : 'unavailable'
+    },
+    dealer_crosscheck: {
+      state: status === 'live' ? 'confirm' : 'unavailable'
+    },
+    quality: {
+      data_quality: status,
+      missing_fields: status === 'live' ? [] : ['flow', 'darkpool', 'volatility', 'market_tide'],
+      warnings: status === 'live' ? ['test_payload_not_real_market'] : ['market_closed_weekend_test'],
+      raw_rows_sent: false
+    }
+  };
+
+  return {
+    ...base,
+    ...overrides,
+    flow: {
+      ...base.flow,
+      ...(overrides.flow || {})
+    },
+    darkpool: {
+      ...base.darkpool,
+      ...(overrides.darkpool || {})
+    },
+    volatility: {
+      ...base.volatility,
+      ...(overrides.volatility || {})
+    },
+    sentiment: {
+      ...base.sentiment,
+      ...(overrides.sentiment || {})
+    },
+    dealer_crosscheck: {
+      ...base.dealer_crosscheck,
+      ...(overrides.dealer_crosscheck || {})
+    },
+    quality: {
+      ...base.quality,
+      ...(overrides.quality || {})
+    }
+  };
 }
 
 test('GET /signals/current returns required protocol fields for dashboard and radar', async () => {
@@ -796,4 +881,213 @@ test('Telegram message must not include stop loss zero', async () => {
   assert.equal(message.includes('以 TV 失效位 0 为止损'), false);
   assert.match(message, /止损：--|止损：缺少有效失效位/);
   delete process.env.FMP_API_KEY;
+});
+
+test('UW ingest rejects missing and wrong secret, accepts curated payload, and blocks raw fields', async () => {
+  await resetUwStateEnv({ UW_INGEST_SECRET: 'local-test-secret' });
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const missingSecret = await fetch(`${baseUrl}/ingest/uw`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    assert.equal(missingSecret.status, 401);
+
+    const wrongSecret = await fetch(`${baseUrl}/ingest/uw`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...buildUwPayload('partial'), secret: 'wrong-secret' })
+    });
+    assert.equal(wrongSecret.status, 401);
+
+    const accepted = await fetch(`${baseUrl}/ingest/uw`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildUwPayload('partial'))
+    });
+    assert.equal(accepted.status, 202);
+
+    const rawHtml = await fetch(`${baseUrl}/ingest/uw`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...buildUwPayload('partial'), raw_html: '<html></html>' })
+    });
+    assert.equal(rawHtml.status, 400);
+
+    const authorization = await fetch(`${baseUrl}/ingest/uw`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...buildUwPayload('partial'), authorization: 'Bearer xxx' })
+    });
+    assert.equal(authorization.status, 400);
+  } finally {
+    server.close();
+  }
+});
+
+test('UW snapshot store supports memory, file, and stale semantics', async () => {
+  const now = new Date('2026-04-25T10:00:00.000Z');
+
+  await resetUwStateEnv({
+    UW_STATE_STORE: 'memory',
+    UW_SNAPSHOT_STALE_SECONDS: '300'
+  });
+  await writeUwSnapshot(buildUwPayload('partial', { last_update: '2026-04-25T09:58:00.000Z' }));
+  let snapshot = await readUwSnapshot({ now });
+  assert.ok(snapshot);
+  assert.equal(snapshot.stale, false);
+
+  const filePath = path.join(os.tmpdir(), `uw-snapshot-${Date.now()}.json`);
+  await resetUwStateEnv({
+    UW_STATE_STORE: 'file',
+    UW_SNAPSHOT_FILE: filePath,
+    UW_SNAPSHOT_STALE_SECONDS: '300'
+  });
+  await writeUwSnapshot(buildUwPayload('live', { last_update: '2026-04-25T09:58:00.000Z' }));
+  await resetUwSnapshotStoreForTests();
+  snapshot = await readUwSnapshot({ now });
+  assert.ok(snapshot);
+  assert.equal(snapshot.status, 'live');
+  assert.equal(snapshot.stale, false);
+
+  await resetUwStateEnv({
+    UW_STATE_STORE: 'memory',
+    UW_SNAPSHOT_STALE_SECONDS: '300'
+  });
+  await writeUwSnapshot(buildUwPayload('live', { last_update: '2026-04-25T09:40:00.000Z' }));
+  snapshot = await readUwSnapshot({ now });
+  assert.ok(snapshot);
+  assert.equal(snapshot.stale, true);
+  assert.equal(snapshot.quality.data_quality, 'stale');
+});
+
+test('signals expose UW unavailable, partial, stale, and live safely', async () => {
+  await resetUwStateEnv({
+    UW_STATE_STORE: 'memory',
+    UW_SNAPSHOT_STALE_SECONDS: '300'
+  });
+
+  let signal = await getCurrentSignal('breakout_pullback_pending');
+  assert.equal(signal.uw.status, 'unavailable');
+  assert.equal(signal.uw_conclusion.status, 'unavailable');
+  assert.equal(signal.execution_constraints.uw.executable, false);
+  assert.equal(signal.trade_plan.uw_ready, false);
+  assert.equal(signal.source_status.find((item) => item.source === 'uw')?.state, 'unavailable');
+
+  await writeUwSnapshot(buildUwPayload('partial', {
+    last_update: new Date().toISOString()
+  }));
+  signal = await getCurrentSignal('breakout_pullback_pending');
+  assert.equal(signal.uw.status, 'partial');
+  assert.equal(signal.uw_conclusion.status, 'partial');
+  assert.equal(signal.execution_constraints.uw.executable, false);
+  assert.equal(signal.trade_plan.uw_ready, false);
+  assert.equal(signal.source_status.find((item) => item.source === 'uw')?.state, 'delayed');
+
+  await writeUwSnapshot(buildUwPayload('live', {
+    last_update: new Date(Date.now() - 10 * 60 * 1000).toISOString()
+  }));
+  signal = await getCurrentSignal('breakout_pullback_pending');
+  assert.equal(signal.uw.status, 'stale');
+  assert.equal(signal.uw_conclusion.status, 'stale');
+  assert.equal(signal.execution_constraints.uw.executable, false);
+  assert.equal(signal.trade_plan.uw_ready, false);
+  assert.equal(signal.source_status.find((item) => item.source === 'uw')?.stale, true);
+
+  await writeUwSnapshot(buildUwPayload('live', {
+    last_update: new Date().toISOString()
+  }));
+  signal = await getCurrentSignal('breakout_pullback_pending');
+  assert.equal(signal.uw.status, 'live');
+  assert.equal(signal.uw_conclusion.status, 'live');
+  assert.equal(signal.command_inputs.flow.flow_bias, 'bullish');
+  assert.equal(signal.command_inputs.volatility.volatility_light, 'yellow');
+  assert.equal(signal.command_inputs.sentiment.market_tide, 'risk_on');
+  assert.equal(signal.command_inputs.dealer.uw_dealer_crosscheck, 'confirm');
+});
+
+test('UW interaction rules block execution for partial/stale, block iron condor on green, and keep projection safe', async () => {
+  process.env.FMP_API_KEY = 'test-key';
+  await resetUwStateEnv({
+    UW_STATE_STORE: 'memory',
+    UW_SNAPSHOT_STALE_SECONDS: '300'
+  });
+
+  const fmpOptions = {
+    event: {
+      fetchImpl: async () => ({ ok: true, async json() { return []; } })
+    },
+    price: {
+      quoteShortFetchImpl: async () => ({
+        ok: true,
+        async json() {
+          return [{ symbol: '^GSPC', price: 5342.25 }];
+        }
+      }),
+      quoteFetchImpl: async () => { throw new Error('unused'); },
+      historicalFetchImpl: async () => { throw new Error('unused'); }
+    }
+  };
+
+  await writeUwSnapshot(buildUwPayload('partial', { last_update: new Date().toISOString() }));
+  let signal = await getCurrentSignal('breakout_pullback_pending', { fmp: fmpOptions });
+  assert.equal(signal.execution_constraints.uw.executable, false);
+  assert.notEqual(signal.trade_plan.status, 'ready');
+
+  await writeUwSnapshot(buildUwPayload('live', {
+    last_update: new Date().toISOString(),
+    volatility: { volatility_light: 'green' }
+  }));
+  signal = await getCurrentSignal('positive_gamma_income_watch', { fmp: fmpOptions });
+  assert.equal(signal.allowed_setups.iron_condor.allowed, false);
+  assert.notEqual(signal.trade_plan.status, 'ready');
+
+  signal = await getCurrentSignal('uw_call_strong_unconfirmed', { fmp: fmpOptions });
+  assert.equal(signal.uw_conclusion.flow_bias, 'bullish');
+  assert.equal(signal.tv_sentinel.matched_allowed_setup, false);
+  assert.notEqual(signal.trade_plan.status, 'ready');
+
+  await writeUwSnapshot(buildUwPayload('live', {
+    last_update: new Date().toISOString(),
+    dealer_crosscheck: { state: 'conflict' }
+  }));
+  signal = await getCurrentSignal('breakout_pullback_pending', { fmp: fmpOptions });
+  assert.equal(signal.uw_conclusion.dealer_crosscheck, 'conflict');
+  assert.equal(signal.conflict_resolver.action, 'block');
+  assert.notEqual(signal.trade_plan.status, 'ready');
+
+  const blockedEventOptions = {
+    ...fmpOptions,
+    event: {
+      fetchImpl: async () => ({
+        ok: true,
+        async json() {
+          return [
+            {
+              date: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+              country: 'US',
+              event: 'CPI',
+              impact: 'High'
+            }
+          ];
+        }
+      }),
+      now: new Date()
+    }
+  };
+  await writeUwSnapshot(buildUwPayload('live', { last_update: new Date().toISOString() }));
+  signal = await getCurrentSignal('breakout_pullback_pending', { fmp: blockedEventOptions });
+  assert.equal(signal.fmp_conclusion.event_risk, 'blocked');
+  assert.equal(signal.conflict_resolver.action, 'block');
+  assert.notEqual(signal.trade_plan.status, 'ready');
+
+  delete process.env.FMP_API_KEY;
+
+  const telegramMessage = buildAlertMessage({ signal, body: { session: 'intraday' } });
+  assert.equal(telegramMessage.includes('raw_html'), false);
+  assert.equal(telegramMessage.includes('raw_rows'), false);
+  assert.equal(telegramMessage.includes('token'), false);
+  assert.equal(JSON.stringify(signal.projection).includes('raw_visible_fields'), false);
 });

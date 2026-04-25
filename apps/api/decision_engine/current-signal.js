@@ -112,13 +112,16 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   const snapshot = await getTradingViewSnapshot();
   const fmpSnapshot = await getFmpSnapshot(options.fmp);
   const uwSnapshot = options.uw?.snapshot ?? await readUwSnapshot({ now: options.now });
-  const enrichedScenario = applyFmpPriceSnapshot(
-    applyFmpEventSnapshot(
-      applyTradingViewSnapshot(scenario, snapshot),
-      fmpSnapshot.event
+  const enrichedScenario = {
+    ...applyFmpPriceSnapshot(
+      applyFmpEventSnapshot(
+        applyTradingViewSnapshot(scenario, snapshot),
+        fmpSnapshot.event
+      ),
+      fmpSnapshot.price
     ),
-    fmpSnapshot.price
-  );
+    uw_snapshot: uwSnapshot
+  };
   const normalized = normalizeMockScenario(enrichedScenario);
-  return runMasterEngine(normalized, { uwSnapshot, now: options.now });
+  return runMasterEngine(normalized);
 }
