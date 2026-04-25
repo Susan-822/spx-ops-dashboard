@@ -50,6 +50,7 @@ export function runAllowedSetupsEngine({
   }
   if (ironCondorAllowed) {
     permitted_setup_codes.push('B_IRON_CONDOR');
+    allowed_setup_labels.push('B_iron_condor');
   }
 
   return {

@@ -49,10 +49,11 @@ function buildStrategyLine(permission = {}) {
 
 function buildDataLine(signal = {}, commandEnvironment = {}, tvSentinel = {}) {
   const tradingviewStatus = tvSentinel.stale ? 'TV stale' : 'TV live';
-  const gamma = signal.gamma_regime ? `Gamma ${signal.gamma_regime}` : 'Gamma --';
-  const flow = signal.uw_context?.flow_bias ? `Flow ${signal.uw_context.flow_bias}` : 'Flow --';
+  const dealer = signal?.dealer_conclusion?.plain_chinese || 'Dealer 结论待确认';
+  const flow = signal?.uw_conclusion?.plain_chinese || 'UW 结论待确认';
+  const fmp = signal?.fmp_conclusion?.plain_chinese || 'FMP 结论待确认';
   const mode = commandEnvironment.data_mode || 'partial';
-  return `${tradingviewStatus}；${gamma}；${flow}；数据模式 ${mode}`;
+  return `${tradingviewStatus}；${dealer}；${flow}；${fmp}；数据模式 ${mode}`;
 }
 
 export function determineTelegramLevel({ tradePlan = {}, tvSentinel = {}, commandEnvironment = {}, dataQuality = {} }) {

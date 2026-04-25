@@ -14,13 +14,36 @@ import { runCommandEnvironmentEngine } from './command-environment-engine.js';
 import { runAllowedSetupsEngine } from './allowed-setups-engine.js';
 import { runTvSentinelEngine } from './tv-sentinel-engine.js';
 import { runTradePlanBuilder } from './trade-plan-builder.js';
+import { runFmpConclusionEngine } from './fmp-conclusion-engine.js';
+import { runDealerConclusionEngine } from './dealer-conclusion-engine.js';
+import { runUwConclusionEngine } from './uw-conclusion-engine.js';
+import { runCommandInputAggregator } from './command-input-aggregator.js';
+import { runConflictResolver } from './conflict-resolver.js';
+import { runConfidenceScoreEngine } from './confidence-score-engine.js';
+import { buildProjectionEngine } from './projection-engine.js';
+
+function determineReportStateLevel(tradePlan, tvSentinel, commandEnvironment) {
+  if (tradePlan?.status === 'invalidated' || tvSentinel?.event_type === 'structure_invalidated') {
+    return 'L4';
+  }
+  if (tvSentinel?.stale || commandEnvironment?.data_mode === 'mixed' || commandEnvironment?.data_mode === 'mock') {
+    return 'L4';
+  }
+  if (tradePlan?.status === 'ready') {
+    return 'L3';
+  }
+  if (tradePlan?.status === 'waiting' && commandEnvironment?.allowed) {
+    return 'L2';
+  }
+  return 'L1';
+}
 
 function buildDisplaySpotSnapshot(normalized, gammaWall) {
   const hasDisplaySpot =
-    normalized.spot !== null
-    && normalized.spot !== undefined
-    && Number.isFinite(Number(normalized.spot));
-  const displaySpot = hasDisplaySpot ? Number(normalized.spot) : null;
+    normalized.display_spot !== null
+    && normalized.display_spot !== undefined
+    && Number.isFinite(Number(normalized.display_spot));
+  const displaySpot = hasDisplaySpot ? Number(normalized.display_spot) : null;
   if (displaySpot == null) {
     return {
       spot: null,
@@ -228,39 +251,81 @@ function buildRadarSummary({ normalized, priceStructure, uwFlow, eventRisk, acti
 }
 
 export function runMasterEngine(normalized) {
+  const decisionSpot =
+    normalized.decision_spot !== null
+    && normalized.decision_spot !== undefined
+    && Number.isFinite(Number(normalized.decision_spot))
+      ? Number(normalized.decision_spot)
+      : normalized.spot;
+  const normalizedForDecision = {
+    ...normalized,
+    spot: decisionSpot
+  };
   const dataHealth = runDataHealthEngine(normalized);
-  const marketRegime = runMarketRegimeEngine(normalized);
-  const gammaWall = runGammaWallEngine(normalized);
+  const marketRegime = runMarketRegimeEngine(normalizedForDecision);
+  const gammaWall = runGammaWallEngine(normalizedForDecision);
   const displaySpotSnapshot = buildDisplaySpotSnapshot(normalized, gammaWall);
-  const volatility = runVolatilityEngine(normalized);
-  const priceStructure = runPriceStructureEngine(normalized);
-  const uwFlow = runUwDealerFlowEngine(normalized);
-  const eventRisk = runEventRiskEngine(normalized);
+  const volatility = runVolatilityEngine(normalizedForDecision);
+  const priceStructure = runPriceStructureEngine(normalizedForDecision);
+  const uwFlow = runUwDealerFlowEngine(normalizedForDecision);
+  const eventRisk = runEventRiskEngine(normalizedForDecision);
   const marketSentiment = runMarketSentimentEngine({
-    gamma_regime: normalized.gamma_regime,
-    theta_signal: normalized.theta_signal,
-    fmp_signal: normalized.fmp_signal,
-    event_risk: normalized.event_risk,
+    gamma_regime: normalizedForDecision.gamma_regime,
+    theta_signal: normalizedForDecision.theta_signal,
+    fmp_signal: normalizedForDecision.fmp_signal,
+    event_risk: normalizedForDecision.event_risk,
     price_signal: priceStructure.price_signal
   });
   const conflict = runConflictEngine({
-    theta_signal: normalized.theta_signal,
+    theta_signal: normalizedForDecision.theta_signal,
     tv_signal: priceStructure.price_signal,
     uw_signal: uwFlow.uw_signal,
-    fmp_signal: normalized.fmp_signal,
-    stale_flags: normalized.stale_flags,
+    fmp_signal: normalizedForDecision.fmp_signal,
+    stale_flags: normalizedForDecision.stale_flags,
     tv_confirmation: priceStructure.confirmation_status
   });
+  const fmpConclusion = runFmpConclusionEngine({ normalized: normalizedForDecision, eventRisk });
+  const dealerConclusion = runDealerConclusionEngine({ normalized: normalizedForDecision, gammaWall });
+  const uwConclusion = runUwConclusionEngine({ normalized: normalizedForDecision, uwFlow, volatility });
+  const commandInputs = runCommandInputAggregator({
+    fmpConclusion,
+    dealerConclusion,
+    uwConclusion,
+    tvSentinel: {
+      status: normalized.stale_flags.tradingview ? 'stale' : 'fresh',
+      event_type: normalized.tv_event_type || 'none'
+    },
+    dataHealth
+  });
+  const conflictResolver = runConflictResolver({
+    fmp_conclusion: fmpConclusion,
+    dealer_conclusion: dealerConclusion,
+    uw_conclusion: uwConclusion,
+    tv_sentinel: {
+      event_type: normalized.tv_event_type || 'none'
+    },
+    data_health: {
+      data_mode: dataHealth.state === 'healthy' ? 'live' : dataHealth.state === 'degraded' ? 'partial' : 'mixed',
+      price_conflict: fmpConclusion.price_status === 'conflict'
+    }
+  });
   const commandEnvironment = runCommandEnvironmentEngine({
-    normalized,
-    dataHealth,
-    marketRegime,
-    gammaWall,
-    uwFlow,
-    volatility,
-    eventRisk,
-    marketSentiment,
-    conflict
+    data_health: {
+      ...dataHealth,
+      data_mode: dataHealth.state === 'healthy' ? 'live' : dataHealth.state === 'degraded' ? 'partial' : 'mixed',
+      price_conflict: fmpConclusion.price_status === 'conflict'
+    },
+    command_inputs: commandInputs,
+    conflict_resolver: conflictResolver,
+    confidence_score: {
+      score: conflict.adjusted_confidence,
+      plain_chinese: conflict.conflict_level === 'high' ? '确认度不足。' : '确认度中性。'
+    },
+    fmp_conclusion: fmpConclusion,
+    dealer_conclusion: dealerConclusion,
+    uw_conclusion: uwConclusion,
+    price_signal: priceStructure.price_signal,
+    tv_sentinel_hint: normalized.tv_structure_event
   });
   const allowedSetups = runAllowedSetupsEngine({
     dataHealth,
@@ -281,6 +346,19 @@ export function runMasterEngine(normalized) {
     commandEnvironment,
     allowedSetups,
     tradingviewSentinel: tvSentinel
+  });
+  const confidenceScore = runConfidenceScoreEngine({
+    fmpConclusion,
+    dealerConclusion,
+    uwConclusion,
+    tvSentinel,
+    commandEnvironment,
+    dataHealth: {
+      ...dataHealth,
+      data_mode: commandEnvironment.data_mode,
+      price_conflict: fmpConclusion.price_status === 'conflict'
+    },
+    conflictResolver
   });
   const action = runActionEngine({
     normalized,
@@ -325,6 +403,19 @@ export function runMasterEngine(normalized) {
     eventRisk,
     action,
     gammaWall
+  });
+  const projection = buildProjectionEngine({
+    fmpConclusion,
+    dealerConclusion,
+    uwConclusion,
+    commandEnvironment,
+    tvSentinel,
+    tradePlan,
+    dataHealth: {
+      ...dataHealth,
+      data_mode: commandEnvironment.data_mode
+    },
+    conflictResolver
   });
 
   return createNormalizedSignal({
@@ -396,13 +487,18 @@ export function runMasterEngine(normalized) {
     recommended_action: action.recommended_action,
     avoid_actions: action.avoid_actions,
     invalidation_level: action.invalidation_level,
-    confidence_score: action.confidence_score,
+    confidence_score: confidenceScore.score ?? action.confidence_score,
     strategy_cards: buildStrategyCards({
       normalized,
       action,
       marketRegime
     }),
     engines: {
+      fmp_conclusion: fmpConclusion,
+      dealer_conclusion: dealerConclusion,
+      uw_conclusion: uwConclusion,
+      command_inputs: commandInputs,
+      conflict_resolver: conflictResolver,
       market_regime: marketRegime,
       gamma_wall: gammaWall,
       data_health: dataHealth,
@@ -416,8 +512,27 @@ export function runMasterEngine(normalized) {
       trade_plan: tradePlan,
       event_risk: eventRisk,
       conflict,
-      action
+      action,
+      confidence_score: confidenceScore
     },
+    fmp_conclusion: fmpConclusion,
+    dealer_conclusion: dealerConclusion,
+    uw_conclusion: uwConclusion,
+    data_health: {
+      ...dataHealth,
+      data_mode: commandEnvironment.data_mode,
+      executable: commandEnvironment.executable
+    },
+    conflict_resolver: conflictResolver,
+    command_inputs: commandInputs,
+    command_environment: commandEnvironment,
+    tv_sentinel: tvSentinel,
+    trade_plan: tradePlan,
+    report_state: {
+      level: determineReportStateLevel(tradePlan, tvSentinel, commandEnvironment),
+      status: tradePlan.status
+    },
+    projection,
     notes: [
       normalized.tv_last_event_note
         || normalized.tradingview_note

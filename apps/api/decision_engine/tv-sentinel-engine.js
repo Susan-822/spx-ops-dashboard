@@ -192,7 +192,17 @@ export function runTvSentinelEngine({
     });
   }
 
-  const matchedAllowedSetup = Array.isArray(allowedSetups) && allowedSetups.includes(mapping.matched_setup);
+  const allowedLabels = Array.isArray(allowedSetups?.allowed_setup_labels)
+    ? allowedSetups.allowed_setup_labels
+    : Array.isArray(allowedSetups)
+      ? allowedSetups
+      : [];
+  const allowedCodes = Array.isArray(allowedSetups?.permitted_setup_codes)
+    ? allowedSetups.permitted_setup_codes
+    : [];
+  const matchedAllowedSetup =
+    (mapping.matched_setup && allowedLabels.includes(mapping.matched_setup))
+    || (mapping.setup_code && allowedCodes.includes(mapping.setup_code));
 
   return defaultSentinel({
     snapshot,

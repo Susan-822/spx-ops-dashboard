@@ -86,6 +86,7 @@ function applyFmpPriceSnapshot(baseScenario, snapshot) {
 
   return {
     ...baseScenario,
+    decision_spot: baseScenario.decision_spot ?? baseScenario.spot,
     last_updated: {
       ...baseScenario.last_updated,
       fmp_price: snapshot.last_updated || snapshot.data_timestamp || baseScenario.last_updated.fmp_price || null

@@ -209,7 +209,7 @@ function deriveSpotContext(rawScenario) {
   const priceSnapshot = rawScenario.fmp_price_snapshot;
   if (!priceSnapshot) {
     return {
-      spot: rawScenario.spot,
+      display_spot: rawScenario.spot,
       spot_source: 'mock',
       spot_last_updated: rawScenario.last_updated?.fmp ?? rawScenario.timestamp,
       spot_is_real: false,
@@ -227,7 +227,7 @@ function deriveSpotContext(rawScenario) {
 
   if (!priceIsReal) {
     return {
-      spot: null,
+      display_spot: null,
       spot_source: 'fmp',
       spot_last_updated: priceSnapshot.last_updated || priceSnapshot.data_timestamp || rawScenario.last_updated?.fmp,
       spot_is_real: false,
@@ -236,7 +236,7 @@ function deriveSpotContext(rawScenario) {
   }
 
   return {
-    spot: Number(priceSnapshot.price),
+    display_spot: Number(priceSnapshot.price),
     spot_source: 'fmp',
     spot_last_updated: priceSnapshot.last_updated || priceSnapshot.data_timestamp || rawScenario.last_updated?.fmp,
     spot_is_real: true,
@@ -396,7 +396,9 @@ export function normalizeMockScenario(rawScenario) {
     stale_flags,
     source_status,
     gamma_regime: rawScenario.gamma_regime,
-    spot: spotContext.spot,
+    spot: rawScenario.spot,
+    decision_spot: rawScenario.decision_spot ?? rawScenario.spot,
+    display_spot: spotContext.display_spot,
     spot_source: spotContext.spot_source,
     spot_last_updated: spotContext.spot_last_updated,
     spot_is_real: spotContext.spot_is_real,
