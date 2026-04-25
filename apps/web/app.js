@@ -759,10 +759,10 @@ function renderStrategyCards(signal) {
       ${strategyTypes.map((type) => {
         const card = getStrategyCard(signal, type);
         const state = strategyState(signal, type);
-        const target = type === '垂直' ? card.target_zone || buildTarget(signal) : card.target_zone || '等待';
-        const entry = type === '垂直' ? card.entry_condition || buildTrigger(signal) : card.entry_condition || buildTrigger(signal);
+        const target = card.target_zone || '--';
+        const entry = card.entry_condition || '--';
         const suitable = card.suitable_when || '只在结构、Gamma、事件风险同时支持时考虑。';
-        const invalidation = card.invalidation || buildInvalidation(signal);
+        const invalidation = card.invalidation || '--';
         const avoid = card.avoid_when || buildAvoid(signal);
 
         return `
@@ -842,6 +842,7 @@ function renderIntelMatrix(signal) {
 
 
 function renderHome(signal) {
+  const buildInfo = signal?.build_info?.git_commit || signal?.build_info?.build_sha || 'unknown';
   return `
     <main class="page">
       ${renderCommandHero(signal)}
@@ -851,7 +852,7 @@ function renderHome(signal) {
         ${renderIntelMatrix(signal)}
       </section>
       ${renderSourceStrip(signal)}
-      <div class="footer-note">本页只展示操作结论与关键位置，场景切换仅用于本地验收。</div>
+      <div class="footer-note">本页只展示操作结论与关键位置，场景切换仅用于本地验收。 build ${escapeHtml(buildInfo)}</div>
     </main>
   `;
 }
@@ -946,12 +947,13 @@ function renderRadarContext(signal) {
 }
 
 function renderRadar(signal) {
+  const buildInfo = signal?.build_info?.git_commit || signal?.build_info?.build_sha || 'unknown';
   return `
     <main class="page">
       ${renderRadarSummary(signal)}
       ${renderRadarContext(signal)}
       ${renderSourceStrip(signal)}
-      <div class="footer-note">Radar 只负责解释支撑与限制，不单独生成交易指令。</div>
+      <div class="footer-note">Radar 只负责解释支撑与限制，不单独生成交易指令。 build ${escapeHtml(buildInfo)}</div>
     </main>
   `;
 }

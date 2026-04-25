@@ -24,6 +24,13 @@ import { ingestUwSummary } from '../../../integrations/unusual-whales/ingest/uw-
 import { writeUwSnapshot } from '../state/uwSnapshotStore.js';
 import { writeThetaSnapshot } from '../state/thetaSnapshotStore.js';
 
+function getBuildMetadata() {
+  return {
+    build_sha: process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || process.env.SOURCE_VERSION || 'unknown',
+    git_commit: process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || process.env.SOURCE_VERSION || 'unknown'
+  };
+}
+
 function buildTelegramTestText(body = {}) {
   return [
     '【SPX 指挥台】',
@@ -46,7 +53,8 @@ export async function handleApiRoute(req, res) {
       service: 'spx-ops-dashboard-api',
       mode: 'mock-master-engine',
       available_scenarios: getScenarioNames(),
-      is_mock: true
+      is_mock: true,
+      ...getBuildMetadata()
     });
   }
 
@@ -64,7 +72,10 @@ export async function handleApiRoute(req, res) {
 
   if (req.method === 'GET' && url.pathname === '/signals/current') {
     const signal = await getCurrentSignal(scenario);
-    return sendJson(res, 200, signal);
+    return sendJson(res, 200, {
+      ...signal,
+      ...getBuildMetadata()
+    });
   }
 
   if (req.method === 'GET' && url.pathname === '/gamma/summary') {
