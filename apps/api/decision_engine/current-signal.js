@@ -3,6 +3,7 @@ import { normalizeMockScenario } from '../normalizer/build-normalized-signal.js'
 import { runMasterEngine } from './master-engine.js';
 import { getTradingViewSnapshot } from '../storage/tradingview-snapshot.js';
 import { getFmpSnapshot } from '../adapters/fmp/index.js';
+import { readUwSnapshot } from '../state/uwSnapshotStore.js';
 
 function isFmpRiskDegraded(snapshot) {
   if (!snapshot) {
@@ -110,6 +111,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   const scenario = getMockScenario(requestedScenario);
   const snapshot = await getTradingViewSnapshot();
   const fmpSnapshot = await getFmpSnapshot(options.fmp);
+  const uwSnapshot = options.uw?.snapshot ?? await readUwSnapshot({ now: options.now });
   const enrichedScenario = applyFmpPriceSnapshot(
     applyFmpEventSnapshot(
       applyTradingViewSnapshot(scenario, snapshot),
@@ -118,5 +120,5 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     fmpSnapshot.price
   );
   const normalized = normalizeMockScenario(enrichedScenario);
-  return runMasterEngine(normalized);
+  return runMasterEngine(normalized, { uwSnapshot, now: options.now });
 }

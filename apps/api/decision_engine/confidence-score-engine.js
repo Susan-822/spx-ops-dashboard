@@ -40,13 +40,24 @@ export function runConfidenceScoreEngine({
     score += 20;
   }
 
+  const dealerBias = commandEnvironment?.bias;
+  const darkpoolBiasSupportsDirection =
+    (dealerBias === 'bullish' && uwConclusion?.darkpool_bias === 'support')
+    || (dealerBias === 'bearish' && uwConclusion?.darkpool_bias === 'resistance');
+  if (darkpoolBiasSupportsDirection) {
+    score += 8;
+  }
+
   if (fmpConclusion?.market_bias === 'risk_on' && commandEnvironment?.bias === 'bullish') {
     score += 5;
   } else if (fmpConclusion?.market_bias === 'risk_off' && commandEnvironment?.bias === 'bearish') {
     score += 5;
   }
 
-  if (uwConclusion?.volatility_light === 'green' || commandEnvironment?.preferred_strategy === 'vertical') {
+  if (
+    (uwConclusion?.volatility_light === 'green' || uwConclusion?.volatility_light === 'yellow')
+    || commandEnvironment?.preferred_strategy === 'vertical'
+  ) {
     score += 10;
   }
 
@@ -63,11 +74,17 @@ export function runConfidenceScoreEngine({
   if (uwConclusion?.status === 'partial') {
     score -= 10;
   }
+  if (uwConclusion?.status === 'stale') {
+    score -= 20;
+  }
   if (dealerConclusion?.status === 'unavailable') {
     score -= 15;
   }
   if (uwConclusion?.status === 'unavailable') {
     score -= 10;
+  }
+  if (uwConclusion?.dealer_crosscheck === 'conflict') {
+    score -= 20;
   }
   if (tvSentinel?.stale === true) {
     score -= 30;
@@ -82,7 +99,8 @@ export function runConfidenceScoreEngine({
     && fmpConclusion?.event_risk !== 'unavailable'
     && dataHealth?.data_mode === 'live'
     && dataHealth?.price_conflict !== true
-    && dataHealth?.executable !== false;
+    && dataHealth?.executable !== false
+    && uwConclusion?.dealer_crosscheck !== 'conflict';
 
   return {
     score: environment_score,

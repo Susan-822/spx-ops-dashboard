@@ -1,5 +1,17 @@
+function getSourceStatusItems(source_status) {
+  if (Array.isArray(source_status)) {
+    return source_status;
+  }
+
+  if (source_status && typeof source_status === 'object') {
+    return Object.values(source_status);
+  }
+
+  return [];
+}
+
 export function runDataHealthEngine({ stale_flags, source_status }) {
-  const items = Array.isArray(source_status) ? source_status : [];
+  const items = getSourceStatusItems(source_status);
   const commandCriticalSources = new Set([
     'tradingview',
     'theta_core',

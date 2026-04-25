@@ -5,6 +5,17 @@ function safeText(value, fallback = '--') {
   return fallback;
 }
 
+function buildUwSafeSummary(uwConclusion = {}) {
+  return [
+    `状态 ${safeText(uwConclusion.status, 'unavailable')}`,
+    `Flow ${safeText(uwConclusion.flow_bias, 'unavailable')}`,
+    `机构 ${safeText(uwConclusion.institutional_entry, 'unavailable')}`,
+    `波动 ${safeText(uwConclusion.volatility_light, 'unavailable')}`,
+    `Dark Pool ${safeText(uwConclusion.darkpool_bias, 'unavailable')}`,
+    `Dealer ${safeText(uwConclusion.dealer_crosscheck, 'unavailable')}`
+  ].join('；');
+}
+
 export function buildProjectionEngine({
   fmpConclusion,
   dealerConclusion,
@@ -18,7 +29,7 @@ export function buildProjectionEngine({
   const premarket = [
     `FMP：${safeText(fmpConclusion?.plain_chinese, '市场快照待确认。')}`,
     `Dealer：${safeText(dealerConclusion?.plain_chinese, 'Dealer 地图待确认。')}`,
-    `UW：${safeText(uwConclusion?.plain_chinese, 'UW 机构流待确认。')}`,
+    `UW：${buildUwSafeSummary(uwConclusion)}`,
     `指挥部：${safeText(commandEnvironment?.plain_chinese, '底层环境待确认。')}`
   ].join(' ');
 

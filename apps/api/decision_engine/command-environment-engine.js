@@ -10,11 +10,12 @@ export function runCommandEnvironmentEngine(input = {}) {
   const tvSentinel = input.tvSentinel || input.tv_sentinel || {};
   const blockers = [];
   const missingInputs = Array.isArray(commandInputs?.missing_inputs) ? commandInputs.missing_inputs : [];
+  const uwStatus = String(uwConclusion?.status || 'unavailable');
 
   if (dataHealth.hard_block || dataHealth.command_inputs_fresh === false) {
     blockers.push('数据健康不足');
   }
-  if (missingInputs.some((item) => ['fmp', 'uw', 'theta'].includes(item))) {
+  if (missingInputs.some((item) => ['fmp', 'theta'].includes(item))) {
     blockers.push('缺少关键输入');
   }
   if (fmpConclusion?.event_risk === 'blocked') {
@@ -28,6 +29,11 @@ export function runCommandEnvironmentEngine(input = {}) {
   }
   if (dealerConclusion?.status && dealerConclusion.status !== 'live') {
     blockers.push('Dealer 主源不可执行');
+  }
+  if (uwStatus === 'stale' || uwStatus === 'error' || uwStatus === 'unavailable') {
+    blockers.push('UW 不可执行');
+  } else if (uwStatus === 'partial') {
+    blockers.push('UW 仅部分可见');
   }
 
   if (blockers.length > 0) {
@@ -75,7 +81,7 @@ export function runCommandEnvironmentEngine(input = {}) {
   const canConsiderIncome =
     dealerConclusion?.gamma_regime === 'positive'
     && dealerConclusion?.dealer_behavior === 'pin'
-    && (volatilityLight === 'green' || volatilityLight === 'yellow')
+    && (volatilityLight === 'red' || volatilityLight === 'yellow')
     && fmpConclusion?.event_risk === 'normal'
     && (rangeHoldSignal || priceSignal === 'range_hold')
     && !breakoutLikeSignal;

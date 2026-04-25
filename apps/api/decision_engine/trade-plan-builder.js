@@ -112,6 +112,9 @@ function sideFromSetup(setupCode) {
 }
 
 function strategyPermissionFromSetup(setupCode, commandEnvironment) {
+  const uwConstraint = commandEnvironment?.uw_constraint || {};
+  const uwReady = uwConstraint.executable === true;
+
   if (!setupCode) {
     return {
       single_leg: 'block',
@@ -129,8 +132,8 @@ function strategyPermissionFromSetup(setupCode, commandEnvironment) {
   }
 
   return {
-    single_leg: setupCode.startsWith('A_') ? 'allow' : 'wait',
-    vertical: 'allow',
+    single_leg: setupCode.startsWith('A_') && uwReady ? 'allow' : 'wait',
+    vertical: commandEnvironment?.allowed ? 'allow' : 'wait',
     iron_condor: 'block'
   };
 }

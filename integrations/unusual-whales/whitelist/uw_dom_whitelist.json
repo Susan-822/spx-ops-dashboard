@@ -1,0 +1,387 @@
+{
+  "integration_order": [
+    {
+      "module": "spx_greek_exposure",
+      "rank": 1,
+      "reason": "Greek Exposure 是主 Gamma / Dealer 地图，且当前 URL 质量最高。"
+    },
+    {
+      "module": "volatility_iv",
+      "rank": 2,
+      "reason": "Volatility 用于铁鹰 / 卖波权限判断，字段线索较完整，但暂不写 Reader。"
+    },
+    {
+      "module": "options_flow_alerts",
+      "rank": 3,
+      "reason": "Flow 用于判断主动资金推力，但页面还需登录后确认。"
+    },
+    {
+      "module": "spy_darkpool_offlit",
+      "rank": 4,
+      "reason": "Dark Pool 结果里误命中较多，必须人工确认真实数据页。"
+    },
+    {
+      "module": "nope",
+      "rank": 5,
+      "reason": "NOPE 只做过热和背离辅助，放在最后接入。"
+    }
+  ],
+  "approved_for_dom_poc": [
+    {
+      "module": "spx_greek_exposure",
+      "url": "https://unusualwhales.com/stock/SPX/greek-exposure",
+      "page_type": "data_page",
+      "confidence": 0.9,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "true",
+      "status": "approved_for_dom_poc",
+      "reason": "SPX Greek Exposure 主页面是第一批 DOM POC 的唯一允许模块，路径和字段目标最清晰。",
+      "required_visible_fields": [
+        "GEX",
+        "DEX",
+        "Vanna",
+        "Charm",
+        "Gamma by strike",
+        "Expiry breakdown",
+        "zero gamma / flip",
+        "last update"
+      ],
+      "next_action": "登录 UW 后先确认主页面能稳定看到 Greek Exposure 总览和核心字段。"
+    },
+    {
+      "module": "spx_greek_exposure",
+      "url": "https://unusualwhales.com/stock/SPX/greek-exposure?tab=Gamma",
+      "page_type": "data_page",
+      "confidence": 0.9,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "true",
+      "status": "approved_for_dom_poc",
+      "reason": "Gamma tab 可优先验证 GEX 与 strike 相关面板，适合作为第一批 DOM POC 子页面。",
+      "required_visible_fields": [
+        "GEX",
+        "DEX",
+        "Vanna",
+        "Charm",
+        "Gamma by strike",
+        "Expiry breakdown",
+        "zero gamma / flip",
+        "last update"
+      ],
+      "next_action": "登录 UW 后确认 Gamma tab 与主页面有无稳定共用 DOM。"
+    },
+    {
+      "module": "spx_greek_exposure",
+      "url": "https://unusualwhales.com/stock/SPX/greek-exposure?type=exposure&greek=gamma",
+      "page_type": "data_page",
+      "confidence": 0.9,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "true",
+      "status": "approved_for_dom_poc",
+      "reason": "参数化 gamma 视图更像稳定的固定入口，可作为 DOM POC 备用目标页。",
+      "required_visible_fields": [
+        "GEX",
+        "DEX",
+        "Vanna",
+        "Charm",
+        "Gamma by strike",
+        "Expiry breakdown",
+        "zero gamma / flip",
+        "last update"
+      ],
+      "next_action": "登录 UW 后确认参数化页面不会改变核心模块 DOM 位置。"
+    }
+  ],
+  "needs_manual_login_confirmation": [
+    {
+      "module": "volatility_iv",
+      "url": "https://unusualwhales.com/stock/SPX/volatility",
+      "page_type": "data_page",
+      "confidence": 0.87,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "true",
+      "status": "needs_manual_login_confirmation",
+      "reason": "Volatility 页面质量较高，但当前只加入白名单，需先确认 Term Structure 与统计面板的可见性。",
+      "required_visible_fields": [
+        "IV Rank",
+        "IV Percentile",
+        "Implied Volatility",
+        "Realized Volatility",
+        "Term Structure",
+        "Volatility Statistics"
+      ],
+      "next_action": "登录 UW 后确认 SPX volatility 页面同页有无 Term Structure 和统计分区。"
+    },
+    {
+      "module": "volatility_iv",
+      "url": "https://unusualwhales.com/stock/XSP/volatility",
+      "page_type": "data_page",
+      "confidence": 0.87,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "true",
+      "status": "needs_manual_login_confirmation",
+      "reason": "XSP 可作为 SPX volatility 的辅助入口，但仍需人工确认字段一致性。",
+      "required_visible_fields": [
+        "IV Rank",
+        "IV Percentile",
+        "Implied Volatility",
+        "Realized Volatility",
+        "Term Structure",
+        "Volatility Statistics"
+      ],
+      "next_action": "登录 UW 后对照 SPX volatility 页面核实字段一致性。"
+    },
+    {
+      "module": "volatility_iv",
+      "url": "https://unusualwhales.com/stock/SPY/volatility",
+      "page_type": "data_page",
+      "confidence": 0.87,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "true",
+      "status": "needs_manual_login_confirmation",
+      "reason": "SPY volatility 可做对照页，但本阶段不写 Reader，只保留白名单候选。",
+      "required_visible_fields": [
+        "IV Rank",
+        "IV Percentile",
+        "Implied Volatility",
+        "Realized Volatility",
+        "Term Structure",
+        "Volatility Statistics"
+      ],
+      "next_action": "登录 UW 后确认 SPY volatility 页面有无共享同类波动率布局。"
+    },
+    {
+      "module": "options_flow_alerts",
+      "url": "https://unusualwhales.com/flow/overview",
+      "page_type": "data_page",
+      "confidence": 0.66,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "true",
+      "status": "needs_manual_login_confirmation",
+      "reason": "这是最像市场级 Flow 页面入口的候选，但仍需登录后确认其对 SPX/SPY/QQQ 工作流的适配度。",
+      "required_visible_fields": [
+        "Side",
+        "Premium",
+        "Open Interest",
+        "Volume",
+        "IV",
+        "Sweep / Block / Multileg"
+      ],
+      "next_action": "登录 UW 后确认 flow/overview 可稳定看到市场级实时 Flow 面板。"
+    },
+    {
+      "module": "spy_darkpool_offlit",
+      "url": "https://unusualwhales.com/dark-pool-flow",
+      "page_type": "data_page",
+      "confidence": 0.58,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "unknown",
+      "status": "needs_manual_login_confirmation",
+      "reason": "这是目前最接近真实暗池页面的候选，但尚未确认其有无 SPY dark pool / off-lit / price levels。",
+      "required_visible_fields": [
+        "dark pool trades",
+        "off-exchange / off-lit",
+        "price levels",
+        "support / resistance",
+        "premium",
+        "size / volume"
+      ],
+      "next_action": "登录 UW 后人工确认真正的 SPY dark pool 数据页和关键字段。"
+    },
+    {
+      "module": "nope",
+      "url": "https://unusualwhales.com/stock/SPX/nope",
+      "page_type": "data_page",
+      "confidence": 0.66,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "unknown",
+      "status": "needs_manual_login_confirmation",
+      "reason": "NOPE 页面路径存在，但 call delta / put delta / stock volume / divergence 仍未公开确认。",
+      "required_visible_fields": [
+        "NOPE",
+        "Net Options Pricing Effect",
+        "call delta",
+        "put delta",
+        "stock volume",
+        "divergence / overheat"
+      ],
+      "next_action": "登录 UW 后确认 SPX NOPE 页面有无完整辅助字段。"
+    },
+    {
+      "module": "nope",
+      "url": "https://unusualwhales.com/stock/SPY/nope",
+      "page_type": "data_page",
+      "confidence": 0.65,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "unknown",
+      "status": "needs_manual_login_confirmation",
+      "reason": "SPY NOPE 适合作为对照入口，但字段完整性仍待登录后确认。",
+      "required_visible_fields": [
+        "NOPE",
+        "Net Options Pricing Effect",
+        "call delta",
+        "put delta",
+        "stock volume",
+        "divergence / overheat"
+      ],
+      "next_action": "登录 UW 后确认 SPY NOPE 页面与 SPX NOPE 有无同类布局。"
+    }
+  ],
+  "rejected": [
+    {
+      "module": "spy_darkpool_offlit",
+      "url": "https://api.unusualwhales.com/docs/operations/PublicApi.DarkpoolController.darkpool_recent",
+      "page_type": "api_docs",
+      "confidence": 0.6,
+      "login_required": "false",
+      "usable_for_dom_reader": "false",
+      "status": "rejected",
+      "reason": "API docs 不走 DOM Reader，本项目当前也明确禁止调用 UW API。",
+      "required_visible_fields": [],
+      "next_action": "从 DOM 白名单排除。"
+    },
+    {
+      "module": "spy_darkpool_offlit",
+      "url": "https://unusualwhales.com/lp/dark-pool-scanner",
+      "page_type": "landing_page",
+      "confidence": 0.59,
+      "login_required": "false",
+      "usable_for_dom_reader": "false",
+      "status": "rejected",
+      "reason": "landing page 不是数据页，不能用于 DOM Reader。",
+      "required_visible_fields": [],
+      "next_action": "从 DOM 白名单排除。"
+    },
+    {
+      "module": "spy_darkpool_offlit",
+      "url": "https://unusualwhales.com/lp/real-time-dark-pool-feed-access",
+      "page_type": "landing_page",
+      "confidence": 0.54,
+      "login_required": "false",
+      "usable_for_dom_reader": "false",
+      "status": "rejected",
+      "reason": "landing page 不是数据页，不能用于 DOM Reader。",
+      "required_visible_fields": [],
+      "next_action": "从 DOM 白名单排除。"
+    },
+    {
+      "module": "nope",
+      "url": "https://unusualwhales.com/news/nope-a-primer",
+      "page_type": "docs",
+      "confidence": 0.68,
+      "login_required": "false",
+      "usable_for_dom_reader": "false",
+      "status": "rejected",
+      "reason": "news article 只适合概念说明，不是数据页。",
+      "required_visible_fields": [],
+      "next_action": "从 DOM 白名单排除。"
+    },
+    {
+      "module": "nope",
+      "url": "https://unusualwhales.com/stock/PAY/nope",
+      "page_type": "data_page",
+      "confidence": 0.64,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "false",
+      "status": "rejected",
+      "reason": "随机 ticker NOPE 页面不属于当前 SPX/SPY 工作流。",
+      "required_visible_fields": [],
+      "next_action": "从 DOM 白名单排除。"
+    },
+    {
+      "module": "nope",
+      "url": "https://unusualwhales.com/stock/PRI/nope",
+      "page_type": "data_page",
+      "confidence": 0.64,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "false",
+      "status": "rejected",
+      "reason": "随机 ticker NOPE 页面不属于当前 SPX/SPY 工作流。",
+      "required_visible_fields": [],
+      "next_action": "从 DOM 白名单排除。"
+    },
+    {
+      "module": "nope",
+      "url": "https://unusualwhales.com/stock/PERF/nope",
+      "page_type": "data_page",
+      "confidence": 0.64,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "false",
+      "status": "rejected",
+      "reason": "随机 ticker NOPE 页面不属于当前 SPX/SPY 工作流。",
+      "required_visible_fields": [],
+      "next_action": "从 DOM 白名单排除。"
+    },
+    {
+      "module": "nope",
+      "url": "https://unusualwhales.com/stock/COO/nope",
+      "page_type": "data_page",
+      "confidence": 0.64,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "false",
+      "status": "rejected",
+      "reason": "随机 ticker NOPE 页面不属于当前 SPX/SPY 工作流。",
+      "required_visible_fields": [],
+      "next_action": "从 DOM 白名单排除。"
+    },
+    {
+      "module": "options_flow_alerts",
+      "url": "https://unusualwhales.com/stock/API/options-flow-history",
+      "page_type": "data_page",
+      "confidence": 0.66,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "false",
+      "status": "rejected",
+      "reason": "单股票历史 options-flow-history 页面不是市场级 Flow 入口。",
+      "required_visible_fields": [],
+      "next_action": "从 DOM 白名单排除。"
+    },
+    {
+      "module": "options_flow_alerts",
+      "url": "https://unusualwhales.com/stock/USEG/options-flow-history",
+      "page_type": "data_page",
+      "confidence": 0.66,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "false",
+      "status": "rejected",
+      "reason": "单股票历史 options-flow-history 页面不是市场级 Flow 入口。",
+      "required_visible_fields": [],
+      "next_action": "从 DOM 白名单排除。"
+    },
+    {
+      "module": "options_flow_alerts",
+      "url": "https://unusualwhales.com/stock/MSFT/options-flow-history",
+      "page_type": "data_page",
+      "confidence": 0.66,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "false",
+      "status": "rejected",
+      "reason": "单股票历史 options-flow-history 页面不是市场级 Flow 入口。",
+      "required_visible_fields": [],
+      "next_action": "从 DOM 白名单排除。"
+    },
+    {
+      "module": "options_flow_alerts",
+      "url": "https://unusualwhales.com/stock/OPRA/options-flow-history",
+      "page_type": "data_page",
+      "confidence": 0.66,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "false",
+      "status": "rejected",
+      "reason": "单股票历史 options-flow-history 页面不是市场级 Flow 入口。",
+      "required_visible_fields": [],
+      "next_action": "从 DOM 白名单排除。"
+    },
+    {
+      "module": "options_flow_alerts",
+      "url": "https://unusualwhales.com/stock/AMZN/options-flow-history",
+      "page_type": "data_page",
+      "confidence": 0.66,
+      "login_required": "unknown",
+      "usable_for_dom_reader": "false",
+      "status": "rejected",
+      "reason": "单股票历史 options-flow-history 页面不是市场级 Flow 入口。",
+      "required_visible_fields": [],
+      "next_action": "从 DOM 白名单排除。"
+    }
+  ]
+}

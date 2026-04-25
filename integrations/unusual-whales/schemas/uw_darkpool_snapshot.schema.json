@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "integrations/unusual-whales/schemas/uw_darkpool_snapshot.schema.json",
+  "title": "UW Dark Pool Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "not_implemented"
+      ]
+    },
+    "ticker": {
+      "type": "string"
+    },
+    "nearest_support": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "nearest_resistance": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "darkpool_bias": {
+      "type": "string",
+      "enum": [
+        "support",
+        "resistance",
+        "neutral",
+        "unknown"
+      ]
+    }
+  },
+  "required": [
+    "status",
+    "ticker",
+    "nearest_support",
+    "nearest_resistance",
+    "darkpool_bias"
+  ]
+}

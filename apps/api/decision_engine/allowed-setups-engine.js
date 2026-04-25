@@ -2,7 +2,9 @@ export function runAllowedSetupsEngine({
   dataHealth,
   commandEnvironment,
   eventRisk,
-  volatility
+  volatility,
+  uwConclusion,
+  tvSentinel
 }) {
   if (!dataHealth.executable || commandEnvironment.allowed === false) {
     return {
@@ -19,10 +21,32 @@ export function runAllowedSetupsEngine({
     };
   }
 
+  const volatilityLight = uwConclusion?.volatility_light ?? 'unavailable';
+  const uwLive = uwConclusion?.status === 'live';
+  const tvFresh = tvSentinel?.fresh === true;
+  const tvTrendBreak = ['breakout_confirmed', 'breakdown_confirmed'].includes(tvSentinel?.event_type);
+
+  const singleLegAllowed =
+    uwLive
+    && tvFresh
+    && ['green'].includes(volatilityLight)
+    && ['bullish', 'bearish'].includes(uwConclusion?.flow_bias)
+    && eventRisk.risk_gate === 'open'
+    && commandEnvironment.regime_bias !== 'income';
+
+  const verticalAllowed =
+    tvFresh
+    && commandEnvironment.regime_bias !== 'income'
+    && eventRisk.risk_gate !== 'blocked';
+
   const ironCondorAllowed =
-    volatility.short_vol_allowed &&
-    eventRisk.risk_gate === 'open' &&
-    commandEnvironment.regime_bias === 'income';
+    volatility.short_vol_allowed
+    && eventRisk.risk_gate === 'open'
+    && commandEnvironment.regime_bias === 'income'
+    && uwLive
+    && ['red', 'yellow'].includes(volatilityLight)
+    && uwConclusion?.institutional_entry !== 'bombing'
+    && !tvTrendBreak;
 
   const allowALong = commandEnvironment.regime_bias === 'long';
   const allowBLong = commandEnvironment.regime_bias === 'long';
@@ -71,11 +95,11 @@ export function runAllowedSetupsEngine({
       reason: commandEnvironment.regime_note
     },
     single_leg: {
-      allowed: directionalAllowed,
+      allowed: directionalAllowed && singleLegAllowed,
       reason: commandEnvironment.regime_note
     },
     vertical: {
-      allowed: directionalAllowed,
+      allowed: directionalAllowed && verticalAllowed,
       reason: commandEnvironment.regime_note
     },
     iron_condor: {

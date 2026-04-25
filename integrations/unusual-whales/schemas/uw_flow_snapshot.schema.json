@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "integrations/unusual-whales/schemas/uw_flow_snapshot.schema.json",
+  "title": "UW Flow Snapshot",
+  "description": "Reserved normalized flow snapshot. Flow DOM Reader is not implemented yet.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["not_implemented"]
+    },
+    "flow_bias": {
+      "type": "string",
+      "enum": ["bullish", "bearish", "mixed", "none", "unknown"]
+    },
+    "flow_speed": {
+      "type": "string",
+      "enum": ["accelerating", "normal", "fading", "unknown"]
+    },
+    "flow_thrust": {
+      "type": "string",
+      "enum": ["strong", "medium", "weak", "unknown"]
+    }
+  },
+  "required": ["status", "flow_bias", "flow_speed", "flow_thrust"]
+}

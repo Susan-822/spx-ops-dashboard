@@ -1,84 +1,48 @@
-export function runUwConclusionEngine({ normalized, uwFlow, volatility }) {
-  const sourceItems = Array.isArray(normalized?.source_status) ? normalized.source_status : [];
-  const uwDom = sourceItems.find((item) => item.source === 'uw_dom');
-  const uwScreenshot = sourceItems.find((item) => item.source === 'uw_screenshot');
-  const status =
-    uwDom?.state === 'real'
-      ? 'live'
-      : uwDom?.stale
-        ? 'stale'
-        : uwDom?.state === 'degraded' || uwScreenshot?.state === 'real'
-          ? 'partial'
-          : 'unavailable';
+function buildUnavailableConclusion(status, reason) {
+  return {
+    source: 'uw',
+    status,
+    flow_bias: 'unavailable',
+    institutional_entry: 'unavailable',
+    darkpool_bias: 'unavailable',
+    volatility_light: 'unavailable',
+    market_tide: 'unavailable',
+    dealer_crosscheck: 'unavailable',
+    plain_chinese: reason
+  };
+}
 
-  if (['unavailable', 'stale', 'error'].includes(status)) {
-    return {
-      source: 'uw',
-      status,
-      flow_bias: 'unavailable',
-      institutional_entry: 'unavailable',
-      darkpool_bias: 'unavailable',
-      volatility_light: 'unavailable',
-      market_tide: 'unavailable',
-      dealer_crosscheck: 'unavailable',
-      plain_chinese: 'UW 不可用，当前无法确认机构 Flow / Dark Pool / 波动配合。'
-    };
+export function runUwConclusionEngine({ normalized }) {
+  const uw = normalized?.uw || null;
+  const status = String(uw?.status || 'unavailable').toLowerCase();
+
+  if (status === 'unavailable') {
+    return buildUnavailableConclusion('unavailable', 'UW 不可用，当前无法确认机构 Flow / Dark Pool / 波动配合。');
   }
 
-  const flow_bias =
-    uwFlow?.uw_signal === 'bullish_flow'
-      ? 'bullish'
-      : uwFlow?.uw_signal === 'bearish_flow'
-        ? 'bearish'
-        : 'mixed';
+  if (status === 'stale') {
+    return buildUnavailableConclusion('stale', 'UW 已 stale，只能观察，不可执行。');
+  }
 
-  const institutional_entry =
-    uwFlow?.flow_quality_score >= 75
-      ? 'bombing'
-      : uwFlow?.flow_quality_score >= 60
-        ? 'building'
-        : uwFlow?.flow_quality_score > 0
-          ? 'none'
-          : 'unavailable';
+  if (status === 'error') {
+    return buildUnavailableConclusion('error', 'UW 读取异常，当前不可用于执行判断。');
+  }
 
-  const darkpool_bias =
-    normalized?.uw_dark_pool_bias === 'bullish'
-      ? 'support'
-      : normalized?.uw_dark_pool_bias === 'bearish'
-        ? 'resistance'
-        : 'neutral';
-
-  const volatility_light =
-    volatility?.vol_state === 'contained'
-      ? 'green'
-      : volatility?.vol_state === 'mixed'
-        ? 'yellow'
-        : volatility?.vol_state === 'expanding' || volatility?.vol_state === 'event_loaded'
-          ? 'red'
-          : 'unavailable';
-
-  const market_tide =
-    flow_bias === 'bullish'
-      ? 'risk_on'
-      : flow_bias === 'bearish'
-        ? 'risk_off'
-        : 'mixed';
-
-  const dealer_crosscheck =
-    normalized?.gamma_regime === 'positive' && flow_bias === 'bullish'
-      ? 'confirm'
-      : normalized?.gamma_regime === 'negative' && flow_bias === 'bearish'
-        ? 'confirm'
-        : flow_bias === 'mixed'
-          ? 'unavailable'
-          : 'conflict';
+  const flow_bias = uw?.flow?.flow_bias || 'unavailable';
+  const institutional_entry = uw?.flow?.institutional_entry || 'unavailable';
+  const darkpool_bias = uw?.darkpool?.darkpool_bias || 'unavailable';
+  const volatility_light = uw?.volatility?.volatility_light || 'unavailable';
+  const market_tide = uw?.sentiment?.market_tide || 'unavailable';
+  const dealer_crosscheck = uw?.dealer_crosscheck?.state || 'unavailable';
 
   const plain_chinese =
-    flow_bias === 'bullish'
-      ? 'UW 偏多，机构有入场迹象。'
-      : flow_bias === 'bearish'
-        ? 'UW 偏空，机构卖压更主动。'
-        : 'UW 混合，暂不提供明确方向。';
+    status === 'partial'
+      ? 'UW 部分可读，只展示已读字段，不可放行执行。'
+      : flow_bias === 'bullish'
+        ? 'UW 偏多，机构 Flow 与市场情绪支持多头观察。'
+        : flow_bias === 'bearish'
+          ? 'UW 偏空，机构 Flow 与市场情绪支持空头观察。'
+          : 'UW 混合，暂不提供明确方向。';
 
   return {
     source: 'uw',

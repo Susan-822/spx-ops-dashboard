@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "integrations/unusual-whales/schemas/uw_sentiment_snapshot.schema.json",
+  "title": "UW Sentiment Snapshot",
+  "description": "Secondary sentiment snapshot. Not implemented in the current phase.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "not_implemented"
+      ]
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "risk_on",
+        "risk_off",
+        "mixed",
+        "unknown"
+      ]
+    }
+  },
+  "required": [
+    "status",
+    "state"
+  ]
+}

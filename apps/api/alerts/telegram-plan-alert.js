@@ -51,9 +51,12 @@ function buildDataLine(signal = {}, commandEnvironment = {}, tvSentinel = {}) {
   const tradingviewStatus = tvSentinel.stale ? 'TV stale' : 'TV live';
   const dealer = signal?.dealer_conclusion?.plain_chinese || 'Dealer 结论待确认';
   const flow = signal?.uw_conclusion?.plain_chinese || 'UW 结论待确认';
+  const uwStatus = signal?.source_status_uw?.state
+    ? `UW ${signal.source_status_uw.state}${signal?.source_status_uw?.stale ? ' stale' : ''}`
+    : 'UW unavailable';
   const fmp = signal?.fmp_conclusion?.plain_chinese || 'FMP 结论待确认';
   const mode = commandEnvironment.data_mode || 'partial';
-  return `${tradingviewStatus}；${dealer}；${flow}；${fmp}；数据模式 ${mode}`;
+  return `${tradingviewStatus}；${uwStatus}；${dealer}；${flow}；${fmp}；数据模式 ${mode}`;
 }
 
 export function determineTelegramLevel({ tradePlan = {}, tvSentinel = {}, commandEnvironment = {}, dataQuality = {} }) {

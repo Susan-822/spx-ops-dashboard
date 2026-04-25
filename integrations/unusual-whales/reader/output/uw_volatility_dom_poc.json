@@ -1,0 +1,50 @@
+{
+  "source": "unusual_whales_dom",
+  "module": "volatility_iv",
+  "status": "partial",
+  "tickers": [
+    "SPX",
+    "SPY",
+    "XSP"
+  ],
+  "fields": {
+    "iv_rank": null,
+    "iv_rank_1y": null,
+    "iv_percentile": null,
+    "implied_volatility": null,
+    "realized_volatility": null,
+    "implied_move": null,
+    "implied_move_perc": null,
+    "term_structure": [],
+    "last_update": null
+  },
+  "volatility_activation_candidate": {
+    "data_quality": "unavailable",
+    "light": "unknown",
+    "score": null,
+    "strength": "unknown",
+    "single_leg_permission": "unknown",
+    "vertical_permission": "unknown",
+    "iron_condor_permission": "unknown"
+  },
+  "missing_fields": [
+    "iv_rank",
+    "iv_percentile",
+    "implied_volatility",
+    "realized_volatility",
+    "implied_move",
+    "implied_move_perc",
+    "term_structure",
+    "last_update"
+  ],
+  "manual_confirmation_needed": [
+    "确认 SPX volatility 页面中 IV Rank / IV Percentile / Implied Volatility / Realized Volatility 的实际可见位置。",
+    "确认 SPY 与 XSP 页面是否复用相同字段布局。",
+    "确认 Term Structure 是否在同页可见且可摘要读取。"
+  ],
+  "notes": [
+    "这是 DOM Reader POC 输出样例，不代表已抓到实时 UW 数据。",
+    "没有读到的字段保持 null 或空数组，不做手填补全。",
+    "手填不是正式备用源；缺失时保持 unavailable。"
+  ]
+}

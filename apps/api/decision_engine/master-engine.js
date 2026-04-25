@@ -21,6 +21,7 @@ import { runCommandInputAggregator } from './command-input-aggregator.js';
 import { runConflictResolver } from './conflict-resolver.js';
 import { runConfidenceScoreEngine } from './confidence-score-engine.js';
 import { buildProjectionEngine } from './projection-engine.js';
+import { getUwSourceStatus } from '../state/uwSnapshotStore.js';
 
 function determineReportStateLevel(tradePlan, tvSentinel, commandEnvironment) {
   if (tradePlan?.status === 'invalidated' || tvSentinel?.event_type === 'structure_invalidated') {
@@ -297,6 +298,38 @@ export function runMasterEngine(normalized) {
     },
     dataHealth
   });
+  const commandEnvironmentDataHealth = {
+    ...dataHealth,
+    data_mode: dataHealth.state === 'healthy' ? 'live' : dataHealth.state === 'degraded' ? 'partial' : 'mixed',
+    price_conflict: fmpConclusion.price_status === 'conflict'
+  };
+  const provisionalCommandEnvironment = runCommandEnvironmentEngine({
+    data_health: commandEnvironmentDataHealth,
+    command_inputs: commandInputs,
+    conflict_resolver: {},
+    confidence_score: {
+      score: conflict.adjusted_confidence,
+      plain_chinese: conflict.conflict_level === 'high' ? '确认度不足。' : '确认度中性。'
+    },
+    fmp_conclusion: fmpConclusion,
+    dealer_conclusion: dealerConclusion,
+    uw_conclusion: uwConclusion,
+    price_signal: priceStructure.price_signal,
+    tv_sentinel_hint: normalized.tv_structure_event
+  });
+  const provisionalAllowedSetups = runAllowedSetupsEngine({
+    dataHealth,
+    commandEnvironment: provisionalCommandEnvironment,
+    marketRegime,
+    eventRisk,
+    volatility,
+    normalized,
+    uwConclusion,
+    tvSentinel: {
+      event_type: normalized.tv_event_type || null,
+      fresh: normalized.stale_flags.tradingview !== true
+    }
+  });
   const conflictResolver = runConflictResolver({
     fmp_conclusion: fmpConclusion,
     dealer_conclusion: dealerConclusion,
@@ -307,14 +340,12 @@ export function runMasterEngine(normalized) {
     data_health: {
       data_mode: dataHealth.state === 'healthy' ? 'live' : dataHealth.state === 'degraded' ? 'partial' : 'mixed',
       price_conflict: fmpConclusion.price_status === 'conflict'
-    }
+    },
+    command_environment: provisionalCommandEnvironment,
+    allowed_setups: provisionalAllowedSetups
   });
   const commandEnvironment = runCommandEnvironmentEngine({
-    data_health: {
-      ...dataHealth,
-      data_mode: dataHealth.state === 'healthy' ? 'live' : dataHealth.state === 'degraded' ? 'partial' : 'mixed',
-      price_conflict: fmpConclusion.price_status === 'conflict'
-    },
+    data_health: commandEnvironmentDataHealth,
     command_inputs: commandInputs,
     conflict_resolver: conflictResolver,
     confidence_score: {
@@ -333,7 +364,12 @@ export function runMasterEngine(normalized) {
     marketRegime,
     eventRisk,
     volatility,
-    normalized
+    normalized,
+    uwConclusion,
+    tvSentinel: {
+      event_type: normalized.tv_event_type || null,
+      fresh: normalized.stale_flags.tradingview !== true
+    }
   });
   const tvSentinel = runTvSentinelEngine({
     priceStructure,
@@ -417,6 +453,26 @@ export function runMasterEngine(normalized) {
     },
     conflictResolver
   });
+
+  const sourceStatusUw = getUwSourceStatus(normalized.uw_snapshot, {
+    staleSeconds: Number(process.env.UW_SNAPSHOT_STALE_SECONDS || 300)
+  });
+  const executionConstraints = {
+    uw: {
+      available: uwConclusion.status !== 'unavailable' && uwConclusion.status !== 'error',
+      executable: uwConclusion.status === 'live' && dataHealth.executable === true,
+      reason:
+        uwConclusion.status === 'unavailable'
+          ? 'UW unavailable'
+          : uwConclusion.status === 'stale'
+            ? 'UW stale'
+            : uwConclusion.status === 'partial'
+              ? 'UW partial'
+              : uwConclusion.status === 'error'
+                ? 'UW error'
+                : ''
+    }
+  };
 
   return createNormalizedSignal({
     timestamp: normalized.timestamp,
@@ -518,6 +574,7 @@ export function runMasterEngine(normalized) {
     fmp_conclusion: fmpConclusion,
     dealer_conclusion: dealerConclusion,
     uw_conclusion: uwConclusion,
+    uw: normalized.uw,
     data_health: {
       ...dataHealth,
       data_mode: commandEnvironment.data_mode,
@@ -527,7 +584,11 @@ export function runMasterEngine(normalized) {
     command_inputs: commandInputs,
     command_environment: commandEnvironment,
     tv_sentinel: tvSentinel,
-    trade_plan: tradePlan,
+    trade_plan: {
+      ...tradePlan,
+      uw_ready: executionConstraints.uw.executable && tradePlan.status === 'ready'
+    },
+    execution_constraints: executionConstraints,
     report_state: {
       level: determineReportStateLevel(tradePlan, tvSentinel, commandEnvironment),
       status: tradePlan.status

@@ -20,6 +20,8 @@ import {
   markTelegramAlertSent
 } from '../state/telegramAlertDedupeStore.js';
 import { sendJson, readJsonBody, secureCompare } from './helpers.js';
+import { ingestUwSummary } from '../../../integrations/unusual-whales/ingest/uw-ingest.js';
+import { writeUwSnapshot } from '../state/uwSnapshotStore.js';
 
 function buildTelegramTestText(body = {}) {
   return [
@@ -169,6 +171,44 @@ export async function handleApiRoute(req, res) {
       message: 'TradingView event accepted.',
       is_mock: false
     });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/ingest/uw') {
+    const body = await readJsonBody(req);
+    const expectedSecret = process.env.UW_INGEST_SECRET || '';
+    const providedSecret = typeof body.secret === 'string' ? body.secret : '';
+
+    if (!expectedSecret || !secureCompare(providedSecret, expectedSecret)) {
+      return sendJson(res, 401, {
+        accepted: false,
+        message: 'Invalid UW ingest secret.',
+        is_mock: true
+      });
+    }
+
+    try {
+      const result = await ingestUwSummary({
+        secret: providedSecret,
+        payload: body,
+        store: {
+          async set(snapshot) {
+            return writeUwSnapshot(snapshot);
+          }
+        }
+      });
+
+      return sendJson(res, result.status ?? 202, {
+        accepted: true,
+        message: 'UW curated summary accepted.',
+        is_mock: false
+      });
+    } catch (error) {
+      return sendJson(res, 400, {
+        accepted: false,
+        message: error.message,
+        is_mock: true
+      });
+    }
   }
 
   if (req.method === 'POST' && url.pathname === '/telegram/test') {

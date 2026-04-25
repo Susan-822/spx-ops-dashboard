@@ -8,17 +8,23 @@ export function runCommandInputAggregator({
   const missing_inputs = [];
   const conflicts = [];
 
-  if (fmpConclusion?.status === 'unavailable' || fmpConclusion?.status === 'error') {
+  if (['unavailable', 'error'].includes(fmpConclusion?.status)) {
     missing_inputs.push('fmp');
   }
-  if (dealerConclusion?.status === 'unavailable' || dealerConclusion?.status === 'error') {
+  if (!['live', 'stale', 'mock'].includes(dealerConclusion?.status) || dealerConclusion?.status === 'error') {
     missing_inputs.push('theta');
   }
-  if (uwConclusion?.status === 'unavailable' || uwConclusion?.status === 'error') {
+  if (['unavailable', 'error'].includes(uwConclusion?.status)) {
     missing_inputs.push('uw');
   }
   if (tvSentinel?.status === 'unavailable') {
     missing_inputs.push('tradingview');
+  }
+  if (uwConclusion?.status === 'partial') {
+    conflicts.push('UW partial，仅可展示，不可执行');
+  }
+  if (uwConclusion?.status === 'stale') {
+    conflicts.push('UW stale，仅可参考，不可执行');
   }
 
   if (
@@ -42,13 +48,15 @@ export function runCommandInputAggregator({
       fmp_conclusion: fmpConclusion
     },
     dealer: {
-      dealer_conclusion: dealerConclusion
+      dealer_conclusion: dealerConclusion,
+      uw_dealer_crosscheck: uwConclusion?.dealer_crosscheck ?? 'unavailable'
     },
     flow: {
-      uw_conclusion: uwConclusion
+      flow_bias: uwConclusion?.flow_bias ?? 'unavailable',
+      institutional_entry: uwConclusion?.institutional_entry ?? 'unavailable'
     },
     volatility: {
-      uw_volatility_light: uwConclusion?.volatility_light ?? 'unavailable',
+      volatility_light: uwConclusion?.volatility_light ?? 'unavailable',
       event_risk: fmpConclusion?.event_risk ?? 'unavailable'
     },
     sentiment: {

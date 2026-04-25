@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "integrations/unusual-whales/ingest/ingest-contract.json",
+  "title": "UW Ingest Contract",
+  "description": "Accepted payload contract for the future POST /ingest/uw endpoint. Only curated summary JSON is allowed. Raw HTML, cookies, and full member tables are explicitly forbidden.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "source",
+    "status",
+    "last_update",
+    "dealer",
+    "volatility",
+    "flow",
+    "darkpool",
+    "sentiment",
+    "quality"
+  ],
+  "properties": {
+    "source": {
+      "type": "string",
+      "const": "unusual_whales_dom"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "live",
+        "stale",
+        "error",
+        "partial"
+      ]
+    },
+    "last_update": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "dealer": {
+      "type": "object"
+    },
+    "volatility": {
+      "type": "object"
+    },
+    "flow": {
+      "type": "object"
+    },
+    "darkpool": {
+      "type": "object"
+    },
+    "sentiment": {
+      "type": "object"
+    },
+    "quality": {
+      "type": "object"
+    }
+  }
+}
