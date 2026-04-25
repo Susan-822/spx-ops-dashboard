@@ -598,7 +598,7 @@ function renderMetricCards(signal) {
         <div class="tag-row" style="margin-top:8px">
           <span class="tag blue">Spot ${escapeHtml(signal?.market_snapshot?.spot_source || signal?.command_inputs?.external_spot?.source || 'unavailable')}</span>
           <span class="tag ${chipClassByRisk(signal.gamma_regime)}">${gammaLabel(signal.gamma_regime)}</span>
-          <span class="tag blue" title="多空分界线：价格在此上方偏多，下方偏空">多空线 ${fmtInt(snap.flip_level)}</span>
+          <span class="tag blue" title="多空分界线：价格在此上方偏多，下方偏空">多空线 ${isExecutable(signal) ? fmtInt(snap.flip_level) : '--'}</span>
         </div>
         <div class="metric-sublabel" style="margin-top:6px">${marketStateLabel(signal.market_state)}</div>
       </div>
