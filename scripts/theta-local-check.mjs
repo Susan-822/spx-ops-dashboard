@@ -1,89 +1,38 @@
-#!/usr/bin/env node
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import process from 'node:process';
+import {
+  THETADATA_BASE_URL,
+  ThetaLocalError,
+  thetaCheckTerminal,
+  thetaFetchExpirations,
+  thetaFetchIndexPrice,
+  thetaFetchOptionChainByExp
+} from '../apps/api/integrations/thetadata/theta-local-client.js';
+import { pickThetaTestExpiration } from '../apps/api/decision_engine/dealer-conclusion-engine.js';
 
-const DEFAULT_BASE_URL = 'http://127.0.0.1:25503';
-const DEFAULT_SYMBOL = 'SPXW';
-
-async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: {
-      Accept: 'application/json'
-    }
-  });
-  if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
-  }
-  return response.json();
+function bool(value) {
+  return value === true;
 }
 
-function pickExpiration(payload) {
-  if (!Array.isArray(payload)) {
-    return null;
-  }
-  const item = payload.find((entry) => entry?.expiration) || payload[0];
-  return item?.expiration || null;
-}
-
-function countRows(payload) {
-  if (Array.isArray(payload)) {
-    return payload.length;
-  }
-  if (payload && Array.isArray(payload.response)) {
-    return payload.response.length;
-  }
-  if (payload && Array.isArray(payload.rows)) {
-    return payload.rows.length;
-  }
-  return 0;
-}
-
-function anyFieldPresent(payload, fields) {
-  const rows = Array.isArray(payload)
-    ? payload
-    : Array.isArray(payload?.response)
-      ? payload.response
-      : Array.isArray(payload?.rows)
-        ? payload.rows
-        : [];
-  return rows.some((row) => fields.some((field) => row?.[field] != null));
-}
-
-async function maybeFetch(url) {
+async function tryIndex(symbol, baseUrl) {
   try {
-    return await fetchJson(url);
-  } catch {
-    return null;
+    const row = await thetaFetchIndexPrice(symbol, { baseUrl });
+    return bool(row && (row.price != null || row.last != null));
+  } catch (error) {
+    if (error instanceof ThetaLocalError && error.kind === 'permission') {
+      return false;
+    }
+    return false;
   }
-}
-
-function envCandidates() {
-  return [
-    'C:\\Users\\susan\\Downloads\\bridge\\.env',
-    path.join(process.cwd(), '.env')
-  ];
-}
-
-async function detectEnvFile() {
-  for (const candidate of envCandidates()) {
-    try {
-      await fs.access(candidate);
-      return candidate;
-    } catch {}
-  }
-  return null;
 }
 
 async function main() {
-  const baseUrl = process.env.THETA_BASE_URL || DEFAULT_BASE_URL;
-  const symbol = process.env.THETA_OPTION_SYMBOL || DEFAULT_SYMBOL;
-  const envFile = await detectEnvFile();
+  const baseUrl = process.env.THETADATA_BASE_URL || THETADATA_BASE_URL;
+  const symbol = process.env.THETA_TEST_SYMBOL || 'SPXW';
+  const requestedExpiration = process.env.THETA_TEST_EXPIRATION || null;
+  const terminal = await thetaCheckTerminal(baseUrl);
 
-  const output = {
-    theta_terminal_reachable: false,
+  const result = {
+    theta_terminal_reachable: terminal.reachable,
     base_url: baseUrl,
-    env_file_used: envFile,
     expirations_count: 0,
     selected_expiration: null,
     chain_rows_count: 0,
@@ -91,36 +40,48 @@ async function main() {
     oi_available: false,
     iv_available: false,
     bid_ask_available: false,
-    index_spx_price_available: 'unavailable',
-    index_vix_price_available: 'unavailable',
+    index_spx_price_available: false,
+    index_vix_price_available: false,
     SPXW_OPTIONS_OK: false
   };
 
-  try {
-    const expirations = await fetchJson(
-      `${baseUrl}/v3/option/list/expirations?symbol=${encodeURIComponent(symbol)}&format=json`
-    );
-    output.theta_terminal_reachable = true;
-    output.expirations_count = Array.isArray(expirations) ? expirations.length : 0;
-    output.selected_expiration = pickExpiration(expirations);
-
-    if (output.selected_expiration) {
-      const greeks = await maybeFetch(
-        `${baseUrl}/v3/option/snapshot/greeks/all?symbol=${encodeURIComponent(symbol)}&expiration=${encodeURIComponent(output.selected_expiration)}&format=json`
-      );
-      output.chain_rows_count = countRows(greeks);
-      output.greeks_available = anyFieldPresent(greeks, ['delta', 'gamma', 'theta', 'vega', 'vanna', 'charm']);
-      output.oi_available = anyFieldPresent(greeks, ['open_interest', 'oi']);
-      output.iv_available = anyFieldPresent(greeks, ['iv', 'implied_volatility']);
-      output.bid_ask_available = anyFieldPresent(greeks, ['bid', 'ask']);
-      output.SPXW_OPTIONS_OK = output.chain_rows_count > 0;
-    }
-  } catch (error) {
-    output.error = error.message;
+  if (!terminal.reachable) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
   }
 
-  console.log(JSON.stringify(output, null, 2));
-  process.exit(output.theta_terminal_reachable ? 0 : 1);
+  let expirations = [];
+  try {
+    expirations = await thetaFetchExpirations({
+      symbol,
+      baseUrl
+    });
+  } catch {}
+
+  result.expirations_count = expirations.length;
+  result.selected_expiration = pickThetaTestExpiration(expirations, requestedExpiration);
+  result.index_spx_price_available = await tryIndex('SPX', baseUrl);
+  result.index_vix_price_available = await tryIndex('VIX', baseUrl);
+
+  if (!result.selected_expiration) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  try {
+    const chain = await thetaFetchOptionChainByExp(result.selected_expiration, {
+      symbol,
+      baseUrl
+    });
+    result.chain_rows_count = chain.contracts.length;
+    result.greeks_available = chain.contracts.some((item) => item.gamma != null || item.delta != null);
+    result.oi_available = chain.contracts.some((item) => item.open_interest != null);
+    result.iv_available = chain.contracts.some((item) => item.iv != null);
+    result.bid_ask_available = chain.contracts.some((item) => item.bid != null && item.ask != null);
+    result.SPXW_OPTIONS_OK = chain.contracts.length > 0;
+  } catch {}
+
+  console.log(JSON.stringify(result, null, 2));
 }
 
-main();
+await main();

@@ -3,10 +3,9 @@ export function runAllowedSetupsEngine({
   commandEnvironment,
   eventRisk,
   volatility,
-  uwConclusion,
-  tvSentinel
+  dataCoherence
 }) {
-  if (!dataHealth.executable || commandEnvironment.allowed === false) {
+  if (!dataHealth.executable || commandEnvironment.allowed === false || dataCoherence?.executable === false) {
     return {
       A_long: { allowed: false, reason: commandEnvironment.reason },
       B_long: { allowed: false, reason: commandEnvironment.reason },
@@ -21,32 +20,10 @@ export function runAllowedSetupsEngine({
     };
   }
 
-  const volatilityLight = uwConclusion?.volatility_light ?? 'unavailable';
-  const uwLive = uwConclusion?.status === 'live';
-  const tvFresh = tvSentinel?.fresh === true;
-  const tvTrendBreak = ['breakout_confirmed', 'breakdown_confirmed'].includes(tvSentinel?.event_type);
-
-  const singleLegAllowed =
-    uwLive
-    && tvFresh
-    && ['green'].includes(volatilityLight)
-    && ['bullish', 'bearish'].includes(uwConclusion?.flow_bias)
-    && eventRisk.risk_gate === 'open'
-    && commandEnvironment.regime_bias !== 'income';
-
-  const verticalAllowed =
-    tvFresh
-    && commandEnvironment.regime_bias !== 'income'
-    && eventRisk.risk_gate !== 'blocked';
-
   const ironCondorAllowed =
-    volatility.short_vol_allowed
-    && eventRisk.risk_gate === 'open'
-    && commandEnvironment.regime_bias === 'income'
-    && uwLive
-    && ['red', 'yellow'].includes(volatilityLight)
-    && uwConclusion?.institutional_entry !== 'bombing'
-    && !tvTrendBreak;
+    volatility.short_vol_allowed &&
+    eventRisk.risk_gate === 'open' &&
+    commandEnvironment.regime_bias === 'income';
 
   const allowALong = commandEnvironment.regime_bias === 'long';
   const allowBLong = commandEnvironment.regime_bias === 'long';
@@ -74,7 +51,6 @@ export function runAllowedSetupsEngine({
   }
   if (ironCondorAllowed) {
     permitted_setup_codes.push('B_IRON_CONDOR');
-    allowed_setup_labels.push('B_iron_condor');
   }
 
   return {
@@ -95,11 +71,11 @@ export function runAllowedSetupsEngine({
       reason: commandEnvironment.regime_note
     },
     single_leg: {
-      allowed: directionalAllowed && singleLegAllowed,
+      allowed: directionalAllowed,
       reason: commandEnvironment.regime_note
     },
     vertical: {
-      allowed: directionalAllowed && verticalAllowed,
+      allowed: directionalAllowed,
       reason: commandEnvironment.regime_note
     },
     iron_condor: {

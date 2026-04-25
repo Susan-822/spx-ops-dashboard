@@ -9,42 +9,20 @@ import { runConflictEngine } from './conflict-engine.js';
 import { runActionEngine } from './action-engine.js';
 import { runPlainLanguageEngine } from './plain-language-engine.js';
 import { runDataHealthEngine } from './data-health-engine.js';
+import { runDataCoherenceEngine } from './data-coherence-engine.js';
 import { runMarketSentimentEngine } from './market-sentiment-engine.js';
 import { runCommandEnvironmentEngine } from './command-environment-engine.js';
 import { runAllowedSetupsEngine } from './allowed-setups-engine.js';
 import { runTvSentinelEngine } from './tv-sentinel-engine.js';
 import { runTradePlanBuilder } from './trade-plan-builder.js';
-import { runFmpConclusionEngine } from './fmp-conclusion-engine.js';
-import { runDealerConclusionEngine } from './dealer-conclusion-engine.js';
-import { runUwConclusionEngine } from './uw-conclusion-engine.js';
-import { runCommandInputAggregator } from './command-input-aggregator.js';
-import { runConflictResolver } from './conflict-resolver.js';
-import { runConfidenceScoreEngine } from './confidence-score-engine.js';
-import { buildProjectionEngine } from './projection-engine.js';
-import { getUwSourceStatus } from '../state/uwSnapshotStore.js';
-
-function determineReportStateLevel(tradePlan, tvSentinel, commandEnvironment) {
-  if (tradePlan?.status === 'invalidated' || tvSentinel?.event_type === 'structure_invalidated') {
-    return 'L4';
-  }
-  if (tvSentinel?.stale || commandEnvironment?.data_mode === 'mixed' || commandEnvironment?.data_mode === 'mock') {
-    return 'L4';
-  }
-  if (tradePlan?.status === 'ready') {
-    return 'L3';
-  }
-  if (tradePlan?.status === 'waiting' && commandEnvironment?.allowed) {
-    return 'L2';
-  }
-  return 'L1';
-}
+import { deriveThetaExecutionConstraint } from './dealer-conclusion-engine.js';
 
 function buildDisplaySpotSnapshot(normalized, gammaWall) {
   const hasDisplaySpot =
-    normalized.display_spot !== null
-    && normalized.display_spot !== undefined
-    && Number.isFinite(Number(normalized.display_spot));
-  const displaySpot = hasDisplaySpot ? Number(normalized.display_spot) : null;
+    normalized.spot !== null
+    && normalized.spot !== undefined
+    && Number.isFinite(Number(normalized.spot));
+  const displaySpot = hasDisplaySpot ? Number(normalized.spot) : null;
   if (displaySpot == null) {
     return {
       spot: null,
@@ -73,8 +51,6 @@ function buildDisplaySpotSnapshot(normalized, gammaWall) {
 
   return {
     spot: displaySpot,
-    external_spot: normalized.external_spot ?? displaySpot,
-    external_spot_source: normalized.external_spot_source ?? normalized.spot_source ?? null,
     spot_source: normalized.spot_source ?? null,
     spot_last_updated: normalized.spot_last_updated ?? null,
     spot_is_real: normalized.spot_is_real ?? false,
@@ -88,12 +64,23 @@ function buildDisplaySpotSnapshot(normalized, gammaWall) {
   };
 }
 
-function buildStrategyCards({ normalized, action, marketRegime }) {
+function sanitizeStrategyCard(card, reason) {
+  return {
+    ...card,
+    entry_condition: '--',
+    target_zone: '--',
+    invalidation: '--',
+    suitable_when: reason,
+    avoid_when: reason
+  };
+}
+
+function buildStrategyCards({ normalized, action, marketRegime, dataCoherence, commandEnvironment, thetaExecutionConstraint }) {
   const bullTarget = `${normalized.max_pain} -> ${normalized.call_wall}`;
   const bearTarget = `${normalized.put_wall} -> ${normalized.max_pain}`;
   const ironRange = `${normalized.put_wall} - ${normalized.call_wall}`;
 
-  return [
+  const cards = [
     {
       strategy_name: '单腿',
       suitable_when: action.recommended_action === 'long_on_pullback' || action.recommended_action === 'short_on_retest'
@@ -149,6 +136,24 @@ function buildStrategyCards({ normalized, action, marketRegime }) {
       avoid_when: '不要因为无聊交易，尤其不要在中间区域逆势硬做。'
     }
   ];
+
+  const shouldBlankTargets =
+    normalized.is_mock === true
+    || dataCoherence?.executable === false
+    || commandEnvironment?.executable === false
+    || thetaExecutionConstraint?.executable === false;
+
+  if (!shouldBlankTargets) {
+    return cards;
+  }
+
+  const reason =
+    dataCoherence?.reason
+    || commandEnvironment?.reason
+    || thetaExecutionConstraint?.reason
+    || '数据冲突 / 演示场景 / 数据过期 / 缺少关键输入';
+
+  return cards.map((card) => sanitizeStrategyCard(card, reason));
 }
 
 function buildRadarSummary({ normalized, priceStructure, uwFlow, eventRisk, action, gammaWall }) {
@@ -254,122 +259,41 @@ function buildRadarSummary({ normalized, priceStructure, uwFlow, eventRisk, acti
 }
 
 export function runMasterEngine(normalized) {
-  const decisionSpot =
-    normalized.decision_spot !== null
-    && normalized.decision_spot !== undefined
-    && Number.isFinite(Number(normalized.decision_spot))
-      ? Number(normalized.decision_spot)
-      : normalized.spot;
-  const normalizedForDecision = {
-    ...normalized,
-    spot: decisionSpot
-  };
-  const dataHealth = runDataHealthEngine(normalized);
-  const marketRegime = runMarketRegimeEngine(normalizedForDecision);
-  const gammaWall = runGammaWallEngine(normalizedForDecision);
+  const dataCoherence = runDataCoherenceEngine(normalized);
+  const dataHealth = runDataHealthEngine(normalized, dataCoherence);
+  const marketRegime = runMarketRegimeEngine(normalized);
+  const gammaWall = runGammaWallEngine(normalized);
   const displaySpotSnapshot = buildDisplaySpotSnapshot(normalized, gammaWall);
-  const volatility = runVolatilityEngine(normalizedForDecision);
-  const priceStructure = runPriceStructureEngine(normalizedForDecision);
-  const uwFlow = runUwDealerFlowEngine(normalizedForDecision);
-  const eventRisk = runEventRiskEngine(normalizedForDecision);
+  const volatility = runVolatilityEngine(normalized);
+  const priceStructure = runPriceStructureEngine(normalized);
+  const uwFlow = runUwDealerFlowEngine(normalized);
+  const eventRisk = runEventRiskEngine(normalized);
   const marketSentiment = runMarketSentimentEngine({
-    gamma_regime: normalizedForDecision.gamma_regime,
-    theta_signal: normalizedForDecision.theta_signal,
-    fmp_signal: normalizedForDecision.fmp_signal,
-    event_risk: normalizedForDecision.event_risk,
+    gamma_regime: normalized.gamma_regime,
+    theta_signal: normalized.theta_signal,
+    fmp_signal: normalized.fmp_signal,
+    event_risk: normalized.event_risk,
     price_signal: priceStructure.price_signal
   });
   const conflict = runConflictEngine({
-    theta_signal: normalizedForDecision.theta_signal,
+    theta_signal: normalized.theta_signal,
     tv_signal: priceStructure.price_signal,
     uw_signal: uwFlow.uw_signal,
-    fmp_signal: normalizedForDecision.fmp_signal,
-    stale_flags: normalizedForDecision.stale_flags,
+    fmp_signal: normalized.fmp_signal,
+    stale_flags: normalized.stale_flags,
     tv_confirmation: priceStructure.confirmation_status
   });
-  const fmpConclusion = runFmpConclusionEngine({ normalized: normalizedForDecision, eventRisk });
-  const dealerConclusion = runDealerConclusionEngine({ normalized: normalizedForDecision, gammaWall });
-  const uwConclusion = runUwConclusionEngine({ normalized: normalizedForDecision, uwFlow, volatility });
-  const commandInputs = runCommandInputAggregator({
-    fmpConclusion,
-    dealerConclusion,
-    uwConclusion,
-    tvSentinel: {
-      status: normalized.stale_flags.tradingview ? 'stale' : 'fresh',
-      event_type: normalized.tv_event_type || 'none'
-    },
-    dataHealth
-  });
-  const derivedDataMode =
-    dataHealth.coherence === 'conflict' || dataHealth.coherence === 'mixed'
-      ? dataHealth.coherence
-      : dataHealth.state === 'healthy'
-        ? 'live'
-        : dataHealth.state === 'degraded'
-          ? 'partial'
-          : 'mixed';
-  const commandEnvironmentDataHealth = {
-    ...dataHealth,
-    data_mode: derivedDataMode,
-    price_conflict: fmpConclusion.price_status === 'conflict' || dataHealth.coherence === 'conflict',
-    coherence: dataHealth.coherence,
-    spot_structure_mismatch: dataHealth.spot_structure_mismatch,
-    external_spot_source: normalized.external_spot_source ?? 'unavailable'
-  };
-  const provisionalCommandEnvironment = runCommandEnvironmentEngine({
-    data_health: commandEnvironmentDataHealth,
-    command_inputs: commandInputs,
-    conflict_resolver: {},
-    confidence_score: {
-      score: conflict.adjusted_confidence,
-      plain_chinese: conflict.conflict_level === 'high' ? '确认度不足。' : '确认度中性。'
-    },
-    fmp_conclusion: fmpConclusion,
-    dealer_conclusion: dealerConclusion,
-    uw_conclusion: uwConclusion,
-    price_signal: priceStructure.price_signal,
-    tv_sentinel_hint: normalized.tv_structure_event
-  });
-  const provisionalAllowedSetups = runAllowedSetupsEngine({
-    dataHealth,
-    commandEnvironment: provisionalCommandEnvironment,
-    marketRegime,
-    eventRisk,
-    volatility,
-    normalized,
-    uwConclusion,
-    tvSentinel: {
-      event_type: normalized.tv_event_type || null,
-      fresh: normalized.stale_flags.tradingview !== true
-    }
-  });
-  const conflictResolver = runConflictResolver({
-    fmp_conclusion: fmpConclusion,
-    dealer_conclusion: dealerConclusion,
-    uw_conclusion: uwConclusion,
-    tv_sentinel: {
-      event_type: normalized.tv_event_type || 'none'
-    },
-    data_health: {
-      data_mode: dataHealth.state === 'healthy' ? 'live' : dataHealth.state === 'degraded' ? 'partial' : 'mixed',
-      price_conflict: fmpConclusion.price_status === 'conflict'
-    },
-    command_environment: provisionalCommandEnvironment,
-    allowed_setups: provisionalAllowedSetups
-  });
   const commandEnvironment = runCommandEnvironmentEngine({
-    data_health: commandEnvironmentDataHealth,
-    command_inputs: commandInputs,
-    conflict_resolver: conflictResolver,
-    confidence_score: {
-      score: conflict.adjusted_confidence,
-      plain_chinese: conflict.conflict_level === 'high' ? '确认度不足。' : '确认度中性。'
-    },
-    fmp_conclusion: fmpConclusion,
-    dealer_conclusion: dealerConclusion,
-    uw_conclusion: uwConclusion,
-    price_signal: priceStructure.price_signal,
-    tv_sentinel_hint: normalized.tv_structure_event
+    normalized,
+    dataCoherence,
+    dataHealth,
+    marketRegime,
+    gammaWall,
+    uwFlow,
+    volatility,
+    eventRisk,
+    marketSentiment,
+    conflict
   });
   const allowedSetups = runAllowedSetupsEngine({
     dataHealth,
@@ -377,12 +301,7 @@ export function runMasterEngine(normalized) {
     marketRegime,
     eventRisk,
     volatility,
-    normalized,
-    uwConclusion,
-    tvSentinel: {
-      event_type: normalized.tv_event_type || null,
-      fresh: normalized.stale_flags.tradingview !== true
-    }
+    normalized
   });
   const tvSentinel = runTvSentinelEngine({
     priceStructure,
@@ -395,19 +314,6 @@ export function runMasterEngine(normalized) {
     commandEnvironment,
     allowedSetups,
     tradingviewSentinel: tvSentinel
-  });
-  const confidenceScore = runConfidenceScoreEngine({
-    fmpConclusion,
-    dealerConclusion,
-    uwConclusion,
-    tvSentinel,
-    commandEnvironment,
-    dataHealth: {
-      ...dataHealth,
-      data_mode: commandEnvironment.data_mode,
-      price_conflict: fmpConclusion.price_status === 'conflict' || dataHealth.coherence === 'conflict'
-    },
-    conflictResolver
   });
   const action = runActionEngine({
     normalized,
@@ -453,37 +359,23 @@ export function runMasterEngine(normalized) {
     action,
     gammaWall
   });
-  const projection = buildProjectionEngine({
-    fmpConclusion,
-    dealerConclusion,
-    uwConclusion,
-    commandEnvironment,
-    tvSentinel,
-    tradePlan,
-    dataHealth: {
-      ...dataHealth,
-      data_mode: commandEnvironment.data_mode
-    },
-    conflictResolver
-  });
 
-  const sourceStatusUw = getUwSourceStatus(normalized.uw_snapshot, {
-    staleSeconds: Number(process.env.UW_SNAPSHOT_STALE_SECONDS || 300)
-  });
-  const executionConstraints = {
-    uw: {
-      available: uwConclusion.status !== 'unavailable' && uwConclusion.status !== 'error',
-      executable: uwConclusion.status === 'live' && dataHealth.executable === true,
-      reason:
-        uwConclusion.status === 'unavailable'
-          ? 'UW unavailable'
-          : uwConclusion.status === 'stale'
-            ? 'UW stale'
-            : uwConclusion.status === 'partial'
-              ? 'UW partial'
-              : uwConclusion.status === 'error'
-                ? 'UW error'
-                : ''
+  const thetaExecutionConstraint =
+    normalized.theta_execution_constraint
+    || deriveThetaExecutionConstraint(normalized.theta_dealer_conclusion);
+  const projection = {
+    dealer_summary: {
+      status: normalized.theta_dealer_conclusion?.status || 'unavailable',
+      text: normalized.theta_dealer_conclusion?.plain_chinese || 'Theta dealer unavailable.',
+      gamma_regime: normalized.theta_dealer_conclusion?.gamma_regime || 'unknown',
+      dealer_behavior: normalized.theta_dealer_conclusion?.dealer_behavior || 'unknown',
+      least_resistance_path: normalized.theta_dealer_conclusion?.least_resistance_path || 'unknown',
+      call_wall: normalized.theta_dealer_conclusion?.call_wall ?? null,
+      put_wall: normalized.theta_dealer_conclusion?.put_wall ?? null,
+      max_pain: normalized.theta_dealer_conclusion?.max_pain ?? null,
+      zero_gamma: normalized.theta_dealer_conclusion?.zero_gamma ?? null,
+      expected_move_upper: normalized.theta_dealer_conclusion?.expected_move_upper ?? null,
+      expected_move_lower: normalized.theta_dealer_conclusion?.expected_move_lower ?? null
     }
   };
 
@@ -495,7 +387,7 @@ export function runMasterEngine(normalized) {
     latency_ms: normalized.latency_ms,
     stale_reason: normalized.stale_reason,
     fetch_mode: normalized.fetch_mode,
-    is_mock: true,
+    is_mock: normalized.is_mock,
     scenario: normalized.scenario,
     symbol: normalized.symbol,
     timeframe: normalized.timeframe,
@@ -506,8 +398,6 @@ export function runMasterEngine(normalized) {
     gamma_regime: normalized.gamma_regime,
     market_snapshot: {
       spot: displaySpotSnapshot.spot,
-      external_spot: displaySpotSnapshot.external_spot,
-      external_spot_source: displaySpotSnapshot.external_spot_source,
       spot_source: displaySpotSnapshot.spot_source,
       spot_last_updated: displaySpotSnapshot.spot_last_updated,
       spot_is_real: displaySpotSnapshot.spot_is_real,
@@ -534,6 +424,8 @@ export function runMasterEngine(normalized) {
       no_short_vol_window: normalized.no_short_vol_window ?? false,
       trade_permission_adjustment: normalized.trade_permission_adjustment ?? 'normal'
     },
+    theta: normalized.theta,
+    dealer_conclusion: normalized.theta_dealer_conclusion,
     radar_summary,
     tv_structure_event: normalized.tv_structure_event,
     signals: {
@@ -558,20 +450,41 @@ export function runMasterEngine(normalized) {
     recommended_action: action.recommended_action,
     avoid_actions: action.avoid_actions,
     invalidation_level: action.invalidation_level,
-    confidence_score: confidenceScore.score ?? action.confidence_score,
+    confidence_score: action.confidence_score,
+    data_mode: dataCoherence.data_mode,
+    trade_permission: dataCoherence.trade_permission,
+    execution_constraints: {
+      theta: thetaExecutionConstraint
+    },
+    command_inputs: {
+      dealer: {
+        dealer_conclusion: {
+          status: normalized.theta_dealer_conclusion?.status || 'unavailable',
+          gamma_regime: normalized.theta_dealer_conclusion?.gamma_regime || 'unknown',
+          dealer_behavior: normalized.theta_dealer_conclusion?.dealer_behavior || 'unknown',
+          least_resistance_path: normalized.theta_dealer_conclusion?.least_resistance_path || 'unknown',
+          call_wall: normalized.theta_dealer_conclusion?.call_wall ?? null,
+          put_wall: normalized.theta_dealer_conclusion?.put_wall ?? null,
+          max_pain: normalized.theta_dealer_conclusion?.max_pain ?? null,
+          zero_gamma: normalized.theta_dealer_conclusion?.zero_gamma ?? null,
+          expected_move_upper: normalized.theta_dealer_conclusion?.expected_move_upper ?? null,
+          expected_move_lower: normalized.theta_dealer_conclusion?.expected_move_lower ?? null
+        }
+      }
+    },
+    projection,
     strategy_cards: buildStrategyCards({
       normalized,
       action,
-      marketRegime
+      marketRegime,
+      dataCoherence,
+      commandEnvironment,
+      thetaExecutionConstraint
     }),
     engines: {
-      fmp_conclusion: fmpConclusion,
-      dealer_conclusion: dealerConclusion,
-      uw_conclusion: uwConclusion,
-      command_inputs: commandInputs,
-      conflict_resolver: conflictResolver,
       market_regime: marketRegime,
       gamma_wall: gammaWall,
+      data_coherence: dataCoherence,
       data_health: dataHealth,
       volatility,
       price_structure: priceStructure,
@@ -584,34 +497,8 @@ export function runMasterEngine(normalized) {
       event_risk: eventRisk,
       conflict,
       action,
-      confidence_score: confidenceScore
+      dealer_conclusion: normalized.theta_dealer_conclusion
     },
-    fmp_conclusion: fmpConclusion,
-    dealer_conclusion: dealerConclusion,
-    uw_conclusion: uwConclusion,
-    uw: normalizedForDecision.uw,
-    data_health: {
-      ...dataHealth,
-      data_mode: commandEnvironment.data_mode,
-      executable: commandEnvironment.executable,
-      coherence: dataHealth.coherence,
-      spot_structure_mismatch: dataHealth.spot_structure_mismatch
-    },
-    conflict_resolver: conflictResolver,
-    command_inputs: commandInputs,
-    command_environment: commandEnvironment,
-    allowed_setups: allowedSetups,
-    tv_sentinel: tvSentinel,
-    trade_plan: {
-      ...tradePlan,
-      uw_ready: executionConstraints.uw.executable && tradePlan.status === 'ready'
-    },
-    execution_constraints: executionConstraints,
-    report_state: {
-      level: determineReportStateLevel(tradePlan, tvSentinel, commandEnvironment),
-      status: tradePlan.status
-    },
-    projection,
     notes: [
       normalized.tv_last_event_note
         || normalized.tradingview_note

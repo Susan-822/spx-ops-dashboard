@@ -19,6 +19,7 @@ import {
   isTelegramAlertDuplicate,
   markTelegramAlertSent
 } from '../state/telegramAlertDedupeStore.js';
+import { writeThetaSnapshot } from '../storage/theta-snapshot.js';
 import { sendJson, readJsonBody, secureCompare } from './helpers.js';
 import { ingestUwSummary } from '../../../integrations/unusual-whales/ingest/uw-ingest.js';
 import { writeUwSnapshot } from '../state/uwSnapshotStore.js';
@@ -28,6 +29,72 @@ function getBuildMetadata() {
   return {
     build_sha: process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || process.env.SOURCE_VERSION || 'unknown',
     git_commit: process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || process.env.SOURCE_VERSION || 'unknown'
+  };
+}
+
+const MAX_THETA_INGEST_BYTES = 64 * 1024;
+
+function hasForbiddenThetaFields(payload) {
+  const keys = Object.keys(payload || {});
+  return keys.some((key) => ['cookie', 'token', 'authorization'].includes(String(key).toLowerCase()));
+}
+
+function hasRejectedRawTables(payload) {
+  return (
+    Array.isArray(payload?.option_chain)
+    || Array.isArray(payload?.raw_option_chain)
+    || Array.isArray(payload?.greeks)
+    || Array.isArray(payload?.raw_greeks)
+    || Array.isArray(payload?.contracts)
+    || Array.isArray(payload?.rows)
+  );
+}
+
+function hasPayloadTooLarge(payload) {
+  try {
+    return Buffer.byteLength(JSON.stringify(payload ?? {}), 'utf8') > MAX_THETA_INGEST_BYTES;
+  } catch {
+    return true;
+  }
+}
+
+function normalizeThetaDealerPayload(body = {}) {
+  const dealer = body.dealer && typeof body.dealer === 'object' ? body.dealer : {};
+  const quality = body.quality && typeof body.quality === 'object' ? body.quality : {};
+  const missingFields = Array.isArray(quality.missing_fields) ? quality.missing_fields : [];
+  const warnings = Array.isArray(quality.warnings) ? quality.warnings : [];
+
+  return {
+    secret: undefined,
+    source: typeof body.source === 'string' ? body.source : 'thetadata_terminal',
+    status: typeof body.status === 'string' ? body.status : 'unavailable',
+    last_update: typeof body.last_update === 'string' ? body.last_update : new Date().toISOString(),
+    ticker: typeof body.ticker === 'string' ? body.ticker : 'SPX',
+    spot_source: typeof body.spot_source === 'string' ? body.spot_source : 'unavailable',
+    spot: typeof body.spot === 'number' ? body.spot : Number.isFinite(Number(body.spot)) ? Number(body.spot) : null,
+    test_expiration: typeof body.test_expiration === 'string' ? body.test_expiration : null,
+    dealer: {
+      net_gex: Number.isFinite(Number(dealer.net_gex)) ? Number(dealer.net_gex) : null,
+      call_gex: Number.isFinite(Number(dealer.call_gex)) ? Number(dealer.call_gex) : null,
+      put_gex: Number.isFinite(Number(dealer.put_gex)) ? Number(dealer.put_gex) : null,
+      gamma_regime: typeof dealer.gamma_regime === 'string' ? dealer.gamma_regime : 'unknown',
+      dealer_behavior: typeof dealer.dealer_behavior === 'string' ? dealer.dealer_behavior : 'unknown',
+      least_resistance_path: typeof dealer.least_resistance_path === 'string' ? dealer.least_resistance_path : 'unknown',
+      call_wall: Number.isFinite(Number(dealer.call_wall)) ? Number(dealer.call_wall) : null,
+      put_wall: Number.isFinite(Number(dealer.put_wall)) ? Number(dealer.put_wall) : null,
+      max_pain: Number.isFinite(Number(dealer.max_pain)) ? Number(dealer.max_pain) : null,
+      zero_gamma: Number.isFinite(Number(dealer.zero_gamma)) ? Number(dealer.zero_gamma) : null,
+      expected_move_upper: Number.isFinite(Number(dealer.expected_move_upper)) ? Number(dealer.expected_move_upper) : null,
+      expected_move_lower: Number.isFinite(Number(dealer.expected_move_lower)) ? Number(dealer.expected_move_lower) : null,
+      vanna_charm_bias: typeof dealer.vanna_charm_bias === 'string' ? dealer.vanna_charm_bias : 'unknown'
+    },
+    quality: {
+      data_quality: typeof quality.data_quality === 'string' ? quality.data_quality : 'unavailable',
+      missing_fields: missingFields,
+      warnings,
+      calculation_scope: typeof quality.calculation_scope === 'string' ? quality.calculation_scope : 'single_expiry_test',
+      raw_rows_sent: false
+    }
   };
 }
 
@@ -75,6 +142,53 @@ export async function handleApiRoute(req, res) {
     return sendJson(res, 200, {
       ...signal,
       ...getBuildMetadata()
+    });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/ingest/theta') {
+    const body = await readJsonBody(req);
+    const expectedSecret = process.env.THETA_INGEST_SECRET || '';
+    const providedSecret = typeof body.secret === 'string' ? body.secret : '';
+
+    if (!expectedSecret || !secureCompare(providedSecret, expectedSecret)) {
+      return sendJson(res, 403, {
+        accepted: false,
+        message: 'Invalid Theta ingest secret.',
+        is_mock: false
+      });
+    }
+
+    if (hasForbiddenThetaFields(body)) {
+      return sendJson(res, 400, {
+        accepted: false,
+        message: 'Forbidden theta payload fields detected.',
+        is_mock: false
+      });
+    }
+
+    if (hasRejectedRawTables(body)) {
+      return sendJson(res, 400, {
+        accepted: false,
+        message: 'Raw option chain or greeks tables are not accepted.',
+        is_mock: false
+      });
+    }
+
+    if (hasPayloadTooLarge(body)) {
+      return sendJson(res, 413, {
+        accepted: false,
+        message: 'Theta payload too large.',
+        is_mock: false
+      });
+    }
+
+    const normalizedPayload = normalizeThetaDealerPayload(body);
+    await writeThetaSnapshot(normalizedPayload);
+
+    return sendJson(res, 202, {
+      accepted: true,
+      message: 'Theta dealer summary accepted.',
+      is_mock: false
     });
   }
 

@@ -1,49 +1,31 @@
-export function runCommandEnvironmentEngine(input = {}) {
-  const dataHealth = input.dataHealth || input.data_health || {};
-  const commandInputs = input.commandInputs || input.command_inputs || {};
-  const conflictResolver = input.conflictResolver || input.conflict_resolver || {};
-  const confidenceScore = input.confidenceScore || input.confidence_score || {};
-  const fmpConclusion = input.fmpConclusion || input.fmp_conclusion || {};
-  const dealerConclusion = input.dealerConclusion || input.dealer_conclusion || {};
-  const uwConclusion = input.uwConclusion || input.uw_conclusion || {};
-  const priceSignal = input.priceSignal || input.price_signal || '';
-  const tvSentinel = input.tvSentinel || input.tv_sentinel || {};
+export function runCommandEnvironmentEngine({
+  normalized,
+  dataHealth,
+  dataCoherence,
+  marketRegime,
+  gammaWall,
+  eventRisk,
+  volatility,
+  uwFlow,
+  marketSentiment,
+  conflict
+}) {
   const blockers = [];
-  const missingInputs = Array.isArray(commandInputs?.missing_inputs) ? commandInputs.missing_inputs : [];
-  const uwStatus = String(uwConclusion?.status || 'unavailable');
-  const coherence = dataHealth?.coherence || 'aligned';
 
   if (dataHealth.hard_block || dataHealth.command_inputs_fresh === false) {
     blockers.push('数据健康不足');
   }
-  if (coherence === 'mixed') {
-    blockers.push('演示场景与真实现价混用');
-  }
-  if (coherence === 'conflict') {
-    blockers.push('数据冲突｜禁止执行');
-  }
-  if (dataHealth?.demo_mode === true) {
-    blockers.push('演示场景｜不可交易');
-  }
-  if (missingInputs.some((item) => ['fmp', 'theta'].includes(item))) {
-    blockers.push('缺少关键输入');
-  }
-  if (fmpConclusion?.event_risk === 'blocked') {
+  if (eventRisk.risk_gate === 'blocked') {
     blockers.push('事件风险阻断');
   }
-  if (conflictResolver?.action === 'block') {
-    blockers.push('跨源冲突过高');
+  if (conflict.conflict_level === 'high') {
+    blockers.push('多源冲突过高');
   }
-  if (dataHealth.data_mode === 'mixed' || dataHealth.data_mode === 'mock') {
-    blockers.push('数据模式不可执行');
+  if (normalized?.theta_execution_constraint?.executable === false) {
+    blockers.push(normalized.theta_execution_constraint.reason || 'ThetaData dealer 不可执行');
   }
-  if (dealerConclusion?.status && dealerConclusion.status !== 'live') {
-    blockers.push('Dealer 主源不可执行');
-  }
-  if (uwStatus === 'stale' || uwStatus === 'error' || uwStatus === 'unavailable') {
-    blockers.push('UW 不可执行');
-  } else if (uwStatus === 'partial') {
-    blockers.push('UW 仅部分可见');
+  if (dataCoherence?.executable === false) {
+    blockers.push(dataCoherence.reason || '价格地图冲突');
   }
 
   if (blockers.length > 0) {
@@ -60,9 +42,8 @@ export function runCommandEnvironmentEngine(input = {}) {
       key_support: null,
       key_resistance: null,
       forbidden_zone: 'middle_chop',
-      confidence_score: confidenceScore?.score ?? 0,
-      data_mode: dataHealth?.data_mode ?? 'mixed',
-      trade_permission: 'no_trade',
+      confidence_score: 0,
+      data_mode: normalized?.engines?.data_coherence?.data_mode || normalized?.data_coherence?.data_mode || (dataHealth?.state === 'healthy' ? 'live' : dataHealth?.state === 'degraded' ? 'partial' : 'mixed'),
       regime_note: blockers.join('；'),
       reason: blockers.join('；'),
       blockers,
@@ -70,46 +51,25 @@ export function runCommandEnvironmentEngine(input = {}) {
     };
   }
 
-  let directionalScore = 0;
-  if (dealerConclusion?.least_resistance_path === 'up') directionalScore += 2;
-  if (dealerConclusion?.least_resistance_path === 'down') directionalScore -= 2;
-  if (uwConclusion?.flow_bias === 'bullish') directionalScore += 2;
-  if (uwConclusion?.flow_bias === 'bearish') directionalScore -= 2;
-  if (fmpConclusion?.market_bias === 'risk_on') directionalScore += 1;
-  if (fmpConclusion?.market_bias === 'risk_off') directionalScore -= 1;
-
-  const volatilityLight = uwConclusion?.volatility_light;
-  const tvSignal = input.tvSentinel?.tv_signal || input.tv_sentinel?.tv_signal || '';
-  const rangeHoldSignal =
-    String(tvSignal) === 'range_hold'
-    || String(tvSentinel.tv_signal || '') === 'range_hold';
-  const breakoutLikeSignal =
-    String(tvSignal).includes('A_long_candidate')
-    || String(tvSignal).includes('A_short_candidate')
-    || String(tvSignal).includes('breakout')
-    || String(tvSignal).includes('breakdown');
-
-  const canConsiderIncome =
-    dealerConclusion?.gamma_regime === 'positive'
-    && dealerConclusion?.dealer_behavior === 'pin'
-    && (volatilityLight === 'red' || volatilityLight === 'yellow')
-    && fmpConclusion?.event_risk === 'normal'
-    && (rangeHoldSignal || priceSignal === 'range_hold')
-    && !breakoutLikeSignal;
-
   let regime_bias = 'neutral';
-  if (canConsiderIncome) {
-    regime_bias = 'income';
-  } else if (directionalScore >= 1 && !rangeHoldSignal) {
-    regime_bias = 'long';
-  } else if (directionalScore <= -1 && !rangeHoldSignal) {
+  if (
+    marketRegime.market_state === 'negative_gamma_expand'
+    || uwFlow.uw_signal === 'bearish_flow'
+    || marketSentiment.sentiment === 'risk_off'
+  ) {
     regime_bias = 'short';
+  } else if (
+    marketRegime.market_state === 'positive_gamma_grind'
+    || uwFlow.uw_signal === 'bullish_flow'
+    || marketSentiment.sentiment === 'risk_on'
+  ) {
+    regime_bias = volatility.short_vol_allowed ? 'income' : 'long';
   }
 
   const day_type =
-    dealerConclusion?.dealer_behavior === 'mixed'
+    marketRegime.market_state === 'flip_chop'
       ? 'rotation'
-      : dealerConclusion?.dealer_behavior === 'expand'
+      : marketRegime.market_state === 'negative_gamma_expand'
         ? 'expansion'
         : regime_bias === 'income'
           ? 'pin'
@@ -123,13 +83,14 @@ export function runCommandEnvironmentEngine(input = {}) {
   } else if (regime_bias === 'short') {
     allowed_setups.push('A_short', 'B_short');
   } else if (regime_bias === 'income') {
-    allowed_setups.push('B_long', 'B_short', 'B_IRON_CONDOR');
+    allowed_setups.push('B_long', 'B_short');
   }
 
   const blocked_setups = ['A_long', 'B_long', 'A_short', 'B_short'].filter(
     (setup) => !allowed_setups.includes(setup)
   );
 
+  const key_support = Number.isFinite(Number(gammaWall?.distance_to_put_wall)) ? marketRegime?.flip_distance != null ? undefined : undefined : undefined;
   const preferred_strategy =
     regime_bias === 'income'
       ? 'iron_condor'
@@ -137,7 +98,7 @@ export function runCommandEnvironmentEngine(input = {}) {
         ? 'vertical'
         : 'wait';
 
-  const plainChinese = regime_bias === 'income'
+  const plainChinese = volatility.short_vol_allowed
     ? '指挥部偏区间，允许观察 B 类回踩/反抽与收入型结构。'
     : regime_bias === 'long'
       ? '指挥部底层偏多，允许多头 A/B 单观察。'
@@ -148,26 +109,22 @@ export function runCommandEnvironmentEngine(input = {}) {
   return {
     state: 'ready',
     allowed: true,
-    executable:
-      dataHealth?.executable === true
-      && dealerConclusion?.status === 'live'
-      && confidenceScore?.executable !== false,
+    executable: true,
     bias: regime_bias === 'long' ? 'bullish' : regime_bias === 'short' ? 'bearish' : regime_bias === 'income' ? 'mixed' : 'neutral',
     regime_bias,
     day_type,
     allowed_setups,
     blocked_setups,
     preferred_strategy,
-    key_support: dealerConclusion?.put_wall ?? null,
-    key_resistance: dealerConclusion?.call_wall ?? null,
-    forbidden_zone: dealerConclusion?.dealer_behavior === 'mixed' ? 'middle_chop' : 'none',
-    confidence_score: confidenceScore?.score ?? 0,
-    data_mode: dataHealth?.data_mode ?? 'partial',
-    trade_permission: 'wait',
-    regime_note: regime_bias === 'income'
+    key_support: gammaWall?.distance_to_put_wall != null ? 'put_wall' : null,
+    key_resistance: gammaWall?.distance_to_call_wall != null ? 'call_wall' : null,
+    forbidden_zone: marketRegime.market_state === 'flip_chop' ? 'middle_chop' : 'none',
+    confidence_score: conflict?.adjusted_confidence ?? 0,
+    data_mode: normalized?.engines?.data_coherence?.data_mode || normalized?.data_coherence?.data_mode || (dataHealth?.state === 'healthy' ? 'live' : dataHealth?.state === 'degraded' ? 'partial' : 'mixed'),
+    regime_note: volatility.short_vol_allowed
       ? '指挥部允许观察波动率与结构联动。'
       : '指挥部允许观察方向结构，但仍需价格触发。',
-    reason: regime_bias === 'income'
+    reason: volatility.short_vol_allowed
       ? '指挥部允许观察波动率与结构联动。'
       : '指挥部允许观察方向结构，但仍需价格触发。',
     plain_chinese: plainChinese

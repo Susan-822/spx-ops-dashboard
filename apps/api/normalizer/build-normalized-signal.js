@@ -1,7 +1,6 @@
 import { createSourceStatus, SOURCE_STATE } from '../../../packages/shared/src/source-status.js';
 import { getSourcePolicy } from '../scheduler/refresh-policy.js';
 import { mapTradingViewEventToStructure } from '../storage/tradingview-snapshot.js';
-import { normalizeUwSummary } from '../../../integrations/unusual-whales/normalizer/uw-summary-normalizer.js';
 
 const FMP_ABNORMAL_SOURCE_MESSAGE = 'FMP 数据异常，事件风险不可确认。';
 const FMP_ABNORMAL_EVENT_NOTE = 'FMP 数据异常，事件风险不可确认，降低交易权限，不提前卖波。';
@@ -207,17 +206,33 @@ function deriveEventContext(rawScenario, fmpStatus) {
 }
 
 function deriveSpotContext(rawScenario) {
+  const externalSpotPresent =
+    rawScenario.external_spot !== null
+    && rawScenario.external_spot !== undefined
+    && rawScenario.external_spot !== ''
+    && Number.isFinite(Number(rawScenario.external_spot));
+  if (externalSpotPresent) {
+    return {
+      spot: Number(rawScenario.external_spot),
+      spot_source: rawScenario.external_spot_source || rawScenario.spot_source || 'unavailable',
+      spot_last_updated:
+        rawScenario.external_spot_last_updated
+        || rawScenario.spot_last_updated
+        || rawScenario.last_updated?.fmp
+        || rawScenario.timestamp,
+      spot_is_real: Boolean(rawScenario.external_spot_is_real),
+      price_health: rawScenario.external_spot_is_real ? 'real' : 'manual'
+    };
+  }
+
   const priceSnapshot = rawScenario.fmp_price_snapshot;
   if (!priceSnapshot) {
     return {
-      display_spot: rawScenario.spot,
+      spot: rawScenario.spot,
       spot_source: 'mock',
       spot_last_updated: rawScenario.last_updated?.fmp ?? rawScenario.timestamp,
       spot_is_real: false,
-      price_health: 'mock',
-      external_spot: Number.isFinite(Number(rawScenario.spot)) ? Number(rawScenario.spot) : null,
-      external_spot_source: Number.isFinite(Number(rawScenario.spot)) ? 'market_snapshot' : 'unavailable',
-      external_spot_is_real: false
+      price_health: 'mock'
     };
   }
 
@@ -231,94 +246,70 @@ function deriveSpotContext(rawScenario) {
 
   if (!priceIsReal) {
     return {
-      display_spot: null,
+      spot: null,
       spot_source: 'fmp',
       spot_last_updated: priceSnapshot.last_updated || priceSnapshot.data_timestamp || rawScenario.last_updated?.fmp,
       spot_is_real: false,
-      price_health: state || (priceSnapshot.stale ? 'stale' : 'degraded'),
-      external_spot: null,
-      external_spot_source: 'unavailable',
-      external_spot_is_real: false
+      price_health: state || (priceSnapshot.stale ? 'stale' : 'degraded')
     };
   }
 
   return {
-    display_spot: Number(priceSnapshot.price),
+    spot: Number(priceSnapshot.price),
     spot_source: 'fmp',
     spot_last_updated: priceSnapshot.last_updated || priceSnapshot.data_timestamp || rawScenario.last_updated?.fmp,
     spot_is_real: true,
-    price_health: 'real',
-    external_spot: Number(priceSnapshot.price),
-    external_spot_source: 'fmp',
-    external_spot_is_real: true
+    price_health: 'real'
   };
 }
 
-function deriveExpectedMoveRange(rawScenario) {
-  const upper = Number(rawScenario.call_wall);
-  const lower = Number(rawScenario.put_wall);
-  if (!Number.isFinite(upper) || !Number.isFinite(lower)) {
-    return null;
-  }
-  return Math.abs(upper - lower);
-}
-
-function deriveDataCoherence(rawScenario, sourceStatus, spotContext) {
-  const thetaCore = sourceStatus.find((item) => item.source === 'theta_core');
-  const thetaChain = sourceStatus.find((item) => item.source === 'theta_full_chain');
-  const thetaIsMockLike =
-    !thetaCore
-    || thetaCore.is_mock === true
-    || ['mock', 'degraded', 'down', 'unavailable'].includes(thetaCore.state)
-    || !thetaChain
-    || thetaChain.is_mock === true;
-
-  const expectedMove = deriveExpectedMoveRange(rawScenario);
-  const externalSpot = Number(spotContext.external_spot);
-  const flip = Number(rawScenario.flip_level);
-  const callWall = Number(rawScenario.call_wall);
-  const putWall = Number(rawScenario.put_wall);
-  const maxPain = Number(rawScenario.max_pain);
-  const hasRealSpot = spotContext.external_spot_is_real === true && Number.isFinite(externalSpot);
-  const hasScenarioLevels =
-    [flip, callWall, putWall, maxPain].every((value) => Number.isFinite(value));
-
-  const issues = [];
-  let status = 'coherent';
-
-  if (hasRealSpot && hasScenarioLevels) {
-    const maxDistance = Math.max(150, (expectedMove ?? 0) * 3);
-    const flipDistance = Math.abs(externalSpot - flip);
-    if (flipDistance > maxDistance) {
-      status = 'conflict';
-      issues.push(`真实现价与 Flip 偏差过大 (${Math.round(flipDistance)}pt)`);
-    }
-
-    const boundedRangeLow = Math.min(putWall, maxPain, callWall) - Math.max(100, (expectedMove ?? 0) * 0.5);
-    const boundedRangeHigh = Math.max(putWall, maxPain, callWall) + Math.max(100, (expectedMove ?? 0) * 0.5);
-    if (externalSpot < boundedRangeLow || externalSpot > boundedRangeHigh) {
-      status = 'conflict';
-      issues.push('真实现价与 Call/Put Wall / Max Pain 不在同一价格区间');
-    }
-  }
-
-  if (status !== 'conflict' && hasRealSpot && thetaIsMockLike) {
-    status = 'mixed';
-    issues.push('真实外部现价与 scenario/mock Dealer 地图混用');
-  }
-
-  if (!hasRealSpot && rawScenario.fetch_mode === 'mock_scenario') {
-    status = 'mock';
-    issues.push('演示场景｜不可交易');
-  }
+function deriveThetaContext(rawScenario) {
+  const snapshot = rawScenario.theta_snapshot;
+  const dealerConclusion = rawScenario.theta_dealer_conclusion;
+  const executionConstraint = rawScenario.theta_execution_constraint;
+  const thetaSourceStatus = rawScenario.theta_source_status;
 
   return {
-    status,
-    issues,
-    theta_is_mock_like: thetaIsMockLike,
-    expected_move: expectedMove,
-    external_spot: hasRealSpot ? externalSpot : null,
-    external_spot_source: spotContext.external_spot_source ?? 'unavailable'
+    theta_snapshot: snapshot ?? null,
+    theta: {
+      status: snapshot?.status || 'unavailable',
+      calculation_scope: snapshot?.quality?.calculation_scope || 'single_expiry_test',
+      test_expiration: snapshot?.test_expiration || null,
+      quality: snapshot?.quality || {
+        data_quality: 'unavailable',
+        missing_fields: [],
+        warnings: [],
+        calculation_scope: 'single_expiry_test',
+        raw_rows_sent: false
+      }
+    },
+    theta_dealer_conclusion: dealerConclusion ?? {
+      source: 'theta',
+      status: 'unavailable',
+      gamma_regime: 'unknown',
+      dealer_behavior: 'unknown',
+      least_resistance_path: 'unknown',
+      call_wall: null,
+      put_wall: null,
+      max_pain: null,
+      zero_gamma: null,
+      expected_move_upper: null,
+      expected_move_lower: null,
+      vanna_charm_bias: 'unknown',
+      plain_chinese: 'ThetaData unavailable.'
+    },
+    theta_execution_constraint: executionConstraint ?? {
+      available: false,
+      executable: false,
+      reason: 'ThetaData unavailable.'
+    },
+    theta_source_status: thetaSourceStatus ?? {
+      source: 'theta',
+      state: 'unavailable',
+      stale: false,
+      last_update: null,
+      message: 'ThetaData unavailable.'
+    }
   };
 }
 
@@ -352,59 +343,9 @@ function appendUniqueNote(notes, note) {
   return notes.includes(note) ? notes : [...notes, note];
 }
 
-function createUwSourceEntry({ timestamp, snapshot, staleSeconds }) {
-  const policy = getSourcePolicy('uw_dom');
-  const normalizedUw = normalizeUwSummary(snapshot, { stale: snapshot?.stale === true }).uw;
-  const lastUpdated = normalizedUw?.last_update || timestamp;
-  const latencyMs = Math.max(0, new Date(timestamp).getTime() - new Date(lastUpdated).getTime());
-  const stale = Boolean(snapshot?.stale);
-  const state =
-    normalizedUw?.status === 'error'
-      ? 'down'
-      : normalizedUw?.status === 'unavailable'
-        ? 'unavailable'
-        : normalizedUw?.status === 'partial' || stale
-          ? SOURCE_STATE.DELAYED
-          : SOURCE_STATE.REAL;
-
-  return createSourceStatus({
-    source: 'uw',
-    configured: snapshot != null,
-    available: normalizedUw?.status === 'live' || normalizedUw?.status === 'partial' || normalizedUw?.status === 'stale',
-    is_mock: false,
-    fetch_mode: 'curated_ingest',
-    stale,
-    state,
-    last_updated: lastUpdated,
-    data_timestamp: lastUpdated,
-    received_at: timestamp,
-    latency_ms: latencyMs,
-    stale_reason: stale ? `uw 超过 stale_threshold ${staleSeconds * 1000}ms，当前延迟约 ${latencyMs}ms。` : '',
-    refresh_interval_ms: 0,
-    stale_threshold_ms: staleSeconds * 1000,
-    down_threshold_ms: policy?.down_threshold_ms ?? staleSeconds * 1000 * 2,
-    event_triggers: ['uw_ingest'],
-    message:
-      normalizedUw?.status === 'partial'
-        ? 'UW curated summary partial.'
-        : stale
-          ? 'UW curated summary stale.'
-          : normalizedUw?.status === 'unavailable'
-            ? 'UW curated summary unavailable.'
-            : normalizedUw?.status === 'error'
-              ? 'UW curated summary error.'
-              : snapshot
-                ? 'UW curated summary ingested.'
-                : 'UW curated summary unavailable.'
-  });
-}
-
 export function normalizeMockScenario(rawScenario) {
   const receivedAt = new Date().toISOString();
-  const uwStaleSeconds = Number.parseInt(String(process.env.UW_SNAPSHOT_STALE_SECONDS ?? '300'), 10) || 300;
-  const normalizedUw = normalizeUwSummary(rawScenario.uw_snapshot, {
-    stale: rawScenario.uw_snapshot?.stale === true
-  }).uw;
+  const thetaContext = deriveThetaContext(rawScenario);
 
   const source_status = [
     createSourceEntry({
@@ -432,10 +373,17 @@ export function normalizeMockScenario(rawScenario) {
       timestamp: receivedAt,
       last_updated: rawScenario.last_updated.fmp
     }),
-    createUwSourceEntry({
+    createSourceEntry({
+      source: 'uw_dom',
       timestamp: receivedAt,
-      snapshot: rawScenario.uw_snapshot,
-      staleSeconds: uwStaleSeconds
+      last_updated: rawScenario.last_updated.uw,
+      degraded: rawScenario.uw_fetch_path === 'screenshot'
+    }),
+    createSourceEntry({
+      source: 'uw_screenshot',
+      timestamp: receivedAt,
+      last_updated: rawScenario.last_updated.uw,
+      degraded: rawScenario.uw_fetch_path !== 'screenshot'
     }),
     createSourceEntry({
       source: 'scheduler_health',
@@ -487,9 +435,9 @@ export function normalizeMockScenario(rawScenario) {
   }
 
   const stale_flags = {
-    theta: source_status.find((item) => item.source === 'theta_core')?.stale ?? true,
+    theta: thetaContext.theta.status === 'stale',
     tradingview: source_status.find((item) => item.source === 'tradingview')?.stale ?? true,
-    uw: source_status.find((item) => item.source === 'uw')?.stale ?? true,
+    uw: source_status.find((item) => item.source === 'uw_dom')?.stale ?? true,
     fmp: source_status.find((item) => item.source === 'fmp_event')?.stale ?? true
   };
   stale_flags.any_stale = Object.values(stale_flags).some(Boolean);
@@ -499,9 +447,40 @@ export function normalizeMockScenario(rawScenario) {
   const fmpStatus = source_status.find((item) => item.source === 'fmp_event');
   const eventContext = deriveEventContext(rawScenario, fmpStatus);
   const spotContext = deriveSpotContext(rawScenario);
-  const dataCoherence = deriveDataCoherence(rawScenario, source_status, spotContext);
   const tradingViewContext = deriveTradingViewContext(rawScenario);
   const notes = appendUniqueNote([], tradingViewContext.tradingview_note);
+
+  const thetaCoreIndex = source_status.findIndex((item) => item.source === 'theta_core');
+  if (thetaCoreIndex >= 0) {
+    source_status[thetaCoreIndex] = {
+      ...source_status[thetaCoreIndex],
+      configured: thetaContext.theta.status !== 'unavailable',
+      available: thetaContext.theta_execution_constraint.available,
+      is_mock: thetaContext.theta.status === 'mock',
+      stale: thetaContext.theta.status === 'stale',
+      state: thetaContext.theta_source_status.state,
+      message: thetaContext.theta_source_status.message,
+      last_updated: thetaContext.theta_source_status.last_update || source_status[thetaCoreIndex].last_updated,
+      data_timestamp: thetaContext.theta_source_status.last_update || source_status[thetaCoreIndex].data_timestamp,
+      fetch_mode: thetaContext.theta.status === 'live' ? 'bridge_ingest' : source_status[thetaCoreIndex].fetch_mode
+    };
+  }
+
+  const thetaFullChainIndex = source_status.findIndex((item) => item.source === 'theta_full_chain');
+  if (thetaFullChainIndex >= 0) {
+    source_status[thetaFullChainIndex] = {
+      ...source_status[thetaFullChainIndex],
+      configured: thetaContext.theta.status !== 'unavailable',
+      available: thetaContext.theta_execution_constraint.available,
+      is_mock: thetaContext.theta.status === 'mock',
+      stale: thetaContext.theta.status === 'stale',
+      state: thetaContext.theta_source_status.state,
+      message: 'Theta single-expiry dealer summary only; full chain not enabled.',
+      last_updated: thetaContext.theta_source_status.last_update || source_status[thetaFullChainIndex].last_updated,
+      data_timestamp: thetaContext.theta_source_status.last_update || source_status[thetaFullChainIndex].data_timestamp,
+      fetch_mode: 'single_expiry_test'
+    };
+  }
 
   return {
     scenario: rawScenario.scenario,
@@ -510,8 +489,9 @@ export function normalizeMockScenario(rawScenario) {
     received_at: receivedAt,
     latency_ms,
     stale_reason,
-    fetch_mode: 'mock_scenario',
-    is_mock: true,
+    fetch_mode: rawScenario.fetch_mode || 'mock_scenario',
+    is_mock: rawScenario.is_mock ?? true,
+    scenario_mode: rawScenario.scenario_mode ?? true,
     symbol: rawScenario.symbol,
     timeframe: rawScenario.timeframe,
     plain_thesis: `Scenario ${rawScenario.scenario} drives the intraday command-center mock loop.`,
@@ -519,36 +499,21 @@ export function normalizeMockScenario(rawScenario) {
     stale_flags,
     source_status,
     gamma_regime: rawScenario.gamma_regime,
-    spot: rawScenario.spot,
-    decision_spot: rawScenario.decision_spot ?? rawScenario.spot,
-    display_spot: spotContext.display_spot,
+    external_spot: rawScenario.external_spot ?? null,
+    external_spot_source: rawScenario.external_spot_source ?? 'unavailable',
+    spot: spotContext.spot,
     spot_source: spotContext.spot_source,
     spot_last_updated: spotContext.spot_last_updated,
     spot_is_real: spotContext.spot_is_real,
     price_health: spotContext.price_health,
-    external_spot: spotContext.external_spot,
-    external_spot_source: spotContext.external_spot_source,
-    external_spot_is_real: spotContext.external_spot_is_real,
-    data_coherence: dataCoherence,
     flip_level: rawScenario.flip_level,
     call_wall: rawScenario.call_wall,
     put_wall: rawScenario.put_wall,
     max_pain: rawScenario.max_pain,
     iv_state: rawScenario.iv_state,
-    uw: normalizedUw,
-    uw_snapshot: rawScenario.uw_snapshot ?? null,
-    uw_flow_bias: normalizedUw.flow.flow_bias,
-    uw_dark_pool_bias: normalizedUw.darkpool.darkpool_bias,
-    uw_dealer_bias:
-      normalizedUw.dealer_crosscheck.state === 'confirm'
-        ? 'supportive'
-        : normalizedUw.dealer_crosscheck.state === 'conflict'
-          ? 'defensive'
-          : 'neutral',
-    uw_institutional_entry: normalizedUw.flow.institutional_entry,
-    uw_volatility_light: normalizedUw.volatility.volatility_light,
-    uw_market_tide: normalizedUw.sentiment.market_tide,
-    uw_dealer_crosscheck: normalizedUw.dealer_crosscheck.state,
+    uw_flow_bias: rawScenario.uw_flow_bias,
+    uw_dark_pool_bias: rawScenario.uw_dark_pool_bias,
+    uw_dealer_bias: rawScenario.uw_dealer_bias,
     uw_fetch_path: rawScenario.uw_fetch_path,
     advanced_greeks: rawScenario.advanced_greeks,
     event_risk: eventContext.event_risk,
@@ -557,6 +522,11 @@ export function normalizeMockScenario(rawScenario) {
     trade_permission_adjustment: eventContext.trade_permission_adjustment,
     fmp_signal: rawScenario.fmp_signal,
     theta_signal: rawScenario.theta_signal,
+    theta: thetaContext.theta,
+    theta_snapshot: thetaContext.theta_snapshot,
+    theta_dealer_conclusion: thetaContext.theta_dealer_conclusion,
+    theta_execution_constraint: thetaContext.theta_execution_constraint,
+    theta_source_status: thetaContext.theta_source_status,
     tv_structure_event: tradingViewContext.tv_structure_event,
     tradingview_snapshot: tradingViewContext.tradingview_snapshot,
     tv_event_type: tradingViewContext.tv_event_type,
