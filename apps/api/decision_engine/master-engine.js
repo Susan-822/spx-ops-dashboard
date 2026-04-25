@@ -9,6 +9,7 @@ import { runConflictEngine } from './conflict-engine.js';
 import { runActionEngine } from './action-engine.js';
 import { runPlainLanguageEngine } from './plain-language-engine.js';
 import { runDataHealthEngine } from './data-health-engine.js';
+import { runDataCoherenceEngine } from './data-coherence-engine.js';
 import { runMarketSentimentEngine } from './market-sentiment-engine.js';
 import { runCommandEnvironmentEngine } from './command-environment-engine.js';
 import { runAllowedSetupsEngine } from './allowed-setups-engine.js';
@@ -63,12 +64,23 @@ function buildDisplaySpotSnapshot(normalized, gammaWall) {
   };
 }
 
-function buildStrategyCards({ normalized, action, marketRegime }) {
+function sanitizeStrategyCard(card, reason) {
+  return {
+    ...card,
+    entry_condition: '--',
+    target_zone: '--',
+    invalidation: '--',
+    suitable_when: reason,
+    avoid_when: reason
+  };
+}
+
+function buildStrategyCards({ normalized, action, marketRegime, dataCoherence, commandEnvironment, thetaExecutionConstraint }) {
   const bullTarget = `${normalized.max_pain} -> ${normalized.call_wall}`;
   const bearTarget = `${normalized.put_wall} -> ${normalized.max_pain}`;
   const ironRange = `${normalized.put_wall} - ${normalized.call_wall}`;
 
-  return [
+  const cards = [
     {
       strategy_name: '单腿',
       suitable_when: action.recommended_action === 'long_on_pullback' || action.recommended_action === 'short_on_retest'
@@ -124,6 +136,24 @@ function buildStrategyCards({ normalized, action, marketRegime }) {
       avoid_when: '不要因为无聊交易，尤其不要在中间区域逆势硬做。'
     }
   ];
+
+  const shouldBlankTargets =
+    normalized.is_mock === true
+    || dataCoherence?.executable === false
+    || commandEnvironment?.executable === false
+    || thetaExecutionConstraint?.executable === false;
+
+  if (!shouldBlankTargets) {
+    return cards;
+  }
+
+  const reason =
+    dataCoherence?.reason
+    || commandEnvironment?.reason
+    || thetaExecutionConstraint?.reason
+    || '数据冲突 / 演示场景 / 数据过期 / 缺少关键输入';
+
+  return cards.map((card) => sanitizeStrategyCard(card, reason));
 }
 
 function buildRadarSummary({ normalized, priceStructure, uwFlow, eventRisk, action, gammaWall }) {
@@ -229,7 +259,8 @@ function buildRadarSummary({ normalized, priceStructure, uwFlow, eventRisk, acti
 }
 
 export function runMasterEngine(normalized) {
-  const dataHealth = runDataHealthEngine(normalized);
+  const dataCoherence = runDataCoherenceEngine(normalized);
+  const dataHealth = runDataHealthEngine(normalized, dataCoherence);
   const marketRegime = runMarketRegimeEngine(normalized);
   const gammaWall = runGammaWallEngine(normalized);
   const displaySpotSnapshot = buildDisplaySpotSnapshot(normalized, gammaWall);
@@ -254,6 +285,7 @@ export function runMasterEngine(normalized) {
   });
   const commandEnvironment = runCommandEnvironmentEngine({
     normalized,
+    dataCoherence,
     dataHealth,
     marketRegime,
     gammaWall,
@@ -355,7 +387,7 @@ export function runMasterEngine(normalized) {
     latency_ms: normalized.latency_ms,
     stale_reason: normalized.stale_reason,
     fetch_mode: normalized.fetch_mode,
-    is_mock: true,
+    is_mock: normalized.is_mock,
     scenario: normalized.scenario,
     symbol: normalized.symbol,
     timeframe: normalized.timeframe,
@@ -419,6 +451,8 @@ export function runMasterEngine(normalized) {
     avoid_actions: action.avoid_actions,
     invalidation_level: action.invalidation_level,
     confidence_score: action.confidence_score,
+    data_mode: dataCoherence.data_mode,
+    trade_permission: dataCoherence.trade_permission,
     execution_constraints: {
       theta: thetaExecutionConstraint
     },
@@ -442,11 +476,15 @@ export function runMasterEngine(normalized) {
     strategy_cards: buildStrategyCards({
       normalized,
       action,
-      marketRegime
+      marketRegime,
+      dataCoherence,
+      commandEnvironment,
+      thetaExecutionConstraint
     }),
     engines: {
       market_regime: marketRegime,
       gamma_wall: gammaWall,
+      data_coherence: dataCoherence,
       data_health: dataHealth,
       volatility,
       price_structure: priceStructure,

@@ -2,9 +2,10 @@ export function runAllowedSetupsEngine({
   dataHealth,
   commandEnvironment,
   eventRisk,
-  volatility
+  volatility,
+  dataCoherence
 }) {
-  if (!dataHealth.executable || commandEnvironment.allowed === false) {
+  if (!dataHealth.executable || commandEnvironment.allowed === false || dataCoherence?.executable === false) {
     return {
       A_long: { allowed: false, reason: commandEnvironment.reason },
       B_long: { allowed: false, reason: commandEnvironment.reason },

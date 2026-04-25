@@ -11,6 +11,10 @@ import {
   mapThetaSnapshotToSourceStatus
 } from './dealer-conclusion-engine.js';
 
+function hasFiniteNumber(value) {
+  return Number.isFinite(Number(value));
+}
+
 function isFmpRiskDegraded(snapshot) {
   if (!snapshot) {
     return false;
@@ -49,6 +53,32 @@ function applyTradingViewSnapshot(baseScenario, snapshot) {
       ? `最近 TradingView 事件 ${snapshot.event_type || mappedStructure} 已 stale，仅作参考。`
       : `最近 TradingView 事件：${snapshot.event_type || mappedStructure}。`,
     tradingview_snapshot: snapshot
+  };
+}
+
+function applyTradingViewPriceFallback(baseScenario, snapshot) {
+  if (!snapshot || hasFiniteNumber(baseScenario.spot) || hasFiniteNumber(baseScenario.external_spot)) {
+    return baseScenario;
+  }
+
+  if (!hasFiniteNumber(snapshot.price)) {
+    return baseScenario;
+  }
+
+  return {
+    ...baseScenario,
+    ...(baseScenario.scenario_mode === true
+      ? {}
+      : {
+          spot: Number(snapshot.price),
+          spot_source: 'tradingview',
+          spot_last_updated: snapshot.last_updated || snapshot.received_at || baseScenario.last_updated.tradingview,
+          spot_is_real: snapshot.is_mock !== true && snapshot.status !== 'stale'
+        }),
+    external_spot: Number(snapshot.price),
+    external_spot_source: 'tradingview',
+    external_spot_last_updated: snapshot.last_updated || snapshot.received_at || baseScenario.last_updated.tradingview,
+    external_spot_is_real: snapshot.is_mock !== true && snapshot.status !== 'stale'
   };
 }
 
@@ -91,6 +121,44 @@ function applyFmpPriceSnapshot(baseScenario, snapshot) {
     return baseScenario;
   }
 
+  if (!snapshot.price_available) {
+    return {
+      ...baseScenario,
+      last_updated: {
+        ...baseScenario.last_updated,
+        fmp_price: snapshot.last_updated || snapshot.data_timestamp || baseScenario.last_updated.fmp_price || null
+      },
+      fmp_price_snapshot: snapshot,
+      day_change: snapshot.day_change ?? baseScenario.day_change ?? null,
+      day_change_percent: snapshot.day_change_percent ?? baseScenario.day_change_percent ?? null,
+      external_spot: baseScenario.external_spot ?? null,
+      external_spot_source: baseScenario.external_spot_source ?? null,
+      external_spot_last_updated: baseScenario.external_spot_last_updated ?? null,
+      external_spot_is_real: baseScenario.external_spot_is_real ?? false
+    };
+  }
+
+  const externalSpotPayload = {
+    external_spot: snapshot.price,
+    external_spot_source: 'fmp',
+    external_spot_last_updated: snapshot.last_updated || snapshot.data_timestamp || null,
+    external_spot_is_real: Boolean(snapshot.price_available && !snapshot.is_mock)
+  };
+
+  if (baseScenario.scenario_mode === true) {
+    return {
+      ...baseScenario,
+      last_updated: {
+        ...baseScenario.last_updated,
+        fmp_price: snapshot.last_updated || snapshot.data_timestamp || baseScenario.last_updated.fmp_price || null
+      },
+      fmp_price_snapshot: snapshot,
+      day_change: snapshot.day_change ?? null,
+      day_change_percent: snapshot.day_change_percent ?? null,
+      ...externalSpotPayload
+    };
+  }
+
   return {
     ...baseScenario,
     last_updated: {
@@ -108,7 +176,8 @@ function applyFmpPriceSnapshot(baseScenario, snapshot) {
       source: snapshot.price_available ? 'fmp' : null
     },
     day_change: snapshot.day_change ?? null,
-    day_change_percent: snapshot.day_change_percent ?? null
+    day_change_percent: snapshot.day_change_percent ?? null,
+    ...externalSpotPayload
   };
 }
 
@@ -119,7 +188,7 @@ function applyThetaSnapshot(baseScenario, snapshot) {
 
   const dealerConclusion = buildDealerConclusionEngine({
     thetaSnapshot: snapshot,
-    externalSpot: baseScenario.spot
+    externalSpot: baseScenario.external_spot ?? baseScenario.spot
   });
   const executionConstraint = deriveThetaExecutionConstraint(dealerConclusion);
   const thetaSourceStatus = mapThetaSnapshotToSourceStatus(snapshot);
@@ -131,6 +200,20 @@ function applyThetaSnapshot(baseScenario, snapshot) {
     : baseScenario.gamma_regime;
   const thetaSignal = deriveThetaSignalFromSnapshot(snapshot) || baseScenario.theta_signal;
   const lastUpdate = snapshot.last_update || snapshot.last_updated || baseScenario.last_updated.theta;
+  const shouldAdoptThetaSpot =
+    baseScenario.scenario_mode !== true
+    && hasFiniteNumber(snapshot.spot)
+    && (
+      !hasFiniteNumber(baseScenario.spot)
+      || baseScenario.spot_is_real !== true
+    );
+  const shouldAdoptThetaFlip = baseScenario.scenario_mode !== true && hasFiniteNumber(dealerConclusion.zero_gamma ?? dealerConclusion.max_pain);
+  const nextSpot = shouldAdoptThetaSpot ? Number(snapshot.spot) : baseScenario.spot;
+  const nextSpotSource = shouldAdoptThetaSpot ? snapshot.spot_source || 'manual_test' : baseScenario.spot_source;
+  const nextSpotIsReal = shouldAdoptThetaSpot ? snapshot.spot_source !== 'manual_test' : baseScenario.spot_is_real;
+  const nextFlipLevel = shouldAdoptThetaFlip
+    ? Number(dealerConclusion.zero_gamma ?? dealerConclusion.max_pain)
+    : baseScenario.flip_level;
 
   return {
     ...baseScenario,
@@ -140,6 +223,15 @@ function applyThetaSnapshot(baseScenario, snapshot) {
       theta_full_chain: lastUpdate
     },
     gamma_regime: gammaRegime,
+    spot: nextSpot,
+    spot_source: nextSpotSource,
+    spot_last_updated: shouldAdoptThetaSpot ? lastUpdate : baseScenario.spot_last_updated,
+    spot_is_real: nextSpotIsReal,
+    external_spot: baseScenario.external_spot ?? (hasFiniteNumber(snapshot.spot) ? Number(snapshot.spot) : null),
+    external_spot_source: baseScenario.external_spot_source ?? snapshot.spot_source ?? null,
+    external_spot_last_updated: baseScenario.external_spot_last_updated ?? lastUpdate,
+    external_spot_is_real: baseScenario.external_spot_is_real ?? hasFiniteNumber(snapshot.spot),
+    flip_level: nextFlipLevel,
     call_wall: callWall,
     put_wall: putWall,
     max_pain: maxPain,
@@ -152,11 +244,17 @@ function applyThetaSnapshot(baseScenario, snapshot) {
 }
 
 export async function getCurrentSignal(requestedScenario, options = {}) {
-  const scenario = getMockScenario(requestedScenario);
+  const scenarioMode = typeof requestedScenario === 'string' && requestedScenario.length > 0;
+  const scenario = {
+    ...getMockScenario(requestedScenario),
+    scenario_mode: scenarioMode,
+    is_mock: scenarioMode,
+    fetch_mode: scenarioMode ? 'mock_scenario' : 'live_fallback'
+  };
   const snapshot = await getTradingViewSnapshot();
   const thetaSnapshot = await getThetaSnapshot();
   const fmpSnapshot = await getFmpSnapshot(options.fmp);
-  const enrichedScenario = applyThetaSnapshot(
+  const enrichedScenario = applyTradingViewPriceFallback(
     applyFmpPriceSnapshot(
       applyFmpEventSnapshot(
         applyTradingViewSnapshot(scenario, snapshot),
@@ -164,8 +262,12 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
       ),
       fmpSnapshot.price
     ),
+    snapshot
+  );
+  const finalScenario = applyThetaSnapshot(
+    enrichedScenario,
     thetaSnapshot
   );
-  const normalized = normalizeMockScenario(enrichedScenario);
+  const normalized = normalizeMockScenario(finalScenario);
   return runMasterEngine(normalized);
 }

@@ -152,6 +152,42 @@ function emptyTargets() {
   ];
 }
 
+function blockedTradePlan(reason = '数据冲突，禁止执行。', normalized = {}) {
+  return {
+    active: false,
+    status: 'blocked',
+    has_trade_plan: false,
+    triggered_by_tv: false,
+    plan_family: null,
+    setup_code: null,
+    setup_type: 'none',
+    direction_label: '禁做',
+    side: 'neutral',
+    bias: 'neutral',
+    recommended_action: ACTIONS.NO_TRADE,
+    trigger_status: 'blocked',
+    title: '等待指挥部允许',
+    trigger_text: '--',
+    target_text: '--',
+    invalidation_text: '--',
+    entry_zone: emptyPriceField('--'),
+    entry_trigger: '--',
+    stop_loss: { level: null, basis: '', text: '--' },
+    invalidation: { level: null, condition: '--', text: '--' },
+    targets: emptyTargets(),
+    strategy_permission: {
+      single_leg: 'block',
+      vertical: 'block',
+      iron_condor: 'block'
+    },
+    confidence_score: 0,
+    supporting_factors: [],
+    conflicts: [reason].filter(Boolean),
+    forbidden_actions: ['不追高', '不提前押方向'],
+    plain_chinese: reason
+  };
+}
+
 function buildEntryZone(setupCode, normalized) {
   switch (setupCode) {
     case 'A_LONG_PULLBACK':
@@ -280,6 +316,16 @@ function buildPlainChinese({ status, directionLabelText, commandEnvironment, tra
 }
 
 export function runTradePlanBuilder({ normalized, commandEnvironment, allowedSetups, tradingviewSentinel }) {
+  if (
+    normalized?.execution_context?.executable === false
+    || normalized?.execution_context?.trade_permission === 'no_trade'
+  ) {
+    return blockedTradePlan(
+      normalized?.execution_context?.reason || commandEnvironment?.reason || '数据冲突，禁止执行。',
+      normalized
+    );
+  }
+
   const sentinelReason = tradingviewSentinel?.plain_chinese || tradingviewSentinel?.reason || '价格条件尚未到位。';
 
   if (tradingviewSentinel?.event_type === 'structure_invalidated') {

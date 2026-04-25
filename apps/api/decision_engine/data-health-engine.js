@@ -1,4 +1,4 @@
-export function runDataHealthEngine({ stale_flags, source_status }) {
+export function runDataHealthEngine({ stale_flags, source_status, normalized }) {
   const items = Array.isArray(source_status) ? source_status : [];
   const commandCriticalSources = new Set([
     'tradingview',
@@ -14,7 +14,7 @@ export function runDataHealthEngine({ stale_flags, source_status }) {
 
   const command_inputs_fresh = !stale_flags.theta && !stale_flags.uw && !stale_flags.fmp && !commandCriticalDown;
   const tv_fresh = !stale_flags.tradingview;
-  const hard_block = stale_flags.theta || commandCriticalDown;
+  const hard_block = stale_flags.theta || commandCriticalDown || normalized?.theta_execution_constraint?.executable === false;
 
   let state = 'healthy';
   if (hard_block) {

@@ -38,9 +38,37 @@ Theta curated ingest:
 
 - `POST /ingest/theta`
 
+Bridge entrypoints:
+
+- `node scripts/spx-bridge.mjs --theta-only --once`
+- `node scripts/spx-bridge.mjs --theta-only`
+- `node scripts/spx-bridge.mjs --uw-only`
+- `node scripts/spx-bridge.mjs --all`
+- `node scripts/theta-local-check.mjs`
+
 ## ThetaData local dealer workflow
 
 ThetaData is options-only in the current plan. SPX spot / VIX must come from FMP, TradingView, `market_snapshot`, or a manual local test spot. Do not make Theta index endpoints a required dependency for execution.
+
+Windows local startup bundle:
+
+- `Start-SPX-Ops.bat`
+- `Check-SPX-Ops.bat`
+- `Stop-SPX-Ops.bat`
+
+Env resolution order for local bridge scripts:
+
+1. `C:\Users\susan\Downloads\bridge\.env`
+2. Script directory `.env`
+
+Startup logs print:
+
+- `env_file_used`
+- `CLOUD_URL present`
+- `DATA_PUSH_API_KEY present`
+- `UW_BEARER_TOKEN present`
+
+Secrets are never printed.
 
 Useful local env vars:
 
@@ -55,10 +83,14 @@ Useful local env vars:
 - `THETA_GEX_NEGATIVE_THRESHOLD` default `-100000000`
 - `THETA_TEST_EXPIRATION`
 - `THETA_TEST_SPOT`
-- `THETA_INGEST_URL` for `scripts/theta-bridge.mjs`
+- `THETA_INGEST_URL` for `scripts/spx-bridge.mjs`
+- `CLOUD_URL`
+- `DATA_PUSH_API_KEY`
+- `UW_BEARER_TOKEN`
 
 Local commands:
 
 - `node scripts/theta-probe.mjs`
+- `node scripts/theta-local-check.mjs`
 - `npm run dev`
-- `THETA_INGEST_URL=http://localhost:3000/ingest/theta THETA_INGEST_SECRET=local-test-secret THETA_TEST_SPOT=5300 node scripts/theta-bridge.mjs --once`
+- `THETA_INGEST_URL=http://localhost:3000/ingest/theta THETA_INGEST_SECRET=local-test-secret THETA_TEST_SPOT=5300 node scripts/spx-bridge.mjs --theta-only --once`

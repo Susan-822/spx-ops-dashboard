@@ -10,6 +10,18 @@ const AVOID_TEXT = Object.freeze({
 });
 
 function marketStatusText({ normalized, marketRegime, priceStructure, eventRisk, conflict, stale_flags }) {
+  if (normalized?.data_coherence?.data_mode === 'scenario') {
+    return '当前是演示场景，不可交易。';
+  }
+
+  if (normalized?.data_coherence?.data_mode === 'mixed') {
+    return '真实现价与演示/Mock 价格地图混用，禁止执行。';
+  }
+
+  if (normalized?.data_coherence?.data_mode === 'conflict') {
+    return '现价与 Gamma 地图不在同一价格世界，禁止执行。';
+  }
+
   if (stale_flags.any_stale) {
     return '关键数据已经过期，这一轮判断只可参考，不能直接执行。';
   }
@@ -58,6 +70,14 @@ function dealerBehaviorText({ uwFlow, normalized }) {
 }
 
 function userActionText({ recommended_action, conflict, stale_flags, priceStructure }) {
+  if (priceStructure?.data_mode === 'scenario') {
+    return '演示场景｜不可交易。';
+  }
+
+  if (priceStructure?.data_mode === 'mixed' || priceStructure?.data_mode === 'conflict') {
+    return '数据冲突，禁止生成交易目标。';
+  }
+
   if (stale_flags.any_stale) {
     return '先停手，等数据恢复新鲜后再看。';
   }
@@ -110,7 +130,10 @@ export function runPlainLanguageEngine({ recommended_action, conflict, stale_fla
       recommended_action,
       conflict,
       stale_flags,
-      priceStructure: engines.priceStructure
+      priceStructure: {
+        ...engines.priceStructure,
+        data_mode: engines.dataCoherence?.data_mode || 'coherent'
+      }
     }),
     avoid: avoidText.length > 0
       ? `${Array.from(new Set(avoidText)).join('；')}。`

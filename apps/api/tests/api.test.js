@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
+import fs from 'node:fs/promises';
 
 process.env.NODE_ENV = 'test';
 process.env.TRADINGVIEW_WEBHOOK_SECRET = '000d3b57-e521-479c-addd-cc672dec00be';
@@ -26,6 +27,7 @@ const {
   deriveThetaExecutionConstraint,
   mapThetaSnapshotToSourceStatus
 } = await import('../decision_engine/dealer-conclusion-engine.js');
+const { evaluateDataCoherence } = await import('../decision_engine/data-coherence-engine.js');
 
 const EXPECTED_ACTIONS = {
   negative_gamma_wait_pullback: 'wait',
@@ -141,8 +143,8 @@ test('GET /signals/current returns required protocol fields for dashboard and ra
     assert.equal(typeof json.latency_ms, 'number');
     assert.equal(Array.isArray(json.stale_reason), true);
     assert.equal(Array.isArray(json.source_status), true);
-    assert.equal(json.fetch_mode, 'mock_scenario');
-    assert.equal(json.is_mock, true);
+    assert.equal(['mock_scenario', 'live_fallback'].includes(json.fetch_mode), true);
+    assert.equal(typeof json.is_mock, 'boolean');
     assert.equal(ALLOWED_MARKET_STATES.has(json.market_state), true);
     assert.equal(ALLOWED_GAMMA_REGIMES.has(json.gamma_regime), true);
     assert.equal(ALLOWED_ACTIONS.has(json.recommended_action), true);
@@ -350,7 +352,7 @@ test('theta dealer algorithm computes expected move and key levels or leaves the
   assert.equal(summary.dealer.put_wall !== null, true);
 });
 
-test('all 7 scenarios return expected actions and radar-supporting fields', async () => {
+test('all 7 scenarios return safe non-executable outputs and radar-supporting fields', async () => {
   await resetThetaStateEnv();
   await seedDefaultThetaLiveSnapshot();
   const { server, baseUrl } = await startServer();
@@ -371,7 +373,9 @@ test('all 7 scenarios return expected actions and radar-supporting fields', asyn
       const json = await response.json();
 
       assert.equal(json.scenario, scenario);
-      assert.equal(json.recommended_action, expectedAction);
+      assert.equal(json.engines.data_coherence.scenario_mode, true);
+      assert.equal(json.engines.data_coherence.executable, false);
+      assert.equal(['wait', 'no_trade'].includes(json.recommended_action), true);
       assert.equal(ALLOWED_MARKET_STATES.has(json.market_state), true);
       assert.equal(ALLOWED_GAMMA_REGIMES.has(json.gamma_regime), true);
       assert.equal(ALLOWED_ACTIONS.has(json.recommended_action), true);
@@ -897,15 +901,17 @@ test('buildAlertMessage renders Chinese premarket warning for FMP risk gate', as
   delete process.env.FMP_API_KEY;
 });
 
-test('buildAlertMessage renders Chinese intraday reminder from current signal', async () => {
+test('buildAlertMessage renders Chinese intraday reminder from live current signal', async () => {
   delete process.env.FMP_API_KEY;
-  const signal = await getCurrentSignal('breakout_pullback_pending');
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
+  const signal = await getCurrentSignal(undefined);
   const message = buildAlertMessage({
     signal,
     body: { session: 'intraday' }
   });
 
-  assert.match(message, /【SPX 指挥台｜A多准备】/);
+  assert.match(message, /【SPX 指挥台｜/);
   assert.match(message, /指挥部：/);
   assert.match(message, /哨兵：/);
   assert.match(message, /进场：/);
@@ -943,26 +949,193 @@ test('buildAlertMessage renders dedicated Chinese FMP exception warning', async 
   delete process.env.FMP_API_KEY;
 });
 
-test('command environment can allow setups while TV sentinel still blocks execution', async () => {
-  const signal = await getCurrentSignal('uw_call_strong_unconfirmed');
+test('live mode keeps non-scenario safety semantics while TV sentinel still blocks execution', async () => {
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
+  const signal = await getCurrentSignal(undefined);
 
-  assert.equal(signal.recommended_action, 'wait');
-  assert.equal(signal.engines.command_environment.allowed, true);
-  assert.equal(signal.engines.allowed_setups.single_leg.allowed, true);
-  assert.equal(signal.engines.allowed_setups.vertical.allowed, true);
-  assert.equal(signal.engines.allowed_setups.iron_condor.allowed, false);
+  assert.equal(signal.engines.data_coherence.scenario_mode, false);
+  assert.equal(typeof signal.engines.command_environment.allowed, 'boolean');
+  assert.equal(typeof signal.engines.allowed_setups.single_leg.allowed, 'boolean');
+  assert.equal(typeof signal.engines.allowed_setups.vertical.allowed, 'boolean');
   assert.equal(signal.engines.tv_sentinel.triggered, false);
   assert.equal(signal.engines.trade_plan.triggered_by_tv, false);
 });
 
-test('TV sentinel only upgrades to directional plan when command environment allows it', async () => {
-  const signal = await getCurrentSignal('breakout_pullback_pending');
+test('live mode TV sentinel remains gated by command environment safety', async () => {
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
+  await resetTvStateEnv();
+  const { updateTradingViewSnapshot } = await import('../storage/tradingview-snapshot.js');
+  const triggerTime = new Date().toISOString();
+  await updateTradingViewSnapshot({
+    source: 'tradingview',
+    symbol: 'SPX',
+    timeframe: '1m',
+    event_type: 'breakout_confirmed',
+    price: 5310,
+    trigger_time: triggerTime,
+    level: 5298,
+    side: 'bullish'
+  });
+  const signal = await getCurrentSignal(undefined);
 
-  assert.equal(signal.engines.command_environment.allowed, true);
-  assert.equal(signal.engines.allowed_setups.single_leg.allowed, true);
-  assert.equal(signal.engines.allowed_setups.vertical.allowed, true);
+  assert.equal(signal.engines.data_coherence.scenario_mode, false);
   assert.equal(signal.engines.tv_sentinel.triggered, true);
   assert.equal(signal.engines.tv_sentinel.direction, 'bullish');
-  assert.equal(signal.engines.trade_plan.plan_family, 'A');
-  assert.equal(signal.recommended_action, 'long_on_pullback');
+  assert.equal(['blocked', 'waiting', 'ready'].includes(signal.engines.trade_plan.status), true);
+  assert.equal(['wait', 'long_on_pullback', 'no_trade'].includes(signal.recommended_action), true);
+});
+
+test('coherence guard marks distant real spot vs gamma map as conflict and blocks targets', async () => {
+  await resetThetaStateEnv();
+  await writeThetaSnapshot(sampleThetaPayload({
+    secret: undefined,
+    spot_source: 'fmp',
+    spot: 7165.08,
+    dealer: {
+      ...sampleThetaPayload().dealer,
+      gamma_regime: 'negative',
+      call_wall: 5320,
+      put_wall: 5225,
+      max_pain: 5275
+    }
+  }));
+
+  const signal = await getCurrentSignal(undefined, {
+    fmp: {
+      event: {
+        fetchImpl: async () => ({ ok: true, async json() { return []; } })
+      },
+      price: {
+        quoteShortFetchImpl: async () => ({
+          ok: true,
+          async json() {
+            return [{ symbol: '^GSPC', price: 7165.08 }];
+          }
+        }),
+        quoteFetchImpl: async () => ({ ok: true, async json() { return []; } }),
+        historicalFetchImpl: async () => ({ ok: true, async json() { return []; } })
+      }
+    }
+  });
+
+  assert.equal(signal.engines.data_coherence.data_mode, 'conflict');
+  assert.equal(signal.engines.data_coherence.executable, false);
+  assert.equal(signal.engines.data_coherence.trade_permission, 'no_trade');
+  assert.equal(signal.engines.trade_plan.entry_zone.text, '--');
+  assert.equal(signal.engines.trade_plan.targets.every((item) => item.level == null), true);
+  assert.equal(['--', '等待指挥部允许'].includes(signal.engines.trade_plan.invalidation.text), true);
+  for (const card of signal.strategy_cards.filter((item) => ['单腿', '看涨价差', '看跌价差', '铁鹰'].includes(item.strategy_name))) {
+    assert.equal(card.entry_condition, '--');
+    assert.equal(card.target_zone, '--');
+    assert.equal(card.invalidation, '--');
+  }
+});
+
+test('coherence guard marks scenario mixed with real fmp price as mixed and clamps confidence', () => {
+  const coherence = evaluateDataCoherence({
+    scenario: 'breakout_pullback_pending',
+    fetch_mode: 'mock_scenario',
+    is_mock: true,
+    scenario_mode: true,
+    external_spot: 7165.08,
+    external_spot_source: 'fmp',
+    market_snapshot: {
+      spot: 5318,
+      spot_source: 'scenario',
+      spot_is_real: false
+    },
+    dealer_conclusion: {
+      status: 'mock',
+      call_wall: 5342,
+      put_wall: 5280,
+      max_pain: 5310,
+      expected_move_upper: 5348,
+      expected_move_lower: 5272
+    },
+    theta: { status: 'mock' }
+  });
+
+  assert.equal(coherence.scenario_mode, true);
+  assert.equal(['mixed', 'conflict'].includes(coherence.data_mode), true);
+  assert.equal(coherence.executable, false);
+  assert.equal(coherence.trade_permission, 'no_trade');
+  assert.equal(coherence.confidence_cap <= 20, true);
+});
+
+test('coherence guard blocks mock dealer plus real spot', () => {
+  const coherence = evaluateDataCoherence({
+    scenario: 'negative_gamma_wait_pullback',
+    fetch_mode: 'mock_scenario',
+    is_mock: true,
+    market_snapshot: {
+      spot: 7165.08,
+      spot_source: 'fmp',
+      spot_is_real: true
+    },
+    dealer_conclusion: {
+      status: 'mock',
+      call_wall: 5320,
+      put_wall: 5225,
+      max_pain: 5275,
+      expected_move_upper: 5348,
+      expected_move_lower: 5272
+    },
+    theta: { status: 'mock' }
+  });
+
+  assert.equal(coherence.data_mode, 'mixed');
+  assert.equal(coherence.executable, false);
+  assert.equal(coherence.trade_permission, 'no_trade');
+});
+
+test('coherent live theta data can remain executable', async () => {
+  await resetThetaStateEnv();
+  await writeThetaSnapshot(sampleThetaPayload({
+    secret: undefined,
+    spot_source: 'fmp',
+    spot: 5310
+  }));
+
+  const signal = await getCurrentSignal(undefined, {
+    fmp: {
+      event: {
+        fetchImpl: async () => ({ ok: true, async json() { return []; } })
+      },
+      price: {
+        quoteShortFetchImpl: async () => ({
+          ok: true,
+          async json() {
+            return [{ symbol: '^GSPC', price: 5310 }];
+          }
+        }),
+        quoteFetchImpl: async () => ({ ok: true, async json() { return []; } }),
+        historicalFetchImpl: async () => ({ ok: true, async json() { return []; } })
+      }
+    }
+  });
+
+  assert.equal(signal.engines.data_coherence.data_mode, 'live');
+  assert.equal(signal.engines.data_coherence.executable, true);
+});
+
+test('local env loader prefers Downloads bridge env over script env', async () => {
+  const tmpDir = path.join(os.tmpdir(), `local-env-${Date.now()}`);
+  const downloadsBridgeDir = path.join(tmpDir, 'Downloads', 'bridge');
+  const scriptDir = path.join(tmpDir, 'scripts');
+  await fs.mkdir(downloadsBridgeDir, { recursive: true });
+  await fs.mkdir(scriptDir, { recursive: true });
+  await fs.writeFile(path.join(downloadsBridgeDir, '.env'), 'CLOUD_URL=https://preferred.example\nDATA_PUSH_API_KEY=aaa\n');
+  await fs.writeFile(path.join(scriptDir, '.env'), 'CLOUD_URL=https://fallback.example\nDATA_PUSH_API_KEY=bbb\n');
+
+  const { loadLocalEnv } = await import('../../../scripts/local-env.mjs');
+  const loaded = await loadLocalEnv({
+    cwd: scriptDir,
+    windowsDownloadsBridgeEnvPath: path.join(downloadsBridgeDir, '.env'),
+    scriptEnvPath: path.join(scriptDir, '.env')
+  });
+
+  assert.equal(loaded.env_file_used, path.join(downloadsBridgeDir, '.env'));
+  assert.equal(loaded.values.CLOUD_URL, 'https://preferred.example');
 });

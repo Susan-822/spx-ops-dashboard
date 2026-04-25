@@ -1,6 +1,7 @@
 export function runCommandEnvironmentEngine({
   normalized,
   dataHealth,
+  dataCoherence,
   marketRegime,
   gammaWall,
   eventRisk,
@@ -23,6 +24,9 @@ export function runCommandEnvironmentEngine({
   if (normalized?.theta_execution_constraint?.executable === false) {
     blockers.push(normalized.theta_execution_constraint.reason || 'ThetaData dealer 不可执行');
   }
+  if (dataCoherence?.executable === false) {
+    blockers.push(dataCoherence.reason || '价格地图冲突');
+  }
 
   if (blockers.length > 0) {
     return {
@@ -39,7 +43,7 @@ export function runCommandEnvironmentEngine({
       key_resistance: null,
       forbidden_zone: 'middle_chop',
       confidence_score: 0,
-      data_mode: dataHealth?.state === 'healthy' ? 'live' : dataHealth?.state === 'degraded' ? 'partial' : 'mixed',
+      data_mode: normalized?.engines?.data_coherence?.data_mode || normalized?.data_coherence?.data_mode || (dataHealth?.state === 'healthy' ? 'live' : dataHealth?.state === 'degraded' ? 'partial' : 'mixed'),
       regime_note: blockers.join('；'),
       reason: blockers.join('；'),
       blockers,
@@ -116,7 +120,7 @@ export function runCommandEnvironmentEngine({
     key_resistance: gammaWall?.distance_to_call_wall != null ? 'call_wall' : null,
     forbidden_zone: marketRegime.market_state === 'flip_chop' ? 'middle_chop' : 'none',
     confidence_score: conflict?.adjusted_confidence ?? 0,
-    data_mode: dataHealth?.state === 'healthy' ? 'live' : dataHealth?.state === 'degraded' ? 'partial' : 'mixed',
+    data_mode: normalized?.engines?.data_coherence?.data_mode || normalized?.data_coherence?.data_mode || (dataHealth?.state === 'healthy' ? 'live' : dataHealth?.state === 'degraded' ? 'partial' : 'mixed'),
     regime_note: volatility.short_vol_allowed
       ? '指挥部允许观察波动率与结构联动。'
       : '指挥部允许观察方向结构，但仍需价格触发。',

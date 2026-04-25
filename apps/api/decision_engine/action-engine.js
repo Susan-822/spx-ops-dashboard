@@ -15,6 +15,7 @@ function clampConfidence(value) {
 
 export function runActionEngine({
   normalized,
+  dataCoherence,
   marketRegime,
   volatility,
   priceStructure,
@@ -28,6 +29,10 @@ export function runActionEngine({
   const avoid = new Set();
   let confidence = conflict.adjusted_confidence;
   const marketState = marketRegime?.market_state || 'unknown';
+
+  if (dataCoherence?.executable === false) {
+    confidence = Math.min(confidence, dataCoherence.confidence_cap ?? 20);
+  }
 
   if (marketState === 'negative_gamma_expand') {
     confidence -= 6;
@@ -82,6 +87,8 @@ export function runActionEngine({
   let recommended_action = ACTIONS.WAIT;
   if (normalized.stale_flags.any_stale) {
     recommended_action = normalized.stale_flags.theta ? ACTIONS.NO_TRADE : ACTIONS.WAIT;
+  } else if (dataCoherence?.trade_permission === 'no_trade') {
+    recommended_action = ACTIONS.NO_TRADE;
   } else if (tradePlan?.recommended_action && Object.values(ACTIONS).includes(tradePlan.recommended_action)) {
     recommended_action = tradePlan.recommended_action;
   } else if (conflict.conflict_level === 'high') {

@@ -57,6 +57,18 @@ export function createNormalizedSignal(partial = {}) {
       no_short_vol_window: partial.event_context?.no_short_vol_window ?? false,
       trade_permission_adjustment: partial.event_context?.trade_permission_adjustment ?? 'none'
     },
+    data_coherence: partial.data_coherence ?? {
+      data_mode: 'unknown',
+      executable: false,
+      trade_permission: 'no_trade',
+      confidence_cap: 20,
+      external_spot_source: 'unavailable',
+      gamma_source: 'unknown',
+      reason: 'Data coherence unavailable.',
+      is_scenario: true,
+      mixed_sources: false,
+      conflicting_price_world: false
+    },
     theta: {
       status: partial.theta?.status ?? 'unavailable',
       calculation_scope: partial.theta?.calculation_scope ?? 'single_expiry_test',
