@@ -21,3 +21,13 @@ services:
         sync: false
       - key: TRADINGVIEW_WEBHOOK_SECRET
         sync: false
+      - key: UW_PROVIDER_MODE
+        value: api
+      - key: UW_API_KEY
+        sync: false
+      - key: UW_API_BASE_URL
+        value: https://api.unusualwhales.com
+      - key: UW_STALE_SECONDS
+        value: 300
+      - key: UW_POLL_INTERVAL_SECONDS
+        value: 60
