@@ -671,7 +671,7 @@ function renderMetricCards(signal) {
       </div>
       <div class="metric-card">
         <div class="metric-label">建议仓位</div>
-        <div class="big-number">${escapeHtml(plan.position_size || '0仓')}</div>
+        <div class="big-number">${escapeHtml(plan.position_sizing || '0仓')}</div>
         <div class="delta-line"><span>${escapeHtml(plan.ttl_text || '等待状态无 TTL')}</span></div>
       </div>
     </div>
