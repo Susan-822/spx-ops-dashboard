@@ -146,12 +146,15 @@ function minutesAgo(value) {
 
 function getScenario() {
   const params = new URLSearchParams(window.location.search);
-  return params.get('scenario') || 'negative_gamma_wait_pullback';
+  return params.get('scenario');
 }
 
 async function loadSignal() {
   const scenario = getScenario();
-  const response = await fetch(`/signals/current?scenario=${encodeURIComponent(scenario)}`, { cache: 'no-store' });
+  const path = scenario
+    ? `/signals/current?scenario=${encodeURIComponent(scenario)}`
+    : '/signals/current';
+  const response = await fetch(path, { cache: 'no-store' });
   if (!response.ok) throw new Error(`/signals/current ${response.status}`);
   return await response.json();
 }
@@ -159,6 +162,9 @@ async function loadSignal() {
 function sourceStateLabel(state) {
   return {
     real: 'REAL',
+    partial: 'PARTIAL',
+    stale: 'STALE',
+    unavailable: 'UNAVAILABLE',
     mock: 'MOCK',
     delayed: 'DELAY',
     degraded: 'DEGRADE',
@@ -507,7 +513,8 @@ function summarizeEngine(name, engine) {
 function renderTopbar(currentPath, currentScenario, signal) {
   const query = window.location.search || '';
   const dataQuality = deriveDataQuality(signal);
-  const heartbeatLabel = signal?.engines?.data_coherence?.scenario_mode
+  const scenarioMode = Boolean(currentScenario);
+  const heartbeatLabel = scenarioMode
     ? '演示场景｜不可交易'
     : dataQuality.coherence === 'mixed' || dataQuality.coherence === 'conflict'
       ? `${String(dataQuality.coherence).toUpperCase()} · NO TRADE`
@@ -531,7 +538,9 @@ function renderTopbar(currentPath, currentScenario, signal) {
 
       <div class="system-right">
         <div class="heartbeat"><i class="heartbeat-dot ${qualityClass(signal)}"></i><span>${escapeHtml(heartbeatLabel)}</span><span>${shortTime(signal.received_at)}</span></div>
+        ${scenarioMode ? '<div class="tag red">演示场景，不是真实数据</div>' : ''}
         <select class="scenario-select" id="scenario-select" aria-label="mock scenario">
+          <option value="">真实 /signals/current</option>
           ${SCENARIOS.map((item) => `<option value="${item}" ${item === currentScenario ? 'selected' : ''}>${item}</option>`).join('')}
         </select>
       </div>
@@ -540,13 +549,19 @@ function renderTopbar(currentPath, currentScenario, signal) {
 }
 
 function renderSourceStrip(signal) {
+  const label = (item = {}) => {
+    if (item.source === 'fmp_price') return 'FMP_PRICE';
+    if (item.source === 'theta_core') return 'THETA';
+    if (item.source === 'uw') return 'UW';
+    return String(item.source || '').toUpperCase();
+  };
   return `
     <section class="source-row">
       <div class="section-label">Source State</div>
       <div class="source-list">
         ${(signal.source_status || []).filter((item) => ['tradingview', 'fmp_event', 'fmp_price', 'theta_core', 'theta_full_chain', 'uw', 'telegram', 'dashboard'].includes(item.source)).map((item) => `
           <span class="source-chip ${statusClassForSource(item)}">
-            ${escapeHtml(item.source)} · ${sourceStateLabel(item.state)} · ${minutesAgo(item.last_updated)}
+            ${escapeHtml(label(item))} · ${sourceStateLabel(item.state)} · ${minutesAgo(item.last_updated)}
           </span>
         `).join('')}
       </div>
@@ -826,28 +841,6 @@ function renderRadarSummary(signal) {
 
       <article class="radar-card">
         <div class="radar-title">
-          <h2>S-Level Command</h2>
-          <span class="tag amber">${escapeHtml(signal.projection?.one_line_instruction || '禁做 / 等确认')}</span>
-        </div>
-        <p class="radar-note">${escapeHtml(signal.projection?.command_summary?.s_level_summary || '指挥部结论不可用。')}</p>
-      </article>
-
-      <article class="radar-card">
-        <div class="radar-title">
-          <h2>S级指挥部</h2>
-          <span class="tag amber">${escapeHtml(safeText(projection.one_line_instruction, '禁做 / 等确认'))}</span>
-        </div>
-        <p class="radar-note">${escapeHtml(safeText(signal.projection?.s_level_summary, '四源结论待确认。'))}</p>
-        <div class="tag-row">
-          <span class="tag blue">量比 ${escapeHtml(safeText(signal.volume_pressure?.level, 'unavailable'))}</span>
-          <span class="tag green">通道 ${escapeHtml(safeText(signal.channel_shape?.shape, 'unavailable'))}</span>
-          <span class="tag amber">波动 ${escapeHtml(safeText(signal.volatility_activation?.state, 'unavailable'))}</span>
-          <span class="tag violet">UW Greeks ${escapeHtml(safeText(signal.uw_dealer_greeks?.status, 'unavailable'))}</span>
-        </div>
-      </article>
-
-      <article class="radar-card">
-        <div class="radar-title">
           <h2>Event Risk</h2>
           <span class="tag ${chipClassByRisk(signal.event_context?.event_risk)}">${eventRiskLabel(signal.event_context?.event_risk)}</span>
         </div>
@@ -880,36 +873,11 @@ function renderRadarSummary(signal) {
 }
 
 function renderEngineMatrix(signal) {
-  const engines = signal.engines || {};
-  const rows = Object.entries(engines).map(([name, engine]) => {
-    const output = summarizeEngine(name, engine);
-    const weight = typeof engine === 'object' && engine.weight != null ? fmtInt(Number(engine.weight) * 100) + '%' : '--';
-    return `
-      <div class="matrix-item">
-        <div class="matrix-name">${escapeHtml(name)}</div>
-        <div class="matrix-value">${escapeHtml(output)}</div>
-        <div class="matrix-number">${weight}</div>
-      </div>
-    `;
-  }).join('');
-
   return `
     <section class="matrix-grid">
       <div class="matrix-panel">
-        <div class="matrix-title"><div class="section-label">Engine Outputs</div><span class="tag blue">Pure Data</span></div>
-        <div class="matrix-list">${rows || '<div class="matrix-item"><div class="matrix-value">No engine data</div></div>'}</div>
-      </div>
-      <div class="matrix-panel">
-        <div class="matrix-title"><div class="section-label">Raw Notes</div><span class="tag amber">只看结论，不看图表</span></div>
-        <div class="matrix-list">
-          ${(signal.notes || []).map((note, index) => `
-            <div class="matrix-item">
-              <div class="matrix-name">NOTE ${index + 1}</div>
-              <div class="matrix-value">${escapeHtml(safeText(note))}</div>
-              <div class="matrix-number">LOG</div>
-            </div>
-          `).join('') || '<div class="matrix-item"><div class="matrix-value">No notes</div></div>'}
-        </div>
+        <div class="matrix-title"><div class="section-label">综合盘面实时分析</div><span class="tag amber">只看结论</span></div>
+        <pre class="radar-note">${escapeHtml(buildRealtimeAnalysis(signal))}</pre>
       </div>
     </section>
   `;
@@ -931,7 +899,7 @@ function bindScenarioSelector() {
   if (!select) return;
   select.addEventListener('change', () => {
     const path = window.location.pathname === '/radar' ? '/radar' : '/';
-    window.location.href = `${path}?scenario=${encodeURIComponent(select.value)}`;
+    window.location.href = select.value ? `${path}?scenario=${encodeURIComponent(select.value)}` : path;
   });
 }
 
@@ -939,7 +907,7 @@ function renderLoading() {
   document.getElementById('app').innerHTML = `
     <main class="loading">
       <h1>Loading SPX Ops Dashboard</h1>
-      <p>正在读取 /signals/current mock 数据。</p>
+      <p>正在读取 /signals/current。</p>
     </main>
   `;
 }
