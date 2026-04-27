@@ -10,7 +10,7 @@ process.env.STATE_STORE = 'memory';
 process.env.THETA_INGEST_SECRET = 'local-theta-secret';
 
 const { createServer } = await import('../server.js');
-const { clearTradingViewSnapshot } = await import('../storage/tradingview-snapshot.js');
+const { clearTradingViewSnapshot, updateTradingViewSnapshot } = await import('../storage/tradingview-snapshot.js');
 const {
   clearThetaSnapshot,
   describeThetaSnapshotStore,
@@ -21,6 +21,8 @@ const {
 const { getCurrentSignal } = await import('../decision_engine/current-signal.js');
 const { buildAlertMessage } = await import('../alerts/build-alert-message.js');
 const { resetTvSnapshotStoreForTests } = await import('../state/tvSnapshotStore.js');
+const { clearUwApiSnapshot, writeUwApiSnapshot } = await import('../storage/uwSnapshotStore.js');
+const { fetchUwApiSnapshot, UW_API_ENDPOINTS } = await import('../providers/uw-api-provider.js');
 const {
   buildDealerConclusionEngine,
   calculateThetaDealerSummary,
@@ -51,6 +53,54 @@ const ALLOWED_GAMMA_REGIMES = new Set(['positive', 'negative', 'critical', 'unkn
 const ALLOWED_ACTIONS = new Set(['wait', 'long_on_pullback', 'short_on_retest', 'income_ok', 'no_trade']);
 const ALLOWED_SOURCE_STATES = new Set(['real', 'mock', 'delayed', 'degraded', 'down', 'unavailable', 'error']);
 const REQUIRED_STRATEGIES = ['单腿', '看涨价差', '看跌价差', '铁鹰', '观望'];
+
+function hasUndefined(value) {
+  if (value === undefined) return true;
+  if (Array.isArray(value)) return value.some((item) => hasUndefined(item));
+  if (value && typeof value === 'object') return Object.values(value).some((item) => hasUndefined(item));
+  return false;
+}
+
+function sampleUwRaw(overrides = {}) {
+  return {
+    greek_exposure: { data: [{ gex: 180000000, dex: 30000000, vanna: 9000000, charm: 5000000, zero_gamma: 5298 }] },
+    spot_gex: { data: [{ strike: 5340, call_gex: 120000000, gex: 120000000 }, { strike: 5280, put_gex: -90000000, gex: -90000000 }] },
+    options_flow: { data: [{ is_call: true, is_sweep: true, premium: 900000 }, { is_call: true, premium: 700000 }] },
+    darkpool: { data: [{ price: 525, premium: 50000000, side: 'support', off_lit_ratio: 0.42 }] },
+    volatility: { data: [{ iv_rank: 98, iv_percentile: 94, iv_change_5m: 0.2, realized_volatility: 30, atm_iv: 0.22 }] },
+    market_tide: { data: [{ call_flow: 1500000, put_flow: 300000, net_flow: 1200000 }] },
+    volume_oi: { data: [{ expiry: '2026-04-27', call_volume: 100000, put_volume: 40000 }] },
+    max_pain: { data: [{ max_pain: 5310 }] },
+    oi_by_strike: { data: [{ strike: 5310, open_interest: 400000 }] },
+    options_volume: { data: [{ strike: 5340, option_type: 'call', volume: 120000 }, { strike: 5280, option_type: 'put', volume: 90000 }] },
+    ...overrides
+  };
+}
+
+function uwApiResponseForUrl(url, raw = sampleUwRaw()) {
+  const entries = [
+    ['greek-exposure', raw.greek_exposure],
+    ['spot-exposures/strike', raw.spot_gex],
+    ['flow-alerts', raw.options_flow],
+    ['darkpool', raw.darkpool],
+    ['volatility/stats', raw.volatility],
+    ['market-tide', raw.market_tide],
+    ['volume-oi-expiry', raw.volume_oi],
+    ['max-pain', raw.max_pain],
+    ['oi-per-strike', raw.oi_by_strike],
+    ['options-volume', raw.options_volume]
+  ];
+  const match = entries.find(([needle]) => url.includes(needle));
+  return {
+    ok: Boolean(match),
+    status: match ? 200 : 404,
+    statusText: match ? 'OK' : 'Not Found',
+    headers: new Headers({ 'x-ratelimit-remaining': '999' }),
+    async json() {
+      return match ? match[1] : { error: 'not found' };
+    }
+  };
+}
 
 function startServer() {
   clearTradingViewSnapshot();
@@ -91,6 +141,18 @@ async function resetThetaStateEnv(overrides = {}) {
   Object.assign(process.env, overrides);
   await resetThetaSnapshotStoreForTests();
   await clearThetaSnapshot();
+}
+
+async function resetUwApiStateEnv(overrides = {}) {
+  delete process.env.UW_PROVIDER_MODE;
+  delete process.env.UW_API_KEY;
+  delete process.env.UW_API_BASE_URL;
+  delete process.env.UW_STALE_SECONDS;
+  delete process.env.UW_POLL_INTERVAL_SECONDS;
+  delete process.env.UW_API_STATE_STORE;
+  process.env.UW_API_STATE_STORE = 'memory';
+  Object.assign(process.env, overrides);
+  await clearUwApiSnapshot();
 }
 
 function sampleThetaPayload(overrides = {}) {
@@ -922,6 +984,7 @@ test('FMP price failure leaves spot unavailable in live fallback mode', async ()
 });
 
 test('buildAlertMessage renders Chinese premarket warning for FMP risk gate', async () => {
+  await resetUwApiStateEnv();
   process.env.FMP_API_KEY = 'test-key';
 
   const signal = await getCurrentSignal('positive_gamma_income_watch', {
@@ -953,15 +1016,16 @@ test('buildAlertMessage renders Chinese premarket warning for FMP risk gate', as
   });
 
   assert.match(message, /【SPX 指挥台｜/);
-  assert.match(message, /指挥部：/);
-  assert.match(message, /哨兵：/);
-  assert.match(message, /结论：/);
+  assert.match(message, /状态：/);
+  assert.match(message, /动作：/);
+  assert.match(message, /原因：/);
   assert.match(message, /策略：/);
 
   delete process.env.FMP_API_KEY;
 });
 
 test('buildAlertMessage renders Chinese intraday reminder from live current signal', async () => {
+  await resetUwApiStateEnv();
   delete process.env.FMP_API_KEY;
   await resetThetaStateEnv();
   await seedDefaultThetaLiveSnapshot();
@@ -972,18 +1036,16 @@ test('buildAlertMessage renders Chinese intraday reminder from live current sign
   });
 
   assert.match(message, /【SPX 指挥台｜/);
-  assert.match(message, /指挥部：/);
-  assert.match(message, /哨兵：/);
-  assert.match(message, /进场：/);
-  assert.match(message, /止损：/);
+  assert.match(message, /状态：/);
+  assert.match(message, /动作：/);
+  assert.match(message, /原因：/);
   assert.match(message, /失效：/);
-  assert.match(message, /止盈：/);
   assert.match(message, /策略：/);
   assert.match(message, /数据：/);
-  assert.match(message, /禁做：/);
 });
 
 test('buildAlertMessage renders dedicated Chinese FMP exception warning', async () => {
+  await resetUwApiStateEnv();
   process.env.FMP_API_KEY = 'test-key';
 
   const signal = await getCurrentSignal('breakout_pullback_pending', {
@@ -1002,9 +1064,10 @@ test('buildAlertMessage renders dedicated Chinese FMP exception warning', async 
   });
 
   assert.match(message, /【SPX 指挥台｜/);
-  assert.match(message, /指挥部：/);
+  assert.match(message, /状态：/);
+  assert.match(message, /动作：/);
+  assert.match(message, /原因：/);
   assert.match(message, /策略：/);
-  assert.match(message, /禁做：/);
 
   delete process.env.FMP_API_KEY;
 });
@@ -1045,6 +1108,139 @@ test('live mode TV sentinel remains gated by command environment safety', async 
   assert.equal(signal.engines.tv_sentinel.direction, 'bullish');
   assert.equal(['blocked', 'waiting', 'ready'].includes(signal.engines.trade_plan.status), true);
   assert.equal(['wait', 'long_on_pullback', 'no_trade'].includes(signal.recommended_action), true);
+});
+
+test('UW API provider handles missing key 401 429 partial live and stale states', async () => {
+  await resetUwApiStateEnv({ UW_PROVIDER_MODE: 'api' });
+  let snapshot = await fetchUwApiSnapshot({ fetchImpl: async () => { throw new Error('should not fetch'); } });
+  assert.equal(snapshot.provider.status, 'unavailable');
+  assert.equal(snapshot.provider.mode, 'unavailable');
+
+  await resetUwApiStateEnv({ UW_PROVIDER_MODE: 'api', UW_API_KEY: 'bad-key' });
+  snapshot = await fetchUwApiSnapshot({
+    fetchImpl: async () => ({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      headers: new Headers(),
+      async json() { return { error: 'unauthorized' }; }
+    })
+  });
+  assert.equal(snapshot.provider.status, 'error');
+  assert.equal(snapshot.provider.endpoints_failed.every((item) => item.status === 401), true);
+
+  await resetUwApiStateEnv({ UW_PROVIDER_MODE: 'api', UW_API_KEY: 'rate-limited' });
+  snapshot = await fetchUwApiSnapshot({
+    fetchImpl: async () => ({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: new Headers({ 'x-ratelimit-remaining': '0' }),
+      async json() { return { error: 'rate_limit' }; }
+    })
+  });
+  assert.equal(snapshot.provider.status, 'error');
+  assert.equal(snapshot.provider.endpoints_failed.every((item) => item.status === 429), true);
+  assert.equal(snapshot.provider.rate_limit.remaining, 0);
+
+  await resetUwApiStateEnv({ UW_PROVIDER_MODE: 'api', UW_API_KEY: 'partial-key' });
+  snapshot = await fetchUwApiSnapshot({
+    fetchImpl: async (url) => {
+      const ok = String(url).includes('/greek-exposure');
+      return {
+        ok,
+        status: ok ? 200 : 500,
+        statusText: ok ? 'OK' : 'Error',
+        headers: new Headers(),
+        async json() { return ok ? { data: [{ gex: 10, dex: 3 }] } : { error: 'failed' }; }
+      };
+    }
+  });
+  assert.equal(snapshot.provider.status, 'partial');
+  assert.equal(snapshot.provider.endpoints_ok.includes('greek_exposure'), true);
+
+  await resetUwApiStateEnv({ UW_PROVIDER_MODE: 'api', UW_API_KEY: 'live-key' });
+  snapshot = await fetchUwApiSnapshot({ fetchImpl: async (url) => uwApiResponseForUrl(String(url)) });
+  assert.equal(snapshot.provider.status, 'live');
+  assert.equal(snapshot.provider.endpoints_ok.includes('greek_exposure'), true);
+  assert.equal(snapshot.provider.endpoints_ok.includes('spot_gex'), true);
+  assert.equal(snapshot.provider.endpoints_ok.includes('options_flow'), true);
+
+  await writeUwApiSnapshot({
+    ...snapshot,
+    last_update: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+    provider: {
+      ...snapshot.provider,
+      last_update: new Date(Date.now() - 10 * 60 * 1000).toISOString()
+    }
+  });
+  const staleSignal = await getCurrentSignal(undefined);
+  assert.equal(staleSignal.uw_provider.status, 'stale');
+});
+
+test('UW intelligence layer feeds command center permissions reflection and telegram', async () => {
+  await resetUwApiStateEnv({ UW_PROVIDER_MODE: 'api', UW_API_KEY: 'live-key', UW_STALE_SECONDS: '300' });
+  await resetThetaStateEnv();
+  await resetTvStateEnv();
+  await seedDefaultThetaLiveSnapshot();
+  await fetchUwApiSnapshot({ fetchImpl: async (url) => uwApiResponseForUrl(String(url)) });
+
+  let signal = await getCurrentSignal(undefined);
+  assert.equal(signal.uw_provider.status, 'live');
+  assert.equal(signal.tv_sentinel.status, 'waiting');
+  assert.equal(signal.command_center.final_state !== 'actionable', true);
+  assert.equal(signal.strategy_permissions.iron_condor.permission, 'block');
+  assert.equal(signal.institutional_alert.state, 'building');
+  assert.equal(signal.volatility_activation.light, 'green');
+  assert.equal(signal.dealer_engine.status, 'live');
+  assert.equal(['support', 'neutral'].includes(signal.darkpool_summary.bias), true);
+  assert.equal(signal.market_sentiment.state, 'risk_on');
+  assert.equal(Array.isArray(signal.reflection.why_this_conclusion), true);
+  assert.equal(hasUndefined(signal), false);
+  assert.equal(signal.uw_provider.is_mock, false);
+
+  const { updateTradingViewSnapshot } = await import('../storage/tradingview-snapshot.js');
+  await updateTradingViewSnapshot({
+    source: 'tradingview',
+    symbol: 'SPX',
+    timeframe: '1m',
+    event_type: 'breakout_confirmed',
+    price: 5310,
+    trigger_time: new Date().toISOString(),
+    level: 5298,
+    side: 'bullish'
+  });
+  signal = await getCurrentSignal(undefined);
+  assert.equal(signal.tv_sentinel.triggered, true);
+  assert.equal(signal.strategy_permissions.iron_condor.permission, 'block');
+  assert.equal(['wait', 'block', 'allow'].includes(signal.strategy_permissions.single_leg.permission), true);
+
+  await resetThetaStateEnv();
+  signal = await getCurrentSignal(undefined);
+  assert.match(signal.command_center.plain_chinese, /Theta unavailable|Dealer 主结论降级|禁做|等确认/);
+
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
+  await resetTvStateEnv();
+  await updateTradingViewSnapshot({
+    source: 'tradingview',
+    symbol: 'SPX',
+    timeframe: '1m',
+    event_type: 'breakdown_confirmed',
+    price: 5310,
+    trigger_time: new Date().toISOString(),
+    level: 5298,
+    side: 'bearish'
+  });
+  signal = await getCurrentSignal(undefined);
+  assert.equal(signal.flow_price_divergence.action, 'wait');
+  assert.equal(signal.command_center.final_state !== 'actionable', true);
+
+  const message = buildAlertMessage({ signal });
+  assert.match(message, /状态：/);
+  assert.match(message, /动作：/);
+  assert.match(message, /策略：/);
+  assert.match(message, /数据：/);
 });
 
 test('coherence guard marks distant real spot vs gamma map as conflict and blocks targets', async () => {
@@ -1205,6 +1401,7 @@ test('coherent live theta data can remain executable', async () => {
 
 
 test('live fallback with theta partial and uw unavailable hides mock projections', async () => {
+  await resetUwApiStateEnv();
   await resetThetaStateEnv();
   await resetTvStateEnv();
   process.env.FMP_API_KEY = 'test-key';
@@ -1271,7 +1468,7 @@ test('live fallback with theta partial and uw unavailable hides mock projections
   assert.equal(signal.volume_pressure.status, 'unavailable');
   assert.equal(signal.channel_shape.status, 'unavailable');
   assert.equal(signal.volatility_activation.state, 'inactive');
-  assert.equal(signal.market_sentiment.state, 'mixed');
+  assert.equal(signal.market_sentiment.state, 'unavailable');
   assert.equal(signal.institutional_entry_alert.status, 'unavailable');
   assert.equal(signal.uw_dealer_greeks.status, 'unavailable');
   assert.equal(signal.dealer_path.status, 'partial');

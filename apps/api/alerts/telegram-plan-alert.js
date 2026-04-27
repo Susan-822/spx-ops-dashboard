@@ -41,6 +41,9 @@ function buildTargetsLine(targets = []) {
 }
 
 function buildStrategyLine(permission = {}) {
+  if (permission.single_leg?.permission || permission.vertical?.permission || permission.iron_condor?.permission) {
+    return `single_leg ${safeLine(permission.single_leg?.permission)}；vertical ${safeLine(permission.vertical?.permission)}；iron_condor ${safeLine(permission.iron_condor?.permission)}`;
+  }
   const single = permission.single_leg || 'wait';
   const vertical = permission.vertical || 'wait';
   const iron = permission.iron_condor || 'wait';
@@ -112,6 +115,25 @@ export function getTelegramAlertMeta({ signal = {} }) {
 }
 
 export function buildTradePlanTelegramMessage({ signal }) {
+  if (signal?.command_center) {
+    const cc = signal.command_center;
+    const reflection = signal.reflection || {};
+    const provider = signal.uw_provider || {};
+    const theta = signal.theta?.status || signal.dealer_conclusion?.status || 'unavailable';
+    const tv = signal.tv_sentinel?.status || 'waiting';
+    const fmp = signal.fmp_conclusion?.status || signal.command_inputs?.external_spot?.status || 'unavailable';
+    return [
+      '【SPX 指挥台｜UW API Intelligence】',
+      `状态：${safeLine(cc.final_state)}`,
+      `动作：${safeLine(cc.action)}`,
+      `原因：${safeLine(cc.main_reason)}`,
+      `策略：${buildStrategyLine(signal.strategy_permissions || {})}`,
+      `失效：${Array.isArray(reflection.invalidation_triggers) && reflection.invalidation_triggers.length > 0 ? reflection.invalidation_triggers.join('；') : '--'}`,
+      `数据：UW ${safeLine(provider.status)} / Theta ${safeLine(theta)} / TV ${safeLine(tv)} / FMP ${safeLine(fmp)}`,
+      `反射：${safeLine(reflection.plain_chinese)}`
+    ].join('\n');
+  }
+
   const commandEnvironment = signal?.engines?.command_environment || {};
   const tvSentinel = signal?.engines?.tv_sentinel || {};
   const tradePlan = signal?.engines?.trade_plan || {};
