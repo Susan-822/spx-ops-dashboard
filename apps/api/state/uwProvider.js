@@ -81,8 +81,11 @@ export async function refreshUwProvider(options = {}) {
 export async function readUwProvider(options = {}) {
   if (String(process.env.UW_PROVIDER_MODE || '').toLowerCase() === 'api') {
     let apiSnapshot = await readUwApiSnapshot(options);
-    if (!apiSnapshot) {
-      apiSnapshot = await fetchUwApiSnapshot(options);
+    if (!apiSnapshot || apiSnapshot.provider?.status === 'stale') {
+      const refreshed = await fetchUwApiSnapshot(options);
+      if (refreshed?.provider?.status !== 'error' || !apiSnapshot) {
+        apiSnapshot = refreshed;
+      }
     }
     return {
       snapshot: apiSnapshot,

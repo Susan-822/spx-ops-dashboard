@@ -244,6 +244,71 @@ function buildKeyLevels({ dealerEngine = {}, uwApi = {}, signal = {} } = {}) {
   };
 }
 
+function humanizeReflection(reflection = {}, signal = {}) {
+  const translate = (item) => {
+    if (/vanna\/charm\/delta field partial/i.test(item)) return 'UW Greek 数据部分可读，但 Dealer 置信度还不够高。';
+    if (/TV matched setup missing/i.test(item)) return 'TradingView 还没有给出结构确认。';
+    if (/entry missing|stop missing|target missing|invalidation missing/i.test(item)) return '还没有完整交易计划，不能执行。';
+    if (/ES\/SPY live price missing/i.test(item)) return 'ES/SPY 实时价缺失，SPX 墙位暂时不能换算成 ES/SPY 等效位。';
+    if (/UW dealer factors incomplete/i.test(item)) return 'UW Dealer 数据还不完整，只能作为候选参考。';
+    return item;
+  };
+  const missing = [...new Set((reflection.missing_inputs || []).map(translate))];
+  const supporting = (reflection.supporting_evidence || []).map((item) => {
+    if (/UW API live/i.test(item)) return 'UW API 已 live，Dealer / Flow / Volatility / Dark Pool 数据已进入引擎。';
+    if (/UW Dealer partial/i.test(item)) return 'UW 墙位已接入，但 Dealer 细项仍是 partial。';
+    if (/Institutional bombing bearish/i.test(item)) return '机构流偏空，并出现连续轰炸。';
+    if (/Dark pool neutral/i.test(item)) return '暗池中性，没有明显支撑或压力。';
+    return item;
+  });
+  return {
+    ...reflection,
+    supporting_evidence_humanized: [...new Set(supporting)],
+    conflicting_evidence_humanized: [...new Set(reflection.conflicting_evidence || [])],
+    missing_inputs_humanized: missing,
+    plain_chinese_humanized:
+      `${signal.command_center?.action || '等确认'}：${missing.length > 0 ? missing.join('；') : '当前没有新增硬缺口。'}`
+  };
+}
+
+function buildIntradayDecisionCard({ signal = {}, reflection = {} } = {}) {
+  const keyLevels = signal.key_levels || {};
+  const projection = signal.cross_asset_projection || {};
+  const flow = signal.uw_conclusion?.flow_bias || 'unavailable';
+  const institutional = signal.institutional_alert || {};
+  const dealer = signal.dealer_engine || {};
+  const darkpool = signal.darkpool_summary || {};
+  const volatility = signal.volatility_activation || {};
+  const currentAction = signal.command_center?.final_state === 'actionable'
+    ? '可执行'
+    : signal.command_center?.final_state === 'candidate'
+      ? '候选'
+      : '等确认，不追单';
+  const waitFor = flow === 'bearish'
+    ? '等 TV 空头结构确认：breakdown_confirmed 或 retest_failed。没有确认前不生成入场、止损和目标。'
+    : '等 TV 结构确认。没有确认前不生成入场、止损和目标。';
+  const keySummary = [
+    `SPX Call Wall：${keyLevels.call_wall?.level ?? '--'}`,
+    `SPX Put Wall：${keyLevels.put_wall?.level ?? '--'}`,
+    `Max Pain：${keyLevels.max_pain?.level ?? '--'}`,
+    projection.status === 'partial'
+      ? 'ES/SPY 等效价：暂不可用，只参考 SPX 原始墙位。'
+      : projection.plain_chinese || 'ES/SPY 等效价暂不可用。'
+  ].join('\n');
+
+  return {
+    current_action: currentAction,
+    market_read: `FMP 现价真实，UW 已 live。机构流${flow === 'bearish' ? '偏空' : flow === 'bullish' ? '偏多' : '不明确'}${institutional.state === 'bombing' ? '并出现连续轰炸' : ''}，Dealer ${dealer.status || 'unavailable'}，暗池${darkpool.bias === 'neutral' ? '中性' : darkpool.bias || '不可用'}，波动${volatility.strength === 'off' ? '未启动' : volatility.strength || '不可用'}。`,
+    why_now: `${flow === 'bearish' ? '空头' : flow === 'bullish' ? '多头' : '资金'}资金有动作，但不能单独作为入场理由。必须等 TV 结构确认。`,
+    wait_for: waitFor,
+    do_not_do: ['不追空。', '不开铁鹰。', '不在中轴位置提前下单。', '没有 TV 确认不进场。'],
+    key_levels_summary: keySummary,
+    position: '0 仓。',
+    plain_chinese: `当前：${currentAction}\n\n盘面判断：${flow === 'bearish' ? '空头资金有动作' : '资金方向仍需确认'}，但 TV 尚未确认。\n\n等什么：${waitFor}\n\n关键位：${keySummary}\n\n仓位：0 仓。`,
+    reflection_summary: reflection.plain_chinese_humanized || reflection.plain_chinese || ''
+  };
+}
+
 function isFmpRiskDegraded(snapshot) {
   if (!snapshot) {
     return false;
@@ -930,10 +995,22 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     },
     crossAssetProjection
   });
+  const intradayDecisionCard = buildIntradayDecisionCard({
+    commandCenter,
+    institutionalAlert,
+    dealerEngine,
+    darkpoolSummary,
+    volatilityActivation,
+    keyLevels,
+    crossAssetProjection,
+    tradePlan: projectedTradePlan,
+    reflection
+  });
 
   const output = {
     ...enrichedSignal,
     trade_plan: projectedTradePlan,
+    intraday_decision_card: intradayDecisionCard,
     command_center: commandCenter,
     strategy_permissions: strategyPermissions,
     position_sizing_engine: positionSizingEngine,

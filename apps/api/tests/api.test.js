@@ -1236,7 +1236,8 @@ test('UW API provider handles missing key 401 429 partial live and stale states'
     }
   });
   const staleSignal = await getCurrentSignal(undefined);
-  assert.equal(staleSignal.uw_provider.status, 'stale');
+  assert.equal(staleSignal.uw_provider.status, 'live');
+  assert.equal(staleSignal.uw_provider.endpoints_ok.length > 0, true);
 });
 
 test('UW intelligence layer feeds command center permissions reflection and telegram', async () => {

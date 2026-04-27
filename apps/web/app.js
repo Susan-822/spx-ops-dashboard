@@ -698,6 +698,25 @@ function renderSourceStrip(signal) {
   `;
 }
 
+function renderIntradayDecisionCard(signal) {
+  const card = signal.intraday_decision_card || {};
+  const doNot = Array.isArray(card.do_not_do) ? card.do_not_do : [];
+  return `
+    <section class="matrix-panel">
+      <div class="matrix-title"><div class="section-label">盘中决策卡</div><span class="tag amber">${escapeHtml(card.current_action || signal.command_center?.action || '等确认')}</span></div>
+      <div class="matrix-list">
+        <div class="matrix-item"><div class="matrix-name">当前</div><div class="matrix-value">${escapeHtml(card.current_action || '等确认，不追单')}</div><div class="matrix-number">${escapeHtml(card.position || '0 仓')}</div></div>
+        <div class="matrix-item"><div class="matrix-name">盘面判断</div><div class="matrix-value">${escapeHtml(card.market_read || '--')}</div><div class="matrix-number">UW/FMP</div></div>
+        <div class="matrix-item"><div class="matrix-name">现在含义</div><div class="matrix-value">${escapeHtml(card.why_now || '--')}</div><div class="matrix-number">只等确认</div></div>
+        <div class="matrix-item"><div class="matrix-name">等什么</div><div class="matrix-value">${escapeHtml(card.wait_for || '--')}</div><div class="matrix-number">TV</div></div>
+        <div class="matrix-item"><div class="matrix-name">禁做</div><div class="matrix-value">${escapeHtml(doNot.join('；') || '--')}</div><div class="matrix-number">0仓</div></div>
+        <div class="matrix-item"><div class="matrix-name">关键位</div><div class="matrix-value">${escapeHtml(card.key_levels_summary || '--')}</div><div class="matrix-number">UW墙位</div></div>
+      </div>
+      <p class="radar-note">${escapeHtml(card.plain_chinese || '')}</p>
+    </section>
+  `;
+}
+
 function renderMetricCards(signal) {
   const snap = signal.market_snapshot || {};
   const plan = signal.trade_plan || {};
@@ -762,6 +781,7 @@ function renderCommandHero(signal) {
   const target = buildTarget(signal);
   const invalidation = buildInvalidation(signal);
   const avoid = buildAvoid(signal);
+  const card = signal.intraday_decision_card || {};
   const summary = dataQuality.executable !== true
     ? safeText(signal.command_center?.plain_chinese, safeText(signal?.engines?.data_coherence?.reason, '数据冲突，禁止执行。'))
     : safeText(signal.plain_language?.user_action, action.summary);
@@ -775,11 +795,11 @@ function renderCommandHero(signal) {
       ${renderMetricCards(signal)}
       <div class="main-command">
         <div class="command-status-line">
-          <div class="section-label">Current Command</div>
+          <div class="section-label">盘中决策卡</div>
           <div class="permission-badge ${action.badge}">${action.permission}</div>
         </div>
-        <h1 class="command-title">${escapeHtml(title)}</h1>
-        <p class="command-subtitle">${escapeHtml(summary)}</p>
+        <h1 class="command-title">${escapeHtml(card.current_action || title)}</h1>
+        <p class="command-subtitle">${escapeHtml(card.plain_chinese || summary)}</p>
         <div class="tag-row">
           <span class="tag blue">${escapeHtml(planLabel)}</span>
           <span class="tag ${chipClassByRisk(signal.event_context?.event_risk)}">${eventRiskLabel(signal.event_context?.event_risk)}</span>
@@ -787,17 +807,16 @@ function renderCommandHero(signal) {
           <span class="tag violet">${dealerLabel(signal.uw_context?.dealer_bias || signal.signals?.dealer_behavior)}</span>
         </div>
         <div class="command-grid">
-          <div class="command-cell"><span class="card-label">Command Center</span><b>${escapeHtml(signal.command_center?.action || '等确认')}</b></div>
-          <div class="command-cell"><span class="card-label">等效关键位</span><b>${escapeHtml(signal.cross_asset_projection?.plain_chinese || '跨资产投射不可用。')}</b></div>
-          <div class="command-cell"><span class="card-label">机构</span><b>${escapeHtml(signal.institutional_alert?.plain_chinese || '机构信号不可用。')}</b></div>
-          <div class="command-cell"><span class="card-label">波动</span><b>${escapeHtml(signal.volatility_activation?.plain_chinese || '波动状态不可用。')}</b></div>
-          <div class="command-cell"><span class="card-label">反射</span><b>${escapeHtml(signal.reflection?.plain_chinese || '等待反射分析。')}</b></div>
+          <div class="command-cell"><span class="card-label">盘面判断</span><b>${escapeHtml(card.market_read || '--')}</b></div>
+          <div class="command-cell"><span class="card-label">现在含义</span><b>${escapeHtml(card.why_now || '--')}</b></div>
+          <div class="command-cell"><span class="card-label">等什么</span><b>${escapeHtml(card.wait_for || trigger)}</b></div>
+          <div class="command-cell"><span class="card-label">关键位</span><b>${escapeHtml(card.key_levels_summary || signal.cross_asset_projection?.plain_chinese || '--')}</b></div>
         </div>
         <div class="command-grid">
+          <div class="command-cell"><span class="card-label">禁做</span><b>${escapeHtml(safeText(card.do_not_do, avoid))}</b></div>
+          <div class="command-cell"><span class="card-label">仓位</span><b>${escapeHtml(card.position || '0 仓。')}</b></div>
           <div class="command-cell"><span class="card-label">触发</span><b>${escapeHtml(trigger)}</b></div>
-          <div class="command-cell"><span class="card-label">第一目标</span><b>${escapeHtml(target)}</b></div>
           <div class="command-cell"><span class="card-label">作废</span><b>${escapeHtml(invalidation)}</b></div>
-          <div class="command-cell"><span class="card-label">禁做</span><b>${escapeHtml(avoid)}</b></div>
         </div>
       </div>
       ${renderRiskStack(signal)}
@@ -925,15 +944,73 @@ function renderHome(signal) {
   return `
     <main class="page">
       ${renderCommandHero(signal)}
-      ${renderStrategyCards(signal)}
+      ${renderIntradayDecisionCard(signal)}
       <section class="matrix-grid">
         ${renderLevelMatrix(signal)}
         ${renderIntelMatrix(signal)}
       </section>
-      ${renderSourceStrip(signal)}
       <div class="footer-note">schema ${escapeHtml(signal.schema_version)} · scenario ${escapeHtml(signal.scenario)} · ${escapeHtml(signal.fetch_mode)}</div>
     </main>
   `;
+}
+
+function buildDataQualityGuardText(signal, spotSourceText) {
+  if (signal.uw_provider?.status === 'live' && signal.key_levels?.source === 'uw') {
+    return {
+      title: '数据质量：可观察，等待结构确认。',
+      items: [
+        `FMP：${spotSourceText}`,
+        `UW：${safeText(signal.uw_provider?.status, 'unavailable')}`,
+        `Dealer：${safeText(signal.dealer_engine?.status, 'unavailable')}`,
+        `TV：${safeText(signal.tv_sentinel?.status, 'waiting')}`,
+        `执行状态：${safeText(signal.command_center?.final_state, 'wait').toUpperCase()} / 0仓`
+      ]
+    };
+  }
+  return {
+    title: safeText(signal?.engines?.data_coherence?.reason, '价格地图不一致，禁止执行。'),
+    items: null
+  };
+}
+
+function buildUwRadarSummary(signal) {
+  const flow = signal.uw_conclusion?.flow_bias === 'bearish' ? '偏空' : signal.uw_conclusion?.flow_bias === 'bullish' ? '偏多' : '中性/不明';
+  const inst = signal.institutional_alert?.state === 'bombing' ? '连续轰炸' : signal.institutional_alert?.state || '未形成';
+  const dark = signal.darkpool_summary?.bias === 'neutral' ? '中性，没有明显支撑/压力' : safeText(signal.darkpool_summary?.bias, '不可用');
+  const dealer = signal.dealer_engine?.status === 'partial' ? '部分可读，墙位已接入，但 Vanna/Charm/Delta 不完整' : safeText(signal.dealer_engine?.plain_chinese, '不可用');
+  const vol = signal.volatility_activation?.strength === 'off' ? '未启动，单腿不放行' : safeText(signal.volatility_activation?.plain_chinese, '不可用');
+  const conclusion = signal.uw_conclusion?.flow_bias === 'bearish'
+    ? '空头资金有动作，但不能直接追空。等 TV breakdown_confirmed 或 retest_failed。'
+    : '资金有动作，但必须等 TV 结构确认。';
+  return [
+    '【UW 资金解读】',
+    `机构流：${flow}，${inst}`,
+    `暗池：${dark}`,
+    `Dealer：${dealer}`,
+    `波动：${vol}`,
+    `结论：${conclusion}`
+  ].join('\n');
+}
+
+function buildSignalConflictText(signal, spotSourceText) {
+  if (signal.uw_provider?.status === 'live' && signal.key_levels?.source === 'uw') {
+    return {
+      title: '【轻微冲突】',
+      items: [
+        'FMP 现价真实，UW 墙位已接入。',
+        `Dealer：${signal.dealer_engine?.status || 'unavailable'}；TV：${signal.tv_sentinel?.status || 'waiting'}。`,
+        '这不是数据崩溃，是交易条件未满足。',
+        `执行状态：${(signal.command_center?.final_state || 'wait').toUpperCase()} / ${signal.command_center?.action || '等确认'} / 0仓`
+      ]
+    };
+  }
+  return {
+    title: safeText(signal?.engines?.data_coherence?.reason, 'FMP 现价真实，但 Gamma 地图仍为 mock，禁止执行。'),
+    items: [
+      `Spot 来源：${spotSourceText} ${displaySpot(signal.market_snapshot || {})}`,
+      `执行状态：${signal.execution_constraints?.theta?.executable === true ? 'ready' : 'blocked / not ready'}`
+    ]
+  };
 }
 
 function renderRadarSummary(signal) {
