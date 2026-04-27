@@ -318,8 +318,34 @@ function spotSourceText(snapshot = {}) {
   return 'Spot unavailable';
 }
 
+function sourceBrief(source = {}) {
+  if (!source || typeof source !== 'object') {
+    return 'unavailable';
+  }
+  const status = safeText(source.status, 'unavailable');
+  const age = safeText(source.age_label, '');
+  return age ? `${status} · ${age}` : status;
+}
+
+function buildSourceBrief(signal = {}) {
+  const sources = signal?.data_sources || {};
+  const fmp = sources?.fmp?.status || signal?.fmp_conclusion?.status || 'unavailable';
+  const theta = sources?.theta?.status || signal?.theta?.status || signal?.dealer_conclusion?.status || 'unavailable';
+  const uw = sources?.uw?.status || signal?.uw?.status || signal?.uw_conclusion?.status || 'unavailable';
+  const tv = sources?.tv?.status || signal?.tv_sentinel?.status || 'waiting';
+
+  return {
+    fmp,
+    theta,
+    uw,
+    tv,
+    text: `FMP ${fmp} | Theta ${theta} | UW ${uw} | TV ${tv}`
+  };
+}
+
 function buildRealtimeAnalysis(signal = {}) {
   const dataSources = signal.data_sources || {};
+  const brief = buildSourceBrief(signal);
   const snap = signal.market_snapshot || {};
   const dealer = signal.dealer_conclusion || {};
   const uwGreeks = signal.uw_dealer_greeks || {};
@@ -335,10 +361,10 @@ function buildRealtimeAnalysis(signal = {}) {
 
   return [
     `【数据状态】${safeText(dataSources.summary?.plain_chinese, '数据健康度不可用')}`,
-    `FMP：${sourceBrief(dataSources.fmp)}`,
-    `ThetaData：${sourceBrief(dataSources.theta)}${dataSources.theta?.gamma_status === 'incomplete' ? '，Gamma 不完整' : ''}`,
-    `UW：${sourceBrief(dataSources.uw)}`,
-    `TV：${sourceBrief(dataSources.tv)}`,
+    `FMP：${sourceBrief(dataSources.fmp || { status: brief.fmp })}`,
+    `ThetaData：${sourceBrief(dataSources.theta || { status: brief.theta })}${dataSources.theta?.gamma_status === 'incomplete' ? '，Gamma 不完整' : ''}`,
+    `UW：${sourceBrief(dataSources.uw || { status: brief.uw })}`,
+    `TV：${sourceBrief(dataSources.tv || { status: brief.tv })}`,
     '',
     '【交互判断】',
     `✓ 可用项：${signal.command_inputs?.external_spot?.status === 'real' ? 'FMP 现价真实' : '暂无核心可用项'}`,
