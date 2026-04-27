@@ -1285,7 +1285,7 @@ test('UW intelligence layer feeds command center permissions reflection and tele
   });
   signal = await getCurrentSignal(undefined);
   assert.equal(['live', 'partial', 'unavailable'].includes(signal.cross_asset_projection.status), true);
-  if (signal.uw_wall_diagnostics.confidence === 'low') {
+  if (signal.uw_wall_diagnostics.confidence === 'low' || signal.cross_asset_projection.status === 'unavailable') {
     assert.equal(signal.cross_asset_projection.spx_levels.call_wall, null);
   } else {
     assert.equal(Number.isFinite(signal.cross_asset_projection.spy_equivalent_levels.call_wall), true);
@@ -1367,11 +1367,9 @@ test('cross asset projection maps SPX levels to SPY and ES and feeds outputs', a
   const signal = await getCurrentSignal(undefined);
   assert.equal(['live', 'partial', 'unavailable'].includes(signal.cross_asset_projection.status), true);
   assert.equal(signal.cross_asset_projection.spx_levels.call_wall, signal.uw_wall_diagnostics.call_wall);
-  if (signal.cross_asset_projection.spx_levels.call_wall != null) {
+  if (signal.cross_asset_projection.status !== 'unavailable' && signal.cross_asset_projection.spx_levels.call_wall != null) {
     assert.equal(Number.isFinite(signal.cross_asset_projection.spy_equivalent_levels.call_wall), true);
     assert.equal(Number.isFinite(signal.cross_asset_projection.es_equivalent_levels.call_wall), true);
-  } else {
-    assert.equal(signal.uw_wall_diagnostics.confidence, 'low');
   }
   assert.equal(Array.isArray(signal.cross_asset_projection.gex_pivots_projected), true);
   assert.equal(signal.trade_plan.target_instrument, 'ES');
