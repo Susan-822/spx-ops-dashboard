@@ -372,7 +372,13 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     },
     trade_plan: {
       ...(signal.trade_plan || {}),
-      uw_ready: uwExecutionConstraint.executable
+      uw_ready: uwExecutionConstraint.executable,
+      position_sizing: signal.trade_plan?.position_sizing || '0仓',
+      wait_conditions: signal.trade_plan?.wait_conditions || [{
+        type: 'tv_structure_signal',
+        text: '等待 TV 结构信号，不提前交易。'
+      }],
+      ttl_text: signal.trade_plan?.ttl_text || '等待状态无有效交易 TTL。'
     }
   };
 }

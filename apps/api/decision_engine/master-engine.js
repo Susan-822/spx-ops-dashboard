@@ -27,6 +27,9 @@ import {
   buildInstitutionalEntryAlert,
   buildCommandProjection,
   buildConfidenceScore,
+  buildFreshnessSummary,
+  buildDegradationMatrix,
+  buildFlowPriceDivergence,
   buildMarketSentimentV1,
   applySetupPermissionRules,
   buildUwDealerGreeks,
@@ -404,6 +407,10 @@ export function runMasterEngine(normalized) {
     dealerPath
   });
   const commandMarketSentiment = buildMarketSentimentV1(baseRuleInputs);
+  const dataSources = buildFreshnessSummary({
+    ...baseRuleInputs,
+    externalSpot
+  });
   const institutionalEntryAlert = buildInstitutionalEntryAlert({
     ...baseRuleInputs,
     volumePressure,
@@ -417,6 +424,27 @@ export function runMasterEngine(normalized) {
     dealerPath,
     commandMarketSentiment,
     uwDealerGreeks
+  });
+  const freshness = buildFreshnessSummary({
+    sourceStatus: normalized.source_status,
+    fmpConclusion,
+    dealerConclusion: normalized.theta_dealer_conclusion,
+    uwConclusion,
+    tvSentinel
+  });
+  const degradation = buildDegradationMatrix({
+    fmpConclusion,
+    dealerConclusion: normalized.theta_dealer_conclusion,
+    uwConclusion,
+    tvSentinel,
+    dataHealth,
+    conflictResolver: null,
+    tradePlan: null
+  });
+  const flowPriceDivergence = buildFlowPriceDivergence({
+    volumePressure,
+    uwConclusion,
+    tvSentinel
   });
 
   const tradePlan = runTradePlanBuilder({
@@ -462,7 +490,18 @@ export function runMasterEngine(normalized) {
     commandEnvironment,
     tradePlan,
     dealerConclusion: normalized.theta_dealer_conclusion,
-    dataCoherence
+    dataCoherence,
+    degradation,
+    flowPriceDivergence
+  });
+  const finalDegradation = buildDegradationMatrix({
+    fmpConclusion,
+    dealerConclusion: normalized.theta_dealer_conclusion,
+    uwConclusion,
+    tvSentinel,
+    dataHealth,
+    conflictResolver: commandConflictResolver,
+    tradePlan
   });
   const readyGate = evaluateReadyGate({
     commandEnvironment,
@@ -488,6 +527,7 @@ export function runMasterEngine(normalized) {
     dealerPath,
     uwDealerGreeks
   });
+  const finalTradePlan = tradePlan;
   const commandProjection = buildCommandProjection({
     fmpConclusion,
     externalSpot,
@@ -503,7 +543,10 @@ export function runMasterEngine(normalized) {
     tvSentinel,
     conflictResolver: commandConflictResolver,
     commandEnvironment,
-    tradePlan
+    tradePlan,
+    dataSources,
+    degradation: finalDegradation,
+    flowPriceDivergence
   });
   const projection = buildProjectionEngine({
     fmpConclusion,
@@ -523,7 +566,8 @@ export function runMasterEngine(normalized) {
     ...projection,
     command_summary: commandProjection,
     s_level_summary: commandProjection.s_level_summary,
-    one_line_instruction: commandProjection.one_line_instruction
+    one_line_instruction: commandProjection.one_line_instruction,
+    raw_note: commandProjection.raw_note
   };
   const action = runActionEngine({
     normalized,
@@ -695,6 +739,9 @@ export function runMasterEngine(normalized) {
       }
     },
     command_inputs: commandInputs,
+    data_sources: dataSources,
+    degradation: finalDegradation,
+    flow_price_divergence: flowPriceDivergence,
     command_environment: commandEnvironment,
     allowed_setups: allowedSetups,
     tv_sentinel: tvSentinel,
@@ -707,7 +754,7 @@ export function runMasterEngine(normalized) {
       commandEnvironment,
       thetaExecutionConstraint
     }),
-    trade_plan: tradePlan,
+    trade_plan: finalTradePlan,
     engines: {
       fmp_conclusion: fmpConclusion,
       uw_conclusion: uwConclusion,
@@ -730,10 +777,13 @@ export function runMasterEngine(normalized) {
       dealer_path: dealerPath,
       confidence_score: confidenceScore,
       setup_permission: setupPermission,
+      data_sources: dataSources,
+      degradation: finalDegradation,
+      flow_price_divergence: flowPriceDivergence,
       command_environment: commandEnvironment,
       allowed_setups: allowedSetups,
       tv_sentinel: tvSentinel,
-      trade_plan: tradePlan,
+      trade_plan: finalTradePlan,
       event_risk: eventRisk,
       conflict,
       action,

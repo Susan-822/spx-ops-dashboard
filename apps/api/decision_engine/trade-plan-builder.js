@@ -152,8 +152,94 @@ function emptyTargets() {
   ];
 }
 
-function blockedTradePlan(reason = '数据冲突，禁止执行。', normalized = {}) {
+function buildWaitConditions({ normalized = {}, commandEnvironment = {}, tradingviewSentinel = {} } = {}) {
+  const spot = Number.isFinite(Number(normalized.external_spot ?? normalized.spot))
+    ? Number(normalized.external_spot ?? normalized.spot)
+    : null;
+  const breakout = spot == null ? null : Math.round(spot + 3);
+  const pullbackUpper = spot == null ? null : Math.round(spot - 5);
+  const pullbackLower = spot == null ? null : Math.round(spot - 7);
+  const breakdown = spot == null ? null : Math.round(spot - 17);
+  const bias = commandEnvironment?.bias || tradingviewSentinel?.direction || 'mixed';
+
+  if (spot == null) {
+    return [{
+      type: 'tv_structure_signal',
+      text: '等待 TV 结构信号，不提前交易。'
+    }];
+  }
+
+  if (bias === 'bearish') {
+    return [{
+      type: 'breakdown_confirmed',
+      text: `SPX 跌破 ${breakdown} 并反抽失败。`
+    }];
+  }
+
+  return [
+    {
+      type: 'breakout_confirmed',
+      text: `SPX 突破 ${breakout} 并 5分钟K线收在上方。`
+    },
+    {
+      type: 'pullback_holding',
+      text: `回踩 ${pullbackLower}-${pullbackUpper} 守住并形成 higher low。`
+    }
+  ];
+}
+
+function ttlForSetup(setupCode) {
+  if (setupCode?.startsWith('A_')) return 10;
+  if (setupCode?.startsWith('B_')) return setupCode === 'B_IRON_CONDOR' ? 30 : 15;
+  return null;
+}
+
+function ttlFields(setupCode, status) {
+  const ttl = ['ready', 'waiting'].includes(status) ? ttlForSetup(setupCode) : null;
+  const createdAt = ttl == null ? null : new Date();
+  const expiresAt = ttl == null ? null : new Date(createdAt.getTime() + ttl * 60 * 1000);
   return {
+    created_at: createdAt ? createdAt.toISOString() : null,
+    expires_at: expiresAt ? expiresAt.toISOString() : null,
+    ttl_minutes: ttl,
+    expired: false,
+    ttl_text: ttl == null ? '等待状态无有效交易 TTL。' : `该计划 ${ttl} 分钟内未触发将自动失效`
+  };
+}
+
+function positionSizing({ status, setupCode, confidence = 0, degradationState = 'BLOCKED' } = {}) {
+  if (status !== 'ready' || degradationState === 'BLOCKED' || degradationState === 'OBSERVE_ONLY') return '0仓';
+  if (degradationState === 'DEGRADED_CANDIDATE') return '轻仓 / 观察仓';
+  if (setupCode?.startsWith('B_') && confidence < 80) return '半仓';
+  if (confidence >= 75) return '标准仓';
+  if (confidence >= 60) return '半仓';
+  return '轻仓';
+}
+
+function enrichPlan(base, { normalized = {}, commandEnvironment = {}, tradingviewSentinel = {} } = {}) {
+  const wait_conditions = buildWaitConditions({ normalized, commandEnvironment, tradingviewSentinel });
+  const ttl = ttlFields(base.setup_code, base.status);
+  return {
+    ...base,
+    wait_conditions,
+    tv_waiting: {
+      started_at: tradingviewSentinel?.event_time || tradingviewSentinel?.trigger_time || null,
+      elapsed_min: tradingviewSentinel?.wait_time_elapsed_min ?? null,
+      ttl_min: ttl.ttl_minutes,
+      expired: false
+    },
+    ...ttl,
+    position_sizing: positionSizing({
+      status: base.status,
+      setupCode: base.setup_code,
+      confidence: base.confidence_score,
+      degradationState: normalized?.degradation?.state
+    })
+  };
+}
+
+function blockedTradePlan(reason = '数据冲突，禁止执行。', normalized = {}) {
+  return enrichPlan({
     active: false,
     status: 'blocked',
     has_trade_plan: false,
@@ -185,7 +271,7 @@ function blockedTradePlan(reason = '数据冲突，禁止执行。', normalized 
     conflicts: [reason].filter(Boolean),
     forbidden_actions: ['不追高', '不提前押方向'],
     plain_chinese: reason
-  };
+  }, { normalized });
 }
 
 function buildEntryZone(setupCode, normalized) {
