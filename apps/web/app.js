@@ -724,11 +724,14 @@ function renderLevelMatrix(signal) {
 
 function renderIntelMatrix(signal) {
   const items = [
-    ['Theta', signal.signals?.theta_signal || gammaLabel(signal.gamma_regime), 'Gamma 主环境'],
+    ['Theta', thetaDecisionText(signal), 'Gamma 主环境'],
     ['TradingView', signal.signals?.tv_signal || '等待结构确认', '价格确认'],
-    ['UW Flow', flowLabel(signal.uw_context?.flow_bias), '主动流向'],
-    ['Dark Pool', darkPoolLabel(signal.uw_context?.dark_pool_bias), '资金区'],
-    ['Dealer', dealerLabel(signal.uw_context?.dealer_bias || signal.signals?.dealer_behavior), '做市商路径'],
+    ['UW Flow', uwSafeValue(signal, 'flow'), '主动流向'],
+    ['Dark Pool', uwSafeValue(signal, 'darkpool'), '资金区'],
+    ['Dealer', dealerDecisionText(signal), '做市商路径'],
+    ['UW Greek', signal.uw_dealer_greeks?.status || 'unavailable', signal.uw_dealer_greeks?.plain_chinese || 'Greek Exposure'],
+    ['量比', signal.volume_pressure?.level || 'unavailable', signal.volume_pressure?.plain_chinese || '推动强度'],
+    ['波动启动', signal.volatility_activation?.state || 'unavailable', signal.volatility_activation?.plain_chinese || '波动状态'],
     ['FMP', signal.event_context?.event_note || eventRiskLabel(signal.event_context?.event_risk), '事件过滤']
   ];
   return `
@@ -769,6 +772,7 @@ function renderRadarSummary(signal) {
   const dealerLive = isDealerLive(signal);
   const levels = displayLevels(signal);
   const intel = displayIntel(signal);
+  const projection = signal.projection?.command_summary || {};
   const thetaStatus = signal?.theta?.status || signal?.dealer_conclusion?.status || 'unavailable';
   const dealerStatus = signal?.dealer_conclusion?.status || 'unavailable';
   const executionStatus = signal?.execution_constraints?.theta?.executable === true ? 'ready' : 'blocked / not ready';
@@ -817,6 +821,28 @@ function renderRadarSummary(signal) {
           <span class="tag green">Dark Pool ${escapeHtml(intel.darkPool)}</span>
           <span class="tag amber">Theta Weight ${fmtInt((signal.weights?.theta || 0) * 100)}%</span>
           <span class="tag violet">UW Weight ${fmtInt((signal.weights?.uw || 0) * 100)}%</span>
+        </div>
+      </article>
+
+      <article class="radar-card">
+        <div class="radar-title">
+          <h2>S-Level Command</h2>
+          <span class="tag amber">${escapeHtml(signal.projection?.one_line_instruction || '禁做 / 等确认')}</span>
+        </div>
+        <p class="radar-note">${escapeHtml(signal.projection?.command_summary?.s_level_summary || '指挥部结论不可用。')}</p>
+      </article>
+
+      <article class="radar-card">
+        <div class="radar-title">
+          <h2>S级指挥部</h2>
+          <span class="tag amber">${escapeHtml(safeText(projection.one_line_instruction, '禁做 / 等确认'))}</span>
+        </div>
+        <p class="radar-note">${escapeHtml(safeText(signal.projection?.s_level_summary, '四源结论待确认。'))}</p>
+        <div class="tag-row">
+          <span class="tag blue">量比 ${escapeHtml(safeText(signal.volume_pressure?.level, 'unavailable'))}</span>
+          <span class="tag green">通道 ${escapeHtml(safeText(signal.channel_shape?.shape, 'unavailable'))}</span>
+          <span class="tag amber">波动 ${escapeHtml(safeText(signal.volatility_activation?.state, 'unavailable'))}</span>
+          <span class="tag violet">UW Greeks ${escapeHtml(safeText(signal.uw_dealer_greeks?.status, 'unavailable'))}</span>
         </div>
       </article>
 

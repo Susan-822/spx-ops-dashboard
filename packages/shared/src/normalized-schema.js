@@ -221,6 +221,32 @@ export function createNormalizedSignal(partial = {}) {
     uw: partial.uw ?? {},
     data_health: partial.data_health ?? {},
     conflict_resolver: partial.conflict_resolver ?? {},
+    volume_pressure: partial.volume_pressure ?? {
+      status: 'unavailable',
+      rvol: null,
+      level: 'unavailable',
+      direction: 'unclear',
+      plain_chinese: '量比不可用。'
+    },
+    channel_shape: partial.channel_shape ?? {
+      status: 'unavailable',
+      shape: 'unavailable',
+      direction: 'unclear',
+      plain_chinese: '通道形态不可用。'
+    },
+    volatility_activation: partial.volatility_activation ?? {
+      state: 'unavailable',
+      strength: 0,
+      direction: 'unclear',
+      allow: [],
+      block: [],
+      plain_chinese: '波动启动不可用。'
+    },
+    market_sentiment: partial.market_sentiment ?? {},
+    institutional_entry_alert: partial.institutional_entry_alert ?? {},
+    uw_dealer_greeks: partial.uw_dealer_greeks ?? {},
+    dealer_path: partial.dealer_path ?? {},
+    confidence_detail: partial.confidence_detail ?? {},
     command_environment: partial.command_environment ?? {},
     allowed_setups: partial.allowed_setups ?? {},
     tv_sentinel: partial.tv_sentinel ?? {},
