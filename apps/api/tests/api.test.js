@@ -1276,6 +1276,18 @@ test('live fallback with theta partial and uw unavailable hides mock projections
   assert.equal(signal.uw_dealer_greeks.status, 'unavailable');
   assert.equal(signal.dealer_path.status, 'partial');
   assert.equal(signal.dealer_path.path, 'unknown');
+  assert.equal(signal.data_sources.summary.health, 'red');
+  assert.equal(signal.data_sources.summary.label, 'BLOCKED');
+  assert.equal(signal.degradation.state, 'BLOCKED');
+  assert.equal(signal.flow_price_divergence.action, 'wait');
+  assert.equal(signal.trade_plan.position_sizing, '0仓');
+  assert.equal(Array.isArray(signal.trade_plan.wait_conditions), true);
+  assert.equal(signal.trade_plan.wait_conditions.length > 0, true);
+  assert.equal(signal.trade_plan.ttl_minutes ?? null, null);
+  assert.equal(signal.trade_plan.expired ?? false, false);
+  assert.equal(signal.tv_sentinel.status, 'waiting');
+  assert.equal(Array.isArray(signal.tv_sentinel.waiting_for || []), true);
+  assert.equal(signal.tv_sentinel.expired ?? false, false);
   assert.equal(signal.command_environment.state, 'blocked');
   assert.match(signal.command_environment.reason, /ThetaData dealer partial|价格地图冲突/);
   assert.equal(signal.conflict_resolver.has_conflict, true);

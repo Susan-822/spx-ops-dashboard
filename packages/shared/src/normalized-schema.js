@@ -160,6 +160,10 @@ export function createNormalizedSignal(partial = {}) {
     avoid_actions: partial.avoid_actions ?? [],
     invalidation_level: partial.invalidation_level ?? 'N/A',
     confidence_score: partial.confidence_score ?? 50,
+    data_sources: partial.data_sources ?? {},
+    degradation: partial.degradation ?? {},
+    flow_price_divergence: partial.flow_price_divergence ?? {},
+    tv_waiting: partial.tv_waiting ?? {},
     execution_constraints: partial.execution_constraints ?? {
       theta: {
         available: false,

@@ -14,3 +14,6 @@ export {
   reconcileConflictResolver
 } from './setup-permission-rules.js';
 export { buildCommandProjection } from './projection-rules.js';
+export { buildFreshnessSummary } from './freshness-rules.js';
+export { buildDegradationMatrix } from './degradation-matrix.js';
+export { buildFlowPriceDivergence } from './divergence-rules.js';

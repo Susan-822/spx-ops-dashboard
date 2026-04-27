@@ -94,22 +94,32 @@ export function buildVolatilityActivation({
   uwConclusion = {},
   volumePressure = {},
   channelShape = {},
-  tvSentinel = {}
+  tvSentinel = {},
+  externalSpot = {},
+  normalized = {}
 } = {}) {
   const warnings = [];
   const emUpper = toNumber(dealerConclusion.expected_move_upper);
   const emLower = toNumber(dealerConclusion.expected_move_lower);
+  const spot = toNumber(externalSpot.spot ?? normalized.spot ?? normalized.external_spot);
+  const atrRatio = toNumber(normalized.atr_ratio ?? normalized.current_atr_ratio);
   const hasExpectedMove = emUpper != null && emLower != null;
   const blocked = [];
   const allow = [];
+  const triggers = [];
+  const nearEmEdge = hasExpectedMove && spot != null && Math.min(Math.abs(spot - emUpper), Math.abs(spot - emLower)) <= 10;
+  const outsideEm = hasExpectedMove && spot != null && (spot > emUpper || spot < emLower);
 
   let state = 'inactive';
-  if (volumePressure.level === 'impulse' || channelShape.shape === 'spiral') {
+  if (volumePressure.level === 'impulse' || channelShape.shape === 'spiral' || outsideEm || (atrRatio != null && atrRatio > 1.6)) {
     state = 'expansion';
-  } else if (volumePressure.level === 'active' || tvSentinel.triggered === true || channelShape.shape === 'expansion') {
+    triggers.push('rvol/ATR/EM expansion');
+  } else if (volumePressure.level === 'active' || tvSentinel.triggered === true || channelShape.shape === 'expansion' || nearEmEdge || (atrRatio != null && atrRatio >= 1.3)) {
     state = 'active';
-  } else if (volumePressure.level === 'warming' || channelShape.shape === 'compression' || uwConclusion.volatility_light === 'yellow') {
+    triggers.push('active volume or TV/EM edge');
+  } else if (volumePressure.level === 'warming' || channelShape.shape === 'compression' || uwConclusion.volatility_light === 'yellow' || (atrRatio != null && atrRatio >= 1.1)) {
     state = 'warming';
+    triggers.push('warming volume/ATR/compression');
   }
 
   if (fmpConclusion.event_risk === 'blocked') {
@@ -130,6 +140,8 @@ export function buildVolatilityActivation({
   return {
     state: volumePressure.status === 'unavailable' && !hasExpectedMove ? 'unavailable' : state,
     strength: volumePressure.rvol ?? 0,
+    atr_ratio: atrRatio,
+    triggers,
     direction: volumePressure.direction === 'up' ? 'up' : volumePressure.direction === 'down' ? 'down' : state === 'expansion' ? 'both' : 'unclear',
     allow: [...new Set(allow)],
     block: [...new Set(blocked)],

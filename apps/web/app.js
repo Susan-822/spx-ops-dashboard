@@ -319,6 +319,7 @@ function spotSourceText(snapshot = {}) {
 }
 
 function buildRealtimeAnalysis(signal = {}) {
+  const dataSources = signal.data_sources || {};
   const snap = signal.market_snapshot || {};
   const dealer = signal.dealer_conclusion || {};
   const uwGreeks = signal.uw_dealer_greeks || {};
@@ -333,6 +334,18 @@ function buildRealtimeAnalysis(signal = {}) {
     || 'ThetaData 当前不可执行，TV 尚未确认价格结构，不能出 ready。';
 
   return [
+    `【数据状态】${safeText(dataSources.summary?.plain_chinese, '数据健康度不可用')}`,
+    `FMP：${sourceBrief(dataSources.fmp)}`,
+    `ThetaData：${sourceBrief(dataSources.theta)}${dataSources.theta?.gamma_status === 'incomplete' ? '，Gamma 不完整' : ''}`,
+    `UW：${sourceBrief(dataSources.uw)}`,
+    `TV：${sourceBrief(dataSources.tv)}`,
+    '',
+    '【交互判断】',
+    `✓ 可用项：${signal.command_inputs?.external_spot?.status === 'real' ? 'FMP 现价真实' : '暂无核心可用项'}`,
+    `✗ 限制项：${[thetaStatus(signal) !== 'live' ? 'ThetaData 不可执行' : null, signal.uw_conclusion?.status !== 'live' ? 'UW 资金行为不可用' : null, signal.tv_sentinel?.matched_allowed_setup !== true ? 'TV 未确认结构' : null].filter(Boolean).join('；') || '--'}`,
+    `→ 冲突：${(signal.conflict_resolver?.conflicts || []).join('；') || '无真实价格冲突，但关键源不完整'}`,
+    `→ 降级方案：${safeText(signal.degradation?.plain_chinese, '不可降级，全部禁止')}`,
+    '',
     '【总判断】',
     `当前：${action}`,
     `原因：${reason}`,
@@ -364,7 +377,9 @@ function buildRealtimeAnalysis(signal = {}) {
     `Dealer cross-check：${safeText(uwGreeks.dealer_crosscheck, 'unavailable')}`,
     '',
     '【TV哨兵】',
-    `当前结构：${safeText(signal.tv_sentinel?.plain_chinese, 'TV 尚未确认价格结构，不能出 ready。')}`,
+    `状态：${safeText(signal.tv_sentinel?.status, 'waiting')}`,
+    `等待：${safeText((signal.trade_plan?.wait_conditions || [])[0]?.text, signal.tv_sentinel?.plain_chinese || '等待 TV 结构信号，不提前交易。')}`,
+    `已等待：${signal.tv_waiting?.elapsed_min ?? '--'}分钟 / TTL ${signal.tv_waiting?.ttl_min ?? '--'}分钟`,
     `是否确认：${signal.tv_sentinel?.matched_allowed_setup === true ? 'YES' : 'NO'}`,
     '',
     '【我现在该做什么】',
@@ -603,6 +618,13 @@ function renderTopbar(currentPath, currentScenario, signal) {
 }
 
 function renderSourceStrip(signal) {
+  const summary = signal.data_sources?.summary || {};
+  const parts = ['fmp', 'theta', 'uw', 'tv']
+    .map((key) => {
+      const item = signal.data_sources?.[key] || {};
+      return `${key.toUpperCase()}(${safeText(item.status, 'unavailable')} · ${safeText(item.age_label, 'unavailable')})`;
+    })
+    .join(' | ');
   const label = (item = {}) => {
     if (item.source === 'fmp_price') return 'FMP_PRICE';
     if (item.source === 'theta_core') return 'THETA';
@@ -612,6 +634,7 @@ function renderSourceStrip(signal) {
   return `
     <section class="source-row">
       <div class="section-label">Source State</div>
+      <div class="footer-note">数据健康度：${escapeHtml(safeText(summary.label, 'BLOCKED'))} ${escapeHtml(parts)}</div>
       <div class="source-list">
         ${(signal.source_status || []).filter((item) => ['tradingview', 'fmp_event', 'fmp_price', 'theta_core', 'theta_full_chain', 'uw', 'telegram', 'dashboard'].includes(item.source)).map((item) => `
           <span class="source-chip ${statusClassForSource(item)}">
@@ -625,6 +648,7 @@ function renderSourceStrip(signal) {
 
 function renderMetricCards(signal) {
   const snap = signal.market_snapshot || {};
+  const plan = signal.trade_plan || {};
   return `
     <div class="price-stack">
       <div class="metric-card">
@@ -639,6 +663,16 @@ function renderMetricCards(signal) {
           <span class="tag ${chipClassByRisk(signal.gamma_regime)}">${marketStateLabel(signal.market_state)}</span>
           <span class="tag blue">Flip ${fmtInt(snap.flip_level)}</span>
         </div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">当前动作</div>
+        <div class="big-number">${escapeHtml(plan.direction_label || '禁做')}</div>
+        <div class="delta-line"><span>${escapeHtml(plan.wait_conditions?.[0]?.text || '等待 TV 结构信号，不提前交易。')}</span></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">建议仓位</div>
+        <div class="big-number">${escapeHtml(plan.position_size || '0仓')}</div>
+        <div class="delta-line"><span>${escapeHtml(plan.ttl_text || '等待状态无 TTL')}</span></div>
       </div>
     </div>
   `;
