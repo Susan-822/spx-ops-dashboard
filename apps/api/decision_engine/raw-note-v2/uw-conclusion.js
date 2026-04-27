@@ -84,6 +84,7 @@ export function buildUwWallDiagnostics(raw = {}) {
     top_call_gamma_strikes: top(normalized, 'call_gamma'),
     top_put_gamma_strikes: top(normalized, 'put_gamma'),
     top_net_gex_strikes: top(normalized, 'net_gamma'),
+    rows_used: normalized.length,
     call_wall: callWall,
     put_wall: putWall,
     zero_gamma: zeroGamma,

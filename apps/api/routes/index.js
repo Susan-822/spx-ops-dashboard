@@ -341,7 +341,15 @@ export async function handleApiRoute(req, res) {
             ? body.level
             : Number(body.invalidation_level ?? body.level),
       level: body.level,
-      side: typeof body.side === 'string' ? body.side : 'neutral'
+      side: typeof body.side === 'string' ? body.side : 'neutral',
+      spy_price: body.spy_price,
+      spy_last_updated: body.spy_last_updated,
+      es_price: body.es_price,
+      es_last_updated: body.es_last_updated,
+      futures_price: body.futures_price,
+      futures_last_updated: body.futures_last_updated,
+      spx_equivalent: body.spx_equivalent,
+      basis: body.basis
     });
 
     // Fire-and-forget Telegram notification so the webhook stays fast.

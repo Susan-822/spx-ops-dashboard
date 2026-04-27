@@ -4,6 +4,9 @@ const FMP_CALENDAR_URL = 'https://financialmodelingprep.com/stable/economic-cale
 const FMP_QUOTE_SHORT_URL = 'https://financialmodelingprep.com/stable/quote-short';
 const FMP_QUOTE_URL = 'https://financialmodelingprep.com/stable/quote';
 const FMP_INTRADAY_URL = 'https://financialmodelingprep.com/stable/historical-chart/1min';
+const FMP_LEGACY_QUOTE_SHORT_URL = 'https://financialmodelingprep.com/api/v3/quote-short';
+const FMP_LEGACY_QUOTE_URL = 'https://financialmodelingprep.com/api/v3/quote';
+const FMP_LEGACY_INTRADAY_URL = 'https://financialmodelingprep.com/api/v3/historical-chart/1min';
 const FMP_EVENT_ERROR_NOTE = 'FMP 数据异常，事件风险不可确认，降低交易权限，不提前卖波。';
 const FMP_EVENT_ERROR_MESSAGE = 'FMP 数据异常，事件风险不可确认。';
 const FMP_PRICE_ERROR_MESSAGE = 'FMP SPX price unavailable';
@@ -64,6 +67,17 @@ function getApiKey() {
 function buildFmpUrl(baseUrl, extraParams = {}) {
   const url = new URL(baseUrl);
   url.searchParams.set('symbol', FMP_SYMBOL);
+  url.searchParams.set('apikey', getApiKey());
+  for (const [key, value] of Object.entries(extraParams)) {
+    if (value != null) {
+      url.searchParams.set(key, String(value));
+    }
+  }
+  return url;
+}
+
+function buildFmpSymbolUrl(baseUrl, extraParams = {}) {
+  const url = new URL(`${baseUrl}/${encodeURIComponent(FMP_SYMBOL)}`);
   url.searchParams.set('apikey', getApiKey());
   for (const [key, value] of Object.entries(extraParams)) {
     if (value != null) {
@@ -414,6 +428,52 @@ export async function fetchFmpPrice({
       }
     }
 
+    const legacyShortResult = await fetchJson(buildFmpSymbolUrl(FMP_LEGACY_QUOTE_SHORT_URL), quoteShortFetchImpl);
+    if (legacyShortResult.response.ok) {
+      const legacyShortQuote = normalizePriceQuote(asArray(legacyShortResult.payload)[0]);
+      if (legacyShortQuote) {
+        const lastUpdated = forceLastUpdated || legacyShortQuote.last_updated || receivedAt;
+        return buildPriceStatus({
+          configured: true,
+          available: true,
+          is_mock: false,
+          state: 'real',
+          stale: false,
+          fetch_mode: 'quote_short_legacy_poll',
+          message: 'FMP SPX price real',
+          received_at: receivedAt,
+          last_updated: lastUpdated,
+          latency_ms: Math.max(0, Date.now() - startMs),
+          price: legacyShortQuote.price,
+          day_change: legacyShortQuote.day_change,
+          day_change_percent: legacyShortQuote.day_change_percent
+        });
+      }
+    }
+
+    const legacyQuoteResult = await fetchJson(buildFmpSymbolUrl(FMP_LEGACY_QUOTE_URL), quoteFetchImpl);
+    if (legacyQuoteResult.response.ok) {
+      const legacyQuote = normalizePriceQuote(asArray(legacyQuoteResult.payload)[0]);
+      if (legacyQuote) {
+        const lastUpdated = forceLastUpdated || legacyQuote.last_updated || receivedAt;
+        return buildPriceStatus({
+          configured: true,
+          available: true,
+          is_mock: false,
+          state: 'real',
+          stale: false,
+          fetch_mode: 'quote_legacy_poll',
+          message: 'FMP SPX price real',
+          received_at: receivedAt,
+          last_updated: lastUpdated,
+          latency_ms: Math.max(0, Date.now() - startMs),
+          price: legacyQuote.price,
+          day_change: legacyQuote.day_change,
+          day_change_percent: legacyQuote.day_change_percent
+        });
+      }
+    }
+
     const intradayUrl = buildFmpUrl(FMP_INTRADAY_URL);
     const intradayResult = await fetchJson(intradayUrl, historicalFetchImpl, 8000);
     if (intradayResult.response.ok) {
@@ -434,6 +494,29 @@ export async function fetchFmpPrice({
           price: intradayQuote.price,
           day_change: intradayQuote.day_change,
           day_change_percent: intradayQuote.day_change_percent
+        });
+      }
+    }
+
+    const legacyIntradayResult = await fetchJson(buildFmpSymbolUrl(FMP_LEGACY_INTRADAY_URL), historicalFetchImpl, 8000);
+    if (legacyIntradayResult.response.ok) {
+      const legacyIntradayQuote = normalizeIntradayPrice(asArray(legacyIntradayResult.payload));
+      if (legacyIntradayQuote) {
+        const lastUpdated = forceLastUpdated || legacyIntradayQuote.last_updated || receivedAt;
+        return buildPriceStatus({
+          configured: true,
+          available: true,
+          is_mock: false,
+          state: 'real',
+          stale: false,
+          fetch_mode: 'intraday_legacy_poll',
+          message: 'FMP SPX price real',
+          received_at: receivedAt,
+          last_updated: lastUpdated,
+          latency_ms: Math.max(0, Date.now() - startMs),
+          price: legacyIntradayQuote.price,
+          day_change: legacyIntradayQuote.day_change,
+          day_change_percent: legacyIntradayQuote.day_change_percent
         });
       }
     }

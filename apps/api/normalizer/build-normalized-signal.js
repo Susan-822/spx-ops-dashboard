@@ -104,6 +104,29 @@ function createSourceEntry({ source, timestamp, last_updated, degraded = false }
   });
 }
 
+function createUnavailableSourceEntry({ source, timestamp, message = 'Source unavailable.' }) {
+  const policy = getSourcePolicy(source);
+  return createSourceStatus({
+    source,
+    configured: false,
+    available: false,
+    is_mock: false,
+    fetch_mode: policy.fetch_mode,
+    stale: false,
+    state: SOURCE_STATE.UNAVAILABLE,
+    last_updated: timestamp,
+    data_timestamp: timestamp,
+    received_at: timestamp,
+    latency_ms: 0,
+    stale_reason: '',
+    refresh_interval_ms: policy.default_refresh_ms,
+    stale_threshold_ms: policy.stale_threshold_ms,
+    down_threshold_ms: policy.down_threshold_ms,
+    event_triggers: policy.event_triggers,
+    message
+  });
+}
+
 function createSourceEntryFromSnapshot({
   source,
   timestamp,
@@ -347,17 +370,30 @@ export function normalizeMockScenario(rawScenario) {
   const receivedAt = new Date().toISOString();
   const thetaContext = deriveThetaContext(rawScenario);
 
+  const liveMode = rawScenario.scenario_mode !== true && rawScenario.is_mock !== true;
   const source_status = [
-    createSourceEntry({
-      source: 'dashboard',
-      timestamp: receivedAt,
-      last_updated: receivedAt
-    }),
-    createSourceEntry({
-      source: 'tradingview',
-      timestamp: receivedAt,
-      last_updated: rawScenario.last_updated.tradingview
-    }),
+    liveMode
+      ? createUnavailableSourceEntry({
+          source: 'dashboard',
+          timestamp: receivedAt,
+          message: 'Dashboard reads live /signals/current; no mock scenario is active.'
+        })
+      : createSourceEntry({
+          source: 'dashboard',
+          timestamp: receivedAt,
+          last_updated: receivedAt
+        }),
+    liveMode && !rawScenario.tradingview_snapshot
+      ? createUnavailableSourceEntry({
+          source: 'tradingview',
+          timestamp: receivedAt,
+          message: 'No TradingView webhook snapshot is available.'
+        })
+      : createSourceEntry({
+          source: 'tradingview',
+          timestamp: receivedAt,
+          last_updated: rawScenario.last_updated.tradingview
+        }),
     createSourceEntry({
       source: 'theta_core',
       timestamp: receivedAt,

@@ -90,14 +90,27 @@ function normalizeDealer(raw = {}) {
 }
 
 function normalizeSpotGex(raw = {}) {
-  const strikeRows = asArray(raw.spot_gex_strike);
-  const expiryRows = asArray(raw.spot_gex);
+  const spotRows = asArray(raw.spot_gex);
+  const explicitStrikeRows = asArray(raw.spot_gex_strike);
   const strikeExpiryRows = asArray(raw.spot_gex_strike_expiry);
-  const callWall = topByAbs(strikeRows, ['call_gex', 'call_gamma', 'gamma_exposure'], ['strike'])[0]?.strike ?? null;
-  const putWall = topByAbs(strikeRows, ['put_gex', 'put_gamma', 'gamma_exposure'], ['strike'])[0]?.strike ?? null;
+  const looksLikeStrikeRows = (rows) => rows.some((row) =>
+    row?.strike != null
+    || row?.call_gamma_oi != null
+    || row?.put_gamma_oi != null
+    || row?.call_gamma != null
+    || row?.put_gamma != null
+  );
+  const strikeRows = [
+    ...explicitStrikeRows,
+    ...(looksLikeStrikeRows(spotRows) ? spotRows : []),
+    ...strikeExpiryRows
+  ];
+  const expiryRows = looksLikeStrikeRows(spotRows) ? [] : [];
+  const callWall = topByAbs(strikeRows, ['call_gamma_oi', 'call_gex', 'call_gamma', 'gamma_exposure'], ['strike', 'price', 'level'])[0]?.strike ?? null;
+  const putWall = topByAbs(strikeRows, ['put_gamma_oi', 'put_gex', 'put_gamma', 'gamma_exposure'], ['strike', 'price', 'level'])[0]?.strike ?? null;
   return {
     spot_gex_by_strike: strikeRows.slice(0, 50),
-    spot_gex_by_expiry: [...expiryRows, ...strikeExpiryRows].slice(0, 50),
+    spot_gex_by_expiry: expiryRows.slice(0, 50),
     call_wall_candidate: callWall,
     put_wall_candidate: putWall,
     gex_pivots: topByAbs(strikeRows, ['gex', 'gamma_exposure', 'net_gex'], ['strike'], 8)

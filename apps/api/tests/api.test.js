@@ -266,7 +266,7 @@ test('GET /signals/current returns required protocol fields for dashboard and ra
     assert.equal(typeof json.latency_ms, 'number');
     assert.equal(Array.isArray(json.stale_reason), true);
     assert.equal(Array.isArray(json.source_status), true);
-    assert.equal(['mock_scenario', 'live_fallback'].includes(json.fetch_mode), true);
+    assert.equal(['mock_scenario', 'live_fallback', 'live'].includes(json.fetch_mode), true);
     assert.equal(typeof json.is_mock, 'boolean');
     assert.equal(ALLOWED_MARKET_STATES.has(json.market_state), true);
     assert.equal(ALLOWED_GAMMA_REGIMES.has(json.gamma_regime), true);

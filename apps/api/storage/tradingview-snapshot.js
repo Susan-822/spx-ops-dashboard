@@ -62,6 +62,8 @@ export async function updateTradingViewSnapshot(payload) {
     spy_last_updated: payload.spy_last_updated || payload.trigger_time || now,
     es_price: payload.es_price == null ? null : Number(payload.es_price),
     es_last_updated: payload.es_last_updated || payload.trigger_time || now,
+    spx_equivalent: payload.spx_equivalent == null ? null : Number(payload.spx_equivalent),
+    basis: payload.basis == null ? null : Number(payload.basis),
     futures_price: payload.futures_price == null ? null : Number(payload.futures_price),
     futures_last_updated: payload.futures_last_updated || payload.trigger_time || now,
     trigger_time: payload.trigger_time,

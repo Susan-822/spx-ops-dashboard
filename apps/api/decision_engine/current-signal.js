@@ -148,17 +148,20 @@ function scrubLegacyDecisionStrings(value) {
 
 function buildFmpConclusionV2(signal = {}) {
   const source = signal.command_inputs?.external_spot || {};
+  const spotIsReal = source.status === 'valid' || source.is_real === true || signal.market_snapshot?.spot_is_real === true;
   return {
     ...(signal.fmp_conclusion || {}),
-    status: signal.fmp_conclusion?.status || (source.status === 'valid' || source.is_real === true ? 'live' : 'unavailable'),
-    spot_is_real: source.status === 'valid' || source.is_real === true || signal.market_snapshot?.spot_is_real === true,
-    spot: signal.market_snapshot?.spot ?? source.spot ?? null,
+    status: spotIsReal ? 'live' : 'unavailable',
+    spot_is_real: spotIsReal,
+    spot: spotIsReal ? (signal.market_snapshot?.spot ?? source.spot ?? null) : null,
     event_risk: signal.fmp_conclusion?.event_risk || signal.event_context?.event_risk || 'unavailable'
   };
 }
 
 function buildPriceSourcesV2({ signal = {}, projectionPrices = {}, crossAssetProjection = {} } = {}) {
-  const spxPrice = projectionPrices.spx?.price ?? signal.market_snapshot?.spot ?? null;
+  const spxPrice = signal.market_snapshot?.spot_is_real === true
+    ? (projectionPrices.spx?.price ?? signal.market_snapshot?.spot ?? null)
+    : null;
   const esPrice = projectionPrices.es?.price ?? null;
   const spyPrice = projectionPrices.spy?.price ?? null;
   const equivalentFromEs = spxPrice != null && esPrice != null
@@ -175,7 +178,13 @@ function buildPriceSourcesV2({ signal = {}, projectionPrices = {}, crossAssetPro
           : '字段名不匹配或 ES price 不可用。'
       };
   return {
-    spx: projectionPrices.spx || { price: spxPrice, status: spxPrice == null ? 'unavailable' : 'live' },
+    spx: {
+      ...(projectionPrices.spx || {}),
+      price: spxPrice,
+      source: spxPrice == null ? 'unavailable' : projectionPrices.spx?.source || signal.market_snapshot?.spot_source || 'fmp',
+      status: spxPrice == null ? 'unavailable' : projectionPrices.spx?.status || 'live',
+      age_seconds: spxPrice == null ? null : projectionPrices.spx?.age_seconds ?? null
+    },
     spy: projectionPrices.spy || { price: spyPrice, status: spyPrice == null ? 'unavailable' : 'live' },
     es: {
       ...(projectionPrices.es || {}),
@@ -353,9 +362,44 @@ function buildProjectionLevels({ signal = {}, dealerEngine = {}, uwApi = {} } = 
   };
 }
 
-function buildKeyLevels({ dealerEngine = {}, uwApi = {}, signal = {} } = {}) {
+function buildKeyLevelsFromUwConclusion({ uwConclusion = {}, diagnostics = {} } = {}) {
+  const status = (value, fallback = uwConclusion.status) => value == null ? 'unavailable' : (fallback || 'partial');
+  const callWall = diagnostics.call_wall ?? uwConclusion.call_wall ?? null;
+  const putWall = diagnostics.put_wall ?? uwConclusion.put_wall ?? null;
+  const zeroGamma = diagnostics.zero_gamma ?? uwConclusion.zero_gamma ?? null;
+  const maxPain = uwConclusion.max_pain ?? null;
+  return {
+    source: 'uw_conclusion',
+    call_wall: { level: callWall, source: 'uw_wall_diagnostics', status: status(callWall) },
+    put_wall: { level: putWall, source: 'uw_wall_diagnostics', status: status(putWall) },
+    zero_gamma: { level: zeroGamma, source: 'uw_wall_diagnostics', status: status(zeroGamma) },
+    max_pain: { level: maxPain, source: 'uw_conclusion', status: status(maxPain) },
+    gex_pivots: diagnostics.top_net_gex_strikes || [],
+    oi_walls: [],
+    volume_magnets: [],
+    plain_chinese: `UW Key Levels：Call Wall ${callWall ?? '--'}，Put Wall ${putWall ?? '--'}，Zero Gamma ${zeroGamma ?? '--'}，Max Pain ${maxPain ?? '--'}。`
+  };
+}
+
+function buildKeyLevels({ dealerEngine = {}, uwApi = {}, signal = {}, uwConclusionV2 = null } = {}) {
   const dealerFactors = uwApi.uw_factors?.dealer_factors || {};
   const volumeOi = uwApi.uw_factors?.volume_oi_factors || {};
+  if (uwConclusionV2?.uw_conclusion && uwConclusionV2?.uw_wall_diagnostics) {
+    const conclusion = uwConclusionV2.uw_conclusion;
+    const diagnostics = uwConclusionV2.uw_wall_diagnostics;
+    const status = (value) => value == null ? 'unavailable' : conclusion.status || 'partial';
+    return {
+      source: 'uw_conclusion',
+      call_wall: { level: diagnostics.call_wall, source: 'uw_wall_diagnostics', status: status(diagnostics.call_wall) },
+      put_wall: { level: diagnostics.put_wall, source: 'uw_wall_diagnostics', status: status(diagnostics.put_wall) },
+      zero_gamma: { level: diagnostics.zero_gamma, source: 'uw_wall_diagnostics', status: status(diagnostics.zero_gamma) },
+      max_pain: { level: conclusion.max_pain, source: 'uw_conclusion', status: status(conclusion.max_pain) },
+      gex_pivots: diagnostics.top_net_gex_strikes || [],
+      oi_walls: volumeOi.volume_magnet_candidates || [],
+      volume_magnets: volumeOi.volume_wall_candidates || [],
+      plain_chinese: `UW Key Levels：Call Wall ${diagnostics.call_wall ?? '--'}，Put Wall ${diagnostics.put_wall ?? '--'}，Zero Gamma ${diagnostics.zero_gamma ?? '--'}。`
+    };
+  }
   const source = dealerEngine.status === 'live' || dealerEngine.status === 'partial' ? 'uw' : 'theta';
   const status = (value, fallbackStatus = dealerEngine.status) => value == null ? 'unavailable' : (fallbackStatus || 'partial');
   const callWall = dealerEngine.upper_wall ?? signal.dealer_conclusion?.call_wall ?? null;
@@ -854,12 +898,23 @@ function enrichTradePlanWithProjection(tradePlan = {}, crossAssetProjection = {}
 }
 
 export async function getCurrentSignal(requestedScenario, options = {}) {
-  const scenarioMode = typeof requestedScenario === 'string' && requestedScenario.length > 0;
+  const scenarioMode = (typeof requestedScenario === 'string' && requestedScenario.length > 0) || process.env.MOCK_MODE === 'true';
   const scenario = {
-    ...getMockScenario(requestedScenario),
+    ...getMockScenario(scenarioMode ? requestedScenario : 'live'),
     scenario_mode: scenarioMode,
     is_mock: scenarioMode,
-    fetch_mode: scenarioMode ? 'mock_scenario' : 'live_fallback'
+    fetch_mode: scenarioMode ? 'mock_scenario' : 'live',
+    scenario: scenarioMode ? getMockScenario(requestedScenario).scenario : null,
+    spot: scenarioMode ? getMockScenario(requestedScenario).spot : null,
+    flip_level: scenarioMode ? getMockScenario(requestedScenario).flip_level : null,
+    call_wall: scenarioMode ? getMockScenario(requestedScenario).call_wall : null,
+    put_wall: scenarioMode ? getMockScenario(requestedScenario).put_wall : null,
+    max_pain: scenarioMode ? getMockScenario(requestedScenario).max_pain : null,
+    tv_structure_event: scenarioMode ? getMockScenario(requestedScenario).tv_structure_event : 'waiting',
+    theta_signal: scenarioMode ? getMockScenario(requestedScenario).theta_signal : 'unavailable',
+    uw_flow_bias: scenarioMode ? getMockScenario(requestedScenario).uw_flow_bias : 'unavailable',
+    uw_dark_pool_bias: scenarioMode ? getMockScenario(requestedScenario).uw_dark_pool_bias : 'unavailable',
+    uw_dealer_bias: scenarioMode ? getMockScenario(requestedScenario).uw_dealer_bias : 'unavailable'
   };
   const snapshot = await getTradingViewSnapshot();
   const thetaSnapshot = await getThetaSnapshot();
@@ -1328,7 +1383,15 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   };
 
   const priceSourcesV2 = buildPriceSourcesV2({ signal: output, projectionPrices, crossAssetProjection });
-  const uwConclusionV2 = buildUwConclusionV2({ provider: uwProvider, uwApi, dealerEngine, institutionalAlert, darkpoolSummary, marketSentiment, technicalEngine });
+  const uwConclusionV2 = buildUwConclusionV2({
+    provider: uwProvider,
+    factors: uwApi.uw_factors,
+    raw: uwSnapshot?.raw || uwApi.uw_raw,
+    institutionalAlert,
+    darkpoolSummary,
+    marketSentiment,
+    technicalEngine
+  });
   const rawNoteV2 = runRawNoteV2({
     fmp_conclusion: buildFmpConclusionV2(output),
     uw_conclusion: uwConclusionV2,
@@ -1353,6 +1416,10 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     uwConclusion: rawNoteV2.uw_conclusion,
     priceSources: rawNoteV2.price_sources
   });
+  const keyLevelsV2 = buildKeyLevelsFromUwConclusion({
+    uwConclusion: rawNoteV2.uw_conclusion,
+    diagnostics: rawNoteV2.uw_wall_diagnostics
+  });
   const normalizedRawNote = rawNoteV2;
   const finalOutput = {
     ...output,
@@ -1365,6 +1432,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
       plain_chinese: rawNoteV2.final_decision.instruction
     },
     trade_plan: buildLegacyTradePlanShell(rawNoteV2.final_decision, output.trade_plan, crossAssetProjection),
+    key_levels: keyLevelsV2,
     intraday_decision_card: finalCard,
     strategy_cards: rawNoteV2.strategy_cards,
     allowed_setups: rawNoteV2.allowed_setups,
