@@ -57,6 +57,14 @@ function hasPayloadTooLarge(payload) {
   }
 }
 
+function finiteNumberOrNull(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function isValidThetaIngestAuth(req, body) {
   const expectedHeaderKey = process.env.DATA_PUSH_API_KEY || '';
   const providedHeaderKey = typeof req.headers['x-api-key'] === 'string' ? req.headers['x-api-key'] : '';
@@ -86,21 +94,21 @@ function normalizeThetaDealerPayload(body = {}) {
     last_update: typeof body.last_update === 'string' ? body.last_update : new Date().toISOString(),
     ticker: typeof body.ticker === 'string' ? body.ticker : 'SPX',
     spot_source: typeof body.spot_source === 'string' ? body.spot_source : 'unavailable',
-    spot: typeof body.spot === 'number' ? body.spot : Number.isFinite(Number(body.spot)) ? Number(body.spot) : null,
+    spot: finiteNumberOrNull(body.spot),
     test_expiration: typeof body.test_expiration === 'string' ? body.test_expiration : null,
     dealer: {
-      net_gex: Number.isFinite(Number(dealer.net_gex)) ? Number(dealer.net_gex) : null,
-      call_gex: Number.isFinite(Number(dealer.call_gex)) ? Number(dealer.call_gex) : null,
-      put_gex: Number.isFinite(Number(dealer.put_gex)) ? Number(dealer.put_gex) : null,
+      net_gex: finiteNumberOrNull(dealer.net_gex),
+      call_gex: finiteNumberOrNull(dealer.call_gex),
+      put_gex: finiteNumberOrNull(dealer.put_gex),
       gamma_regime: typeof dealer.gamma_regime === 'string' ? dealer.gamma_regime : 'unknown',
       dealer_behavior: typeof dealer.dealer_behavior === 'string' ? dealer.dealer_behavior : 'unknown',
       least_resistance_path: typeof dealer.least_resistance_path === 'string' ? dealer.least_resistance_path : 'unknown',
-      call_wall: Number.isFinite(Number(dealer.call_wall)) ? Number(dealer.call_wall) : null,
-      put_wall: Number.isFinite(Number(dealer.put_wall)) ? Number(dealer.put_wall) : null,
-      max_pain: Number.isFinite(Number(dealer.max_pain)) ? Number(dealer.max_pain) : null,
-      zero_gamma: Number.isFinite(Number(dealer.zero_gamma)) ? Number(dealer.zero_gamma) : null,
-      expected_move_upper: Number.isFinite(Number(dealer.expected_move_upper)) ? Number(dealer.expected_move_upper) : null,
-      expected_move_lower: Number.isFinite(Number(dealer.expected_move_lower)) ? Number(dealer.expected_move_lower) : null,
+      call_wall: finiteNumberOrNull(dealer.call_wall),
+      put_wall: finiteNumberOrNull(dealer.put_wall),
+      max_pain: finiteNumberOrNull(dealer.max_pain),
+      zero_gamma: finiteNumberOrNull(dealer.zero_gamma),
+      expected_move_upper: finiteNumberOrNull(dealer.expected_move_upper),
+      expected_move_lower: finiteNumberOrNull(dealer.expected_move_lower),
       vanna_charm_bias: typeof dealer.vanna_charm_bias === 'string' ? dealer.vanna_charm_bias : 'unknown'
     },
     quality: {

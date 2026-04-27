@@ -274,6 +274,47 @@ test('POST /ingest/theta rejects raw greeks tables and forbidden auth fields', a
   }
 });
 
+test('POST /ingest/theta keeps null dealer levels null for partial python summaries', async () => {
+  await resetThetaStateEnv({ DATA_PUSH_API_KEY: 'local-push-key' });
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/ingest/theta`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': 'local-push-key'
+      },
+      body: JSON.stringify(sampleThetaPayload({
+        secret: undefined,
+        source: 'thetadata_python',
+        status: 'partial',
+        dealer: {
+          ...sampleThetaPayload().dealer,
+          net_gex: null,
+          gamma_regime: 'unknown',
+          zero_gamma: null
+        },
+        quality: {
+          data_quality: 'partial',
+          missing_fields: ['gamma', 'net_gex', 'zero_gamma'],
+          warnings: ['walls_from_oi_fallback'],
+          calculation_scope: 'single_expiry_test',
+          raw_rows_sent: false
+        }
+      }))
+    });
+
+    assert.equal(response.status, 202);
+
+    const snapshot = await getThetaSnapshot();
+    assert.equal(snapshot.dealer.net_gex, null);
+    assert.equal(snapshot.dealer.zero_gamma, null);
+  } finally {
+    server.close();
+  }
+});
+
 test('thetaSnapshotStore supports memory and file modes with stale handling', async () => {
   await resetThetaStateEnv({ THETA_STATE_STORE: 'memory' });
 
