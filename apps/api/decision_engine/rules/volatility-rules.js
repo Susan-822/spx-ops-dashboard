@@ -137,20 +137,71 @@ export function buildVolatilityActivation({
     warnings.push('expected_move_unavailable');
   }
 
+  const unavailable = volumePressure.status === 'unavailable' && !hasExpectedMove;
+  const finalState = unavailable ? 'unavailable' : state;
+  const light =
+    finalState === 'unavailable'
+      ? 'unavailable'
+      : finalState === 'expansion' || fmpConclusion.event_risk === 'blocked'
+        ? 'red'
+        : finalState === 'active' || finalState === 'warming'
+          ? 'yellow'
+          : 'green';
+  const score =
+    finalState === 'unavailable'
+      ? 0
+      : Math.max(0, Math.min(100, Math.round(
+          (volumePressure.rvol ? Math.min(volumePressure.rvol * 20, 45) : 10)
+          + (hasExpectedMove ? 20 : 0)
+          + (finalState === 'expansion' ? 35 : finalState === 'active' ? 25 : finalState === 'warming' ? 15 : 0)
+        )));
+  const strengthLabel =
+    finalState === 'unavailable'
+      ? 'unavailable'
+      : finalState === 'expansion'
+        ? score >= 80 ? 'extreme' : 'strong'
+        : finalState === 'active'
+          ? 'active'
+          : finalState === 'warming'
+            ? 'lifting'
+            : 'off';
+  const directionalPermission =
+    finalState === 'unavailable' || fmpConclusion.event_risk === 'blocked'
+      ? 'block'
+      : finalState === 'active' || finalState === 'expansion'
+        ? 'wait'
+        : 'wait';
+  const ironCondorPermission =
+    finalState === 'unavailable' || fmpConclusion.event_risk === 'blocked'
+      ? 'block'
+      : blocked.includes('iron_condor')
+        ? 'block'
+        : finalState === 'inactive' && dealerConclusion.gamma_regime === 'positive'
+          ? 'wait'
+          : 'block';
+
   return {
-    state: volumePressure.status === 'unavailable' && !hasExpectedMove ? 'unavailable' : state,
-    strength: volumePressure.rvol ?? 0,
+    state: finalState,
+    strength: strengthLabel,
+    legacy_strength: volumePressure.rvol ?? 0,
+    light,
+    score,
+    single_leg_permission: directionalPermission,
+    vertical_permission: directionalPermission,
+    iron_condor_permission: ironCondorPermission,
     atr_ratio: atrRatio,
     triggers,
-    direction: volumePressure.direction === 'up' ? 'up' : volumePressure.direction === 'down' ? 'down' : state === 'expansion' ? 'both' : 'unclear',
+    direction: volumePressure.direction === 'up' ? 'up' : volumePressure.direction === 'down' ? 'down' : finalState === 'expansion' ? 'both' : 'unclear',
     allow: [...new Set(allow)],
     block: [...new Set(blocked)],
     plain_chinese:
-      state === 'expansion'
+      finalState === 'unavailable'
+        ? '波动数据不可用，不能假装 volatility live。'
+        : finalState === 'expansion'
         ? '波动扩张，只允许顺势候选，铁鹰禁做。'
-        : state === 'active'
+        : finalState === 'active'
           ? '波动 active，允许方向候选观察，禁止铁鹰。'
-          : state === 'warming'
+          : finalState === 'warming'
             ? '波动升温，等 TV 哨兵匹配。'
             : '波动未启动，只观察。'
   };
