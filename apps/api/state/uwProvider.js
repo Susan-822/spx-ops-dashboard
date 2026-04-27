@@ -80,7 +80,10 @@ export async function refreshUwProvider(options = {}) {
 
 export async function readUwProvider(options = {}) {
   if (String(process.env.UW_PROVIDER_MODE || '').toLowerCase() === 'api') {
-    const apiSnapshot = await readUwApiSnapshot(options);
+    let apiSnapshot = await readUwApiSnapshot(options);
+    if (!apiSnapshot) {
+      apiSnapshot = await fetchUwApiSnapshot(options);
+    }
     return {
       snapshot: apiSnapshot,
       sourceStatus: {
