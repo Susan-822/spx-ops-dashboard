@@ -28,6 +28,14 @@ import {
   mapThetaSnapshotToSourceStatus
 } from './dealer-conclusion-engine.js';
 import { runUwConclusionEngine } from './uw-conclusion-engine.js';
+import { runRawNoteV2 } from './raw-note-v2/index.js';
+import { buildUwConclusionV2 } from './raw-note-v2/uw-conclusion.js';
+import { buildThetaConclusion } from './raw-note-v2/formatters.js';
+
+export {
+  buildProjectionPrices,
+  buildStrategyCardsDisplay
+};
 
 function hasFiniteNumber(value) {
   return Number.isFinite(Number(value));
@@ -122,6 +130,112 @@ function replaceUndefined(value) {
   return value;
 }
 
+function buildFmpConclusionV2(signal = {}) {
+  const source = signal.command_inputs?.external_spot || {};
+  return {
+    ...(signal.fmp_conclusion || {}),
+    status: signal.fmp_conclusion?.status || (source.status === 'valid' || source.is_real === true ? 'live' : 'unavailable'),
+    spot_is_real: source.status === 'valid' || source.is_real === true || signal.market_snapshot?.spot_is_real === true,
+    spot: signal.market_snapshot?.spot ?? source.spot ?? null,
+    event_risk: signal.fmp_conclusion?.event_risk || signal.event_context?.event_risk || 'unavailable'
+  };
+}
+
+function buildPriceSourcesV2({ signal = {}, projectionPrices = {}, crossAssetProjection = {} } = {}) {
+  const spxPrice = projectionPrices.spx?.price ?? signal.market_snapshot?.spot ?? null;
+  const esPrice = projectionPrices.es?.price ?? null;
+  const spyPrice = projectionPrices.spy?.price ?? null;
+  const equivalentFromEs = spxPrice != null && esPrice != null
+    ? {
+        price: esPrice,
+        formula: 'equivalent = spx_level * (target_price / spx_price)',
+        source: 'tradingview'
+      }
+    : {
+        price: null,
+        formula: 'equivalent = spx_level * (target_price / spx_price)',
+        reason: projectionPrices.es?.source === 'unavailable'
+          ? 'TV webhook 没推 ES price，后端没有 snapshot。'
+          : '字段名不匹配或 ES price 不可用。'
+      };
+  return {
+    spx: projectionPrices.spx || { price: spxPrice, status: spxPrice == null ? 'unavailable' : 'live' },
+    spy: projectionPrices.spy || { price: spyPrice, status: spyPrice == null ? 'unavailable' : 'live' },
+    es: {
+      ...(projectionPrices.es || {}),
+      reason: esPrice == null ? 'TV webhook 没推 ES price，后端没有 snapshot。' : ''
+    },
+    spx_equivalent_from_es: equivalentFromEs,
+    basis: {
+      value: crossAssetProjection.basis ?? null,
+      status: esPrice == null ? 'unavailable' : 'live'
+    }
+  };
+}
+
+function buildIntradayDecisionCardV2({ finalDecision = {}, uwConclusion = {}, priceSources = {} } = {}) {
+  const keySummary = [
+    `SPX Call Wall：${uwConclusion.call_wall ?? '--'}`,
+    `SPX Put Wall：${uwConclusion.put_wall ?? '--'}`,
+    `Max Pain：${uwConclusion.max_pain ?? '--'}`,
+    priceSources.es?.status === 'live'
+      ? `ES 等效价：${priceSources.spx_equivalent_from_es?.price ?? '--'}`
+      : `ES/SPY 等效价暂不可用。${priceSources.es?.reason || ''}`.trim()
+  ].join('\n');
+  return {
+    current_action: finalDecision.label || '等确认',
+    market_read: finalDecision.reason || '',
+    why_now: 'Dashboard 只显示 final_decision，不重新判断方向。',
+    wait_for: finalDecision.waiting_for || '--',
+    do_not_do: finalDecision.do_not_do || [],
+    key_levels_summary: keySummary,
+    position: `${finalDecision.position_multiplier ?? 0} 仓`,
+    plain_chinese: `${finalDecision.label || '等确认'}：${finalDecision.instruction || '等确认，不追单'}`
+  };
+}
+
+function buildLegacyTradePlanShell(finalDecision = {}, previousPlan = {}, crossAssetProjection = {}) {
+  const plan = finalDecision.trade_plan || {};
+  const targetInstrument = process.env.TARGET_INSTRUMENT || previousPlan.target_instrument || 'ES';
+  const entryText = plan.entry_zone || previousPlan.entry_zone?.text || '--';
+  const stopText = plan.stop_loss || previousPlan.stop_loss?.text || '--';
+  const invalidationText = plan.invalidation || previousPlan.invalidation?.text || '--';
+  const targets = Array.isArray(plan.targets) && plan.targets.length > 0
+    ? plan.targets.map((target, index) => ({
+        label: `TP${index + 1}`,
+        name: `TP${index + 1}`,
+        level: target,
+        action: target || '--',
+        reason: `${targetInstrument} / final_decision`
+      }))
+    : [{ label: 'TP1', name: 'TP1', level: null, action: '--', reason: '--' }];
+  return {
+    ...previousPlan,
+    ...plan,
+    status: finalDecision.state === 'actionable' ? 'ready' : finalDecision.state === 'invalidated' ? 'invalidated' : 'waiting',
+    target_instrument: targetInstrument,
+    setup_type: plan.setup,
+    setup_code: plan.setup,
+    direction_label: finalDecision.label || '等确认',
+    entry_zone: { ...(previousPlan.entry_zone || {}), text: entryText },
+    stop_loss: { ...(previousPlan.stop_loss || {}), text: stopText },
+    targets,
+    target_text: targets.map((item) => item.action).join(' / ') || '--',
+    invalidation: { ...(previousPlan.invalidation || {}), text: invalidationText },
+    invalidation_text: invalidationText,
+    position_sizing: finalDecision.position_multiplier > 0 ? `${finalDecision.position_multiplier}x` : '0仓',
+    wait_conditions: [{ type: 'final_decision', text: finalDecision.waiting_for || '等待 TV 结构信号，不提前交易。' }],
+    ttl_minutes: plan.ttl_minutes ?? null,
+    ttl_text: plan.ttl_minutes == null ? '等待状态无有效交易 TTL。' : `${plan.ttl_minutes} 分钟`,
+    plain_chinese: finalDecision.instruction || '等确认，不追单。',
+    projection_note: crossAssetProjection.plain_chinese || ''
+  };
+}
+
+function buildIntradayDecisionCardFromFinal(args) {
+  return buildIntradayDecisionCardV2(args);
+}
+
 function scrubUwLiveLegacyText(value, uwProvider = {}) {
   if (uwProvider.status !== 'live') return value;
   if (typeof value === 'string') {
@@ -131,7 +245,7 @@ function scrubUwLiveLegacyText(value, uwProvider = {}) {
       .replace(/UW Greek Exposure 不可用/g, 'UW Greek Exposure partial')
       .replace(/price_map_conflict/g, 'uw_price_map_wait')
       .replace(/mock key levels/gi, 'uw key levels')
-      .replace(/Gamma 地图仍为 mock/g, 'UW 墙位已接管 Gamma 地图');
+      .replace(/Gamma 地图仍为模拟/g, 'UW 墙位已接管 Gamma 地图');
   }
   if (Array.isArray(value)) return value.map((item) => scrubUwLiveLegacyText(item, uwProvider));
   if (value && typeof value === 'object') {
@@ -149,12 +263,12 @@ function sanitizeUwPromotedStrings(value, uwActive = false) {
       .replaceAll('UW Greek Exposure 不可用', 'UW Greek Exposure partial')
       .replaceAll('price_map_conflict', 'uw_price_map_active')
       .replaceAll('价格地图冲突', 'UW 墙位已接管价格地图')
-      .replaceAll('FMP 现价真实，但 Gamma 地图仍为 mock，禁止执行。', 'FMP 现价真实，UW 墙位地图已接管，等待 TV 确认。')
+      .replaceAll('FMP 现价真实，但 Gamma 地图仍为模拟，禁止执行。', 'FMP 现价真实，UW 墙位地图已接管，等待 TV 确认。')
       .replaceAll('ThetaData unavailable.', 'ThetaData EM auxiliary unavailable.')
       .replaceAll('ThetaData unavailable', 'ThetaData EM auxiliary unavailable')
-      .replaceAll('Theta dealer 主源未 live', 'Theta EM auxiliary 未 live')
-      .replaceAll('ThetaData Gamma 不完整，Dealer path 仅参考，不可执行。', 'UW Dealer partial，墙位已接入，Vanna/Charm/Delta 部分缺失。')
-      .replaceAll('ThetaData Gamma 不完整，Dealer 地图不可执行', 'UW Dealer partial，墙位已接入，等待 TV 确认')
+      .replaceAll('Theta EM auxiliary 未 live', 'Theta EM auxiliary 未 live')
+      .replaceAll('ThetaData EM 辅助不可用，Dealer path 仅参考，不可执行。', 'UW Dealer partial，墙位已接入，Vanna/Charm/Delta 部分缺失。')
+      .replaceAll('ThetaData EM 辅助不可用，Dealer 地图不可执行', 'UW Dealer partial，墙位已接入，等待 TV 确认')
       .replaceAll('现价与 Flip/Wall/Max Pain 地图严重冲突，禁止执行。', 'UW 墙位已接入；当前是交易条件未满足，不是数据崩溃。')
       .replaceAll('blocked / not ready', 'WAIT / 等确认 / 0仓')
       .replaceAll('禁做 / 等确认', '等确认 / 不追单');
@@ -251,9 +365,9 @@ function buildKeyLevels({ dealerEngine = {}, uwApi = {}, signal = {} } = {}) {
 
 function humanizeReflection(reflection = {}, signal = {}) {
   const translate = (item) => {
-    if (/vanna\/charm\/delta field partial/i.test(item)) return 'UW Greek 数据部分可读，但 Dealer 置信度还不够高。';
+    if (/UW Greek 细项部分可读/i.test(item)) return 'UW Greek 数据部分可读，但 Dealer 置信度还不够高。';
     if (/TV matched setup missing/i.test(item)) return 'TradingView 还没有给出结构确认。';
-    if (/entry missing|stop missing|target missing|invalidation missing/i.test(item)) return '还没有完整交易计划，不能执行。';
+    if (/entry pending|stop pending|target pending|invalidation pending/i.test(item)) return '等待 TV 结构确认后再生成交易计划。';
     if (/ES\/SPY live price missing/i.test(item)) return 'ES/SPY 实时价缺失，SPX 墙位暂时不能换算成 ES/SPY 等效位。';
     if (/UW dealer factors incomplete/i.test(item)) return 'UW Dealer 数据还不完整，只能作为候选参考。';
     return item;
@@ -901,7 +1015,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     dealer:
       ['live', 'partial'].includes(dealerEngine.status)
         ? dealerEngine.plain_chinese
-        : `${dealerEngine.status || 'unavailable'} / Dealer 不可用`,
+        : `${dealerEngine.status || 'unavailable'} / UW Dealer 等待确认`,
     dark_pool:
       uwConclusionFinal.status === 'live'
         ? darkpoolSummary.plain_chinese
@@ -1084,6 +1198,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     health_matrix: healthMatrix,
     flow_validation: flowValidation,
     technical_engine: technicalEngine,
+    price_sources: projectionPrices,
     cross_asset_projection: crossAssetProjection,
     allowed_setups: setupSynthesis.allowed_setups,
     allowed_setups_reason: setupSynthesis.allowed_setups_reason,
@@ -1196,5 +1311,74 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     audit_log_ref: null
   };
 
-  return replaceUndefined(sanitizeUwPromotedStrings(output, uwProvider.status === 'live'));
+  const priceSourcesV2 = buildPriceSourcesV2({ signal: output, projectionPrices, crossAssetProjection });
+  const uwConclusionV2 = buildUwConclusionV2({ provider: uwProvider, uwApi, dealerEngine, institutionalAlert, darkpoolSummary, marketSentiment, technicalEngine });
+  const rawNoteV2 = runRawNoteV2({
+    fmp_conclusion: buildFmpConclusionV2(output),
+    uw_conclusion: uwConclusionV2,
+    theta_conclusion: buildThetaConclusion({
+      status: output.theta?.status,
+      atm_call_mid: output.theta?.atm_call_mid,
+      atm_put_mid: output.theta?.atm_put_mid,
+      spot: output.market_snapshot?.spot
+    }),
+    tv_sentinel: output.tv_sentinel,
+    volume_pressure: output.volume_pressure,
+    channel_shape: output.channel_shape,
+    volatility_activation: output.volatility_activation,
+    conflict_resolver: output.conflict_resolver,
+    command_environment: output.command_environment,
+    price_sources: priceSourcesV2,
+    cross_asset_projection: crossAssetProjection,
+    uw_wall_diagnostics: uwConclusionV2.uw_wall_diagnostics
+  });
+  const finalCard = buildIntradayDecisionCardV2({
+    finalDecision: rawNoteV2.final_decision,
+    uwConclusion: rawNoteV2.uw_conclusion,
+    priceSources: rawNoteV2.price_sources
+  });
+  const normalizedRawNote = rawNoteV2;
+  const finalOutput = {
+    ...output,
+    ...rawNoteV2,
+    command_center: {
+      ...output.command_center,
+      final_state: rawNoteV2.final_decision.state,
+      action: rawNoteV2.final_decision.label,
+      main_reason: rawNoteV2.final_decision.reason,
+      plain_chinese: rawNoteV2.final_decision.instruction
+    },
+    trade_plan: buildLegacyTradePlanShell(rawNoteV2.final_decision, output.trade_plan, crossAssetProjection),
+    intraday_decision_card: finalCard,
+    strategy_cards: rawNoteV2.strategy_cards,
+    allowed_setups: rawNoteV2.allowed_setups,
+    allowed_setups_reason: rawNoteV2.final_decision.allowed_setups_reason || [],
+    blocked_setups_reason: rawNoteV2.final_decision.blocked_setups_reason || [],
+    radar_summary: {
+      order_flow: `final_decision: ${rawNoteV2.final_decision.label}`,
+      dealer: normalizedRawNote.uw_wall_diagnostics.plain_chinese,
+      dark_pool: `Dark Pool ${normalizedRawNote.uw_conclusion.darkpool_bias}`,
+      plan_alignment: rawNoteV2.final_decision.instruction
+    },
+    data_quality_guard: {
+      title: `Source State｜${rawNoteV2.final_decision.state}`,
+      items: [
+        `FMP：${normalizedRawNote.fmp_conclusion.spot_is_real ? 'real' : 'unavailable'}`,
+        `UW：${normalizedRawNote.uw_conclusion.status}`,
+        `ThetaData：${normalizedRawNote.theta_conclusion.status} / ${normalizedRawNote.theta_conclusion.role}`,
+        `TV：${normalizedRawNote.tv_sentinel.status}`,
+        `执行状态：${rawNoteV2.final_decision.state} / ${rawNoteV2.final_decision.position_multiplier}x`
+      ],
+      plain_chinese: rawNoteV2.final_decision.reason
+    },
+    signal_conflict: {
+      title: 'Signal Conflict｜final_decision',
+      severity: rawNoteV2.final_decision.state === 'blocked' ? 'high' : 'low',
+      items: rawNoteV2.final_decision.trace.map((item) => item.reason || item.step).filter(Boolean).slice(0, 8),
+      execution_state: `${rawNoteV2.final_decision.state} / ${rawNoteV2.final_decision.position_multiplier}x`,
+      plain_chinese: rawNoteV2.final_decision.reason
+    }
+  };
+
+  return replaceUndefined(sanitizeUwPromotedStrings(finalOutput, uwProvider.status === 'live'));
 }

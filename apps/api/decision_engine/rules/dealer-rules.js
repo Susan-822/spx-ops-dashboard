@@ -53,6 +53,6 @@ export function buildDealerPath({
       : 'Dealer 主源可用于路径判断。',
     plain_chinese: status === 'live'
       ? `Dealer path ${path}，置信度 ${confidence}。`
-      : 'ThetaData Gamma 不完整，Dealer path 仅参考，不可执行。'
+      : 'UW Dealer 数据不完整，Dealer path 仅参考。'
   };
 }

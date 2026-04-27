@@ -31,7 +31,7 @@ export function buildCommandProjection({
     expectedMove !== '--' ? 'Expected Move 可展示' : null
   ].filter(Boolean);
   const limits = [
-    dealerConclusion.status !== 'live' ? 'ThetaData Gamma 不完整，Dealer 地图不可执行' : null,
+    dealerConclusion.status !== 'live' ? 'UW Dealer 数据未完全确认，Dealer 地图仅参考' : null,
     uwConclusion.status !== 'live' ? 'UW 资金行为不可用或不完整' : null,
     uwDealerGreeks.status !== 'live' ? 'UW Greek Exposure 不可用' : null,
     tvSentinel.matched_allowed_setup !== true ? 'TV 未确认结构' : null,

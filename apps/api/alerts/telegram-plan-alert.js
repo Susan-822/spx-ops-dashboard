@@ -115,6 +115,15 @@ export function getTelegramAlertMeta({ signal = {} }) {
 }
 
 export function buildTradePlanTelegramMessage({ signal }) {
+  if (signal?.final_decision) {
+    return signal.telegram_text || decisionToTelegram({
+      final_decision: signal.final_decision,
+      uw_conclusion: signal.uw_conclusion,
+      theta_conclusion: signal.theta_conclusion,
+      price_sources: signal.price_sources
+    });
+  }
+
   if (signal?.command_center) {
     const cc = signal.command_center;
     const reflection = signal.reflection || {};

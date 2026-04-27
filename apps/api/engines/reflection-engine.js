@@ -44,13 +44,13 @@ export function runReflectionEngine({
   addIf(conflicting, Boolean(callWallProjection), `SPX Call Wall ${callWallProjection?.spx} 对应 ES ${callWallProjection?.es_equiv}，上方空间需降权。`);
 
   addIf(missing, uwProvider.status !== 'live', `UW ${uwProvider.status || 'unavailable'}`);
-  addIf(missing, dealerEngine.status === 'unavailable', 'UW dealer factors unavailable');
-  addIf(missing, dealerEngine.status === 'partial', 'vanna/charm/delta field partial');
+  addIf(missing, dealerEngine.status === 'unavailable', 'UW Dealer 因子未进入 conclusion。');
+  addIf(missing, dealerEngine.status === 'partial', 'UW Greeks 部分可读，Dealer 置信度降级。');
   addIf(missing, signal?.tv_sentinel?.matched_allowed_setup !== true, 'TV matched setup missing');
-  addIf(missing, !signal?.trade_plan?.entry_zone || signal.trade_plan.entry_zone.text === '--', 'entry missing');
-  addIf(missing, !signal?.trade_plan?.stop_loss || signal.trade_plan.stop_loss.text === '--', 'stop missing');
-  addIf(missing, !Array.isArray(signal?.trade_plan?.targets) || signal.trade_plan.targets.every((target) => target.level == null), 'target missing');
-  addIf(missing, !signal?.trade_plan?.invalidation || signal.trade_plan.invalidation.text === '--', 'invalidation missing');
+  addIf(missing, !signal?.trade_plan?.entry_zone || signal.trade_plan.entry_zone.text === '--', '等待 TV 后生成入场。');
+  addIf(missing, !signal?.trade_plan?.stop_loss || signal.trade_plan.stop_loss.text === '--', '等待 TV 后生成止损。');
+  addIf(missing, !Array.isArray(signal?.trade_plan?.targets) || signal.trade_plan.targets.every((target) => target.level == null), '等待 TV 后生成目标。');
+  addIf(missing, !signal?.trade_plan?.invalidation || signal.trade_plan.invalidation.text === '--', '等待 TV 后生成作废条件。');
   addIf(missing, crossAssetProjection?.status === 'partial', 'ES/SPY live price missing for complete projection');
   addIf(missing, crossAssetProjection?.status === 'unavailable', 'cross asset projection unavailable');
 

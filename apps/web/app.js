@@ -247,7 +247,7 @@ function thetaLevel(signal, value) {
 function thetaLevelNote(signal, fallback) {
   if (thetaIsLive(signal)) return fallback;
   if (thetaStatus(signal) === 'partial') return 'Theta partial / 仅参考 / 不可执行';
-  return 'Theta unavailable / 不可执行';
+  return 'Theta disabled / EM only';
 }
 
 function uwSafeValue(signal, field) {
@@ -344,82 +344,43 @@ function buildSourceBrief(signal = {}) {
 }
 
 function buildRealtimeAnalysis(signal = {}) {
-  const dataSources = signal.data_sources || {};
-  const brief = buildSourceBrief(signal);
   const snap = signal.market_snapshot || {};
-  const dealer = signal.dealer_conclusion || {};
-  const uwGreeks = signal.uw_dealer_greeks || {};
-  const reflection = signal.reflection || {};
-  const action = signal.projection?.one_line_instruction || '禁做 / 等确认';
-  const expectedMove = dealer.expected_move_lower != null && dealer.expected_move_upper != null
-    ? `${fmt(dealer.expected_move_lower, 2)} - ${fmt(dealer.expected_move_upper, 2)}`
-    : '--';
-  const wallNote = (value) => value == null ? '--' : `${fmtInt(value)}（OI fallback / 仅参考）`;
-  const reason =
-    signal.trade_plan?.plain_chinese
-    || signal.command_environment?.reason
-    || 'ThetaData 当前不可执行，TV 尚未确认价格结构，不能出 ready。';
+  const finalDecision = signal.final_decision || {};
+  const uw = signal.uw_conclusion || {};
+  const theta = signal.theta_conclusion || {};
+  const wall = signal.uw_wall_diagnostics || {};
 
   return [
-    `【数据状态】${safeText(dataSources.summary?.plain_chinese, '数据健康度不可用')}`,
-    `FMP：${sourceBrief(dataSources.fmp || { status: brief.fmp })}`,
-    `ThetaData：${sourceBrief(dataSources.theta || { status: brief.theta })}${dataSources.theta?.gamma_status === 'incomplete' ? '，Gamma 不完整' : ''}`,
-    `UW：${sourceBrief(dataSources.uw || { status: brief.uw })}`,
-    `TV：${sourceBrief(dataSources.tv || { status: brief.tv })}`,
+    `【final_decision】${safeText(finalDecision.label, '等确认')} / ${safeText(finalDecision.state, 'wait')}`,
+    `动作：${safeText(finalDecision.instruction, '等确认，不追单')}`,
+    `原因：${safeText(finalDecision.reason, '--')}`,
+    `等什么：${safeText(finalDecision.waiting_for, '--')}`,
+    `禁做：${safeText(finalDecision.do_not_do, '--')}`,
+    `仓位：${finalDecision.position_multiplier ?? 0}x`,
     '',
-    '【交互判断】',
-    `✓ 可用项：${signal.command_inputs?.external_spot?.status === 'real' ? 'FMP 现价真实' : '暂无核心可用项'}`,
-    `✗ 限制项：${[thetaStatus(signal) !== 'live' ? 'ThetaData 不可执行' : null, signal.uw_conclusion?.status !== 'live' ? 'UW 资金行为不可用' : null, signal.tv_sentinel?.matched_allowed_setup !== true ? 'TV 未确认结构' : null].filter(Boolean).join('；') || '--'}`,
-    `→ 冲突：${(signal.conflict_resolver?.conflicts || []).join('；') || '无真实价格冲突，但关键源不完整'}`,
-    `→ 降级方案：${safeText(signal.degradation?.plain_chinese, '不可降级，全部禁止')}`,
+    '【Source State】',
+    `FMP：${safeText(signal.fmp_conclusion?.status, 'unavailable')} / spot_real ${signal.fmp_conclusion?.spot_is_real === true}`,
+    `UW：${safeText(uw.status, 'unavailable')} / Flow ${safeText(uw.flow_bias, 'unavailable')} / Dealer ${safeText(uw.dealer_confirm, 'partial')}`,
+    `ThetaData：${safeText(theta.status, 'disabled')} / ${safeText(theta.role, 'disabled')}`,
+    `TV：${safeText(signal.tv_sentinel?.status, 'waiting')} / ${safeText(signal.tv_sentinel?.event_type, '--')}`,
     '',
-    '【总判断】',
-    `当前：${action}`,
-    `原因：${reason}`,
-    '',
-    '【盘面结构】',
+    '【Dealer / Flow / Technical】',
     `现价：${displaySpot(snap)} ${spotSourceText(snap)}`,
-    `ES/SPX状态：${safeText(signal.fmp_conclusion?.market_bias, 'unavailable')}`,
-    `量比：${safeText(signal.volume_pressure?.plain_chinese, '量比不可用')}`,
-    `通道：${safeText(signal.channel_shape?.plain_chinese, '通道形态不可用')}`,
-    `波动状态：${safeText(signal.volatility_activation?.plain_chinese, '波动状态不可用')}`,
-    `Flow验证：${safeText(signal.flow_validation?.plain_chinese, 'Flow validation unavailable')}`,
-    `技术结构：${safeText(signal.technical_engine?.plain_chinese, 'Technical engine unavailable')}`,
-    '',
-    '【Dealer】',
-    `ThetaData：${safeText(signal.theta?.status, 'unavailable')}，${safeText(dealer.plain_chinese, 'Dealer 地图不能执行，只能观察。')}`,
-    `Expected Move：${expectedMove}`,
-    `Call Wall：${wallNote(dealer.call_wall)}`,
-    `Put Wall：${wallNote(dealer.put_wall)}`,
-    `Max Pain：${wallNote(dealer.max_pain)}`,
-    `Zero Gamma：${dealer.zero_gamma == null ? '--' : fmtInt(dealer.zero_gamma)}`,
-    `Dealer路径：${safeText(signal.dealer_path?.plain_chinese, 'Dealer path unavailable')}`,
-    '',
-    '【UW】',
-    `Flow：${safeText(signal.uw_conclusion?.flow_bias, 'unavailable')}`,
-    `Dark Pool：${safeText(signal.uw_conclusion?.darkpool_bias, 'unavailable')}`,
-    `Market Tide：${safeText(signal.uw_conclusion?.market_tide, 'unavailable')}`,
-    `Greek Exposure：${safeText(uwGreeks.status, 'unavailable')}`,
-    `Vanna：${safeText(uwGreeks.net_vanna_bias, 'unavailable')}`,
-    `Charm：${safeText(uwGreeks.net_charm_bias, 'unavailable')}`,
-    `Delta：${safeText(uwGreeks.net_delta_bias, 'unavailable')}`,
-    `Dealer cross-check：${safeText(uwGreeks.dealer_crosscheck, 'unavailable')}`,
-    `允许：${safeText(signal.allowed_setups, '--')}`,
-    `阻断：${safeText(signal.blocked_setups_reason, '--')}`,
-    `UW Dealer Engine：${safeText(signal.dealer_engine?.plain_chinese, 'UW dealer engine unavailable')}`,
-    `Dark Pool Summary：${safeText(signal.darkpool_summary?.plain_chinese, 'Dark pool unavailable')}`,
-    `Reflection 支持：${safeText(reflection.supporting_evidence, '--')}`,
-    `Reflection 冲突：${safeText(reflection.conflicting_evidence, '--')}`,
-    `Reflection 缺失：${safeText(reflection.missing_inputs, '--')}`,
+    `Call Wall：${uw.call_wall == null ? '--' : fmtInt(uw.call_wall)}`,
+    `Put Wall：${uw.put_wall == null ? '--' : fmtInt(uw.put_wall)}`,
+    `Zero Gamma：${uw.zero_gamma == null ? '--' : fmtInt(uw.zero_gamma)}`,
+    `Max Pain：${uw.max_pain == null ? '--' : fmtInt(uw.max_pain)}`,
+    `Wall Diagnostics：${safeText(wall.plain_chinese, '--')}`,
+    `Flow：${safeText(uw.flow_bias, 'unavailable')} / ${safeText(uw.flow_strength, 'unknown')}`,
+    `Technical：VWAP ${safeText(uw.vwap, '--')} / EMA50 ${safeText(uw.ema50, '--')} / ATR ${safeText(uw.atr_5min, '--')}`,
     '',
     '【TV哨兵】',
     `状态：${safeText(signal.tv_sentinel?.status, 'waiting')}`,
-    `等待：${safeText((signal.trade_plan?.wait_conditions || [])[0]?.text, signal.tv_sentinel?.plain_chinese || '等待 TV 结构信号，不提前交易。')}`,
-    `已等待：${signal.tv_waiting?.elapsed_min ?? '--'}分钟 / TTL ${signal.tv_waiting?.ttl_min ?? '--'}分钟`,
-    `是否确认：${signal.tv_sentinel?.matched_allowed_setup === true ? 'YES' : 'NO'}`,
+    `事件：${safeText(signal.tv_sentinel?.event_type, '--')}`,
+    `等待：${safeText(finalDecision.waiting_for, signal.tv_sentinel?.plain_chinese || '等待 TV 结构信号。')}`,
     '',
     '【我现在该做什么】',
-    `一句话指令：${action}`
+    `一句话指令：${safeText(finalDecision.instruction, '等确认，不追单')}`
   ].join('\n');
 }
 
@@ -549,6 +510,16 @@ function getStrategyCard(signal, type) {
 }
 
 function strategyState(signal, type) {
+  const finalCard = (signal.strategy_cards || []).find((card) => card.strategy_name === type);
+  if (finalCard?.permission === 'block') {
+    return { cls: 'blocked', text: finalCard.status_text || '禁止' };
+  }
+  if (finalCard?.permission === 'allow') {
+    return { cls: 'ready', text: finalCard.status_text || '可执行' };
+  }
+  if (finalCard) {
+    return { cls: 'wait', text: finalCard.status_text || '等待' };
+  }
   const dataQuality = deriveDataQuality(signal);
   if (dataQuality.executable !== true) {
     return { text: '禁止', cls: 'block' };
@@ -735,27 +706,30 @@ function renderSourceStrip(signal) {
 }
 
 function renderIntradayDecisionCard(signal) {
+  const finalDecision = signal.final_decision || {};
   const card = signal.intraday_decision_card || {};
-  const doNot = Array.isArray(card.do_not_do) ? card.do_not_do : [];
+  const doNot = Array.isArray(finalDecision.do_not_do) ? finalDecision.do_not_do : Array.isArray(card.do_not_do) ? card.do_not_do : [];
+  const currentAction = finalDecision.label || card.current_action || '等确认';
+  const position = `${finalDecision.position_multiplier ?? 0}x`;
   return `
     <section class="matrix-panel">
-      <div class="matrix-title"><div class="section-label">盘中决策卡</div><span class="tag amber">${escapeHtml(card.current_action || signal.command_center?.action || '等确认')}</span></div>
+      <div class="matrix-title"><div class="section-label">盘中决策卡</div><span class="tag amber">${escapeHtml(currentAction)}</span></div>
       <div class="matrix-list">
-        <div class="matrix-item"><div class="matrix-name">当前</div><div class="matrix-value">${escapeHtml(card.current_action || '等确认，不追单')}</div><div class="matrix-number">${escapeHtml(card.position || '0 仓')}</div></div>
-        <div class="matrix-item"><div class="matrix-name">盘面判断</div><div class="matrix-value">${escapeHtml(card.market_read || '--')}</div><div class="matrix-number">UW/FMP</div></div>
-        <div class="matrix-item"><div class="matrix-name">现在含义</div><div class="matrix-value">${escapeHtml(card.why_now || '--')}</div><div class="matrix-number">只等确认</div></div>
-        <div class="matrix-item"><div class="matrix-name">等什么</div><div class="matrix-value">${escapeHtml(card.wait_for || '--')}</div><div class="matrix-number">TV</div></div>
+        <div class="matrix-item"><div class="matrix-name">当前</div><div class="matrix-value">${escapeHtml(finalDecision.instruction || currentAction)}</div><div class="matrix-number">${escapeHtml(position)}</div></div>
+        <div class="matrix-item"><div class="matrix-name">盘面判断</div><div class="matrix-value">${escapeHtml(finalDecision.reason || card.market_read || '--')}</div><div class="matrix-number">final_decision</div></div>
+        <div class="matrix-item"><div class="matrix-name">现在含义</div><div class="matrix-value">${escapeHtml(finalDecision.state || '--')}</div><div class="matrix-number">唯一真源</div></div>
+        <div class="matrix-item"><div class="matrix-name">等什么</div><div class="matrix-value">${escapeHtml(finalDecision.waiting_for || card.wait_for || '--')}</div><div class="matrix-number">TV</div></div>
         <div class="matrix-item"><div class="matrix-name">禁做</div><div class="matrix-value">${escapeHtml(doNot.join('；') || '--')}</div><div class="matrix-number">0仓</div></div>
         <div class="matrix-item"><div class="matrix-name">关键位</div><div class="matrix-value">${escapeHtml(card.key_levels_summary || '--')}</div><div class="matrix-number">UW墙位</div></div>
       </div>
-      <p class="radar-note">${escapeHtml(card.plain_chinese || '')}</p>
+      <p class="radar-note">${escapeHtml(finalDecision.reason || card.plain_chinese || '')}</p>
     </section>
   `;
 }
 
 function renderMetricCards(signal) {
   const snap = signal.market_snapshot || {};
-  const plan = signal.trade_plan || {};
+  const finalDecision = signal.final_decision || {};
   return `
     <div class="price-stack">
       <div class="metric-card">
@@ -773,13 +747,13 @@ function renderMetricCards(signal) {
       </div>
       <div class="metric-card">
         <div class="metric-label">当前动作</div>
-        <div class="big-number">${escapeHtml(plan.direction_label || '禁做')}</div>
-        <div class="delta-line"><span>${escapeHtml(plan.wait_conditions?.[0]?.text || '等待 TV 结构信号，不提前交易。')}</span></div>
+        <div class="big-number">${escapeHtml(finalDecision.label || '等确认')}</div>
+        <div class="delta-line"><span>${escapeHtml(finalDecision.instruction || '等待 TV 结构信号，不提前交易。')}</span></div>
       </div>
       <div class="metric-card">
         <div class="metric-label">建议仓位</div>
-        <div class="big-number">${escapeHtml(plan.position_sizing || '0仓')}</div>
-        <div class="delta-line"><span>${escapeHtml(plan.ttl_text || '等待状态无 TTL')}</span></div>
+        <div class="big-number">${escapeHtml(`${finalDecision.position_multiplier ?? 0}x`)}</div>
+        <div class="delta-line"><span>${escapeHtml(finalDecision.waiting_for || '等待状态无 TTL')}</span></div>
       </div>
     </div>
   `;
@@ -787,7 +761,8 @@ function renderMetricCards(signal) {
 
 function renderRiskStack(signal) {
   const cls = qualityClass(signal);
-  const conflicts = signal.conflict?.conflict_points || [];
+  const finalDecision = signal.final_decision || {};
+  const doNot = Array.isArray(finalDecision.do_not_do) ? finalDecision.do_not_do : [];
   return `
     <div class="risk-stack">
       <div class="metric-card ${qualityClass(signal) === 'good' ? 'risk-low' : qualityClass(signal) === 'warn' ? 'risk-mid' : 'risk-high'}">
@@ -801,9 +776,7 @@ function renderRiskStack(signal) {
       <div class="alert-panel">
         <div class="section-label">Do Not Violate</div>
         <ul class="alert-list">
-          <li>${escapeHtml(buildAvoid(signal))}</li>
-          <li>${escapeHtml(buildInvalidation(signal))}</li>
-          <li>${escapeHtml(conflicts[0] || signal.event_context?.event_note || '无新增冲突，仍按触发条件执行。')}</li>
+          ${(doNot.length ? doNot : ['不追单', '无结构确认不下单', '不自动下单']).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
         </ul>
       </div>
     </div>
@@ -811,9 +784,17 @@ function renderRiskStack(signal) {
 }
 
 function strategyCardCopy(signal, type) {
-  const projectionText = signal.cross_asset_projection?.status === 'partial'
-    ? '暂参考 SPX 原始墙位；ES/SPY 等效价暂不可用。'
-    : signal.cross_asset_projection?.plain_chinese || '--';
+  const finalCard = (signal.strategy_cards || []).find((card) => card.strategy_name === type);
+  if (finalCard) {
+    return {
+      status: finalCard.status_text || '--',
+      suitable: finalCard.suitable_when || '--',
+      entry: finalCard.entry_condition || '--',
+      target: finalCard.target_zone || '--',
+      invalidation: finalCard.invalidation || '--',
+      avoid: `仓位：${finalCard.position ?? '0'}`
+    };
+  }
   if (type === '单腿') {
     return {
       status: '等待 / 禁止追单',
@@ -829,7 +810,7 @@ function strategyCardCopy(signal, type) {
       status: '等待候选',
       suitable: 'UW Flow 偏空，但还需要 TV breakdown_confirmed 或 retest_failed。',
       entry: '等 TV 空头结构确认后再生成。',
-      target: projectionText,
+      target: signal.cross_asset_projection?.plain_chinese || '--',
       invalidation: 'TV 结构不成立，或 Flow 转向。',
       avoid: '仓位：0'
     };
@@ -845,20 +826,15 @@ function strategyCardCopy(signal, type) {
 }
 
 function renderCommandHero(signal) {
-  const dataQuality = deriveDataQuality(signal);
+  const finalDecision = signal.final_decision || {};
   const action = getAction(signal);
   const trigger = buildTrigger(signal);
-  const target = buildTarget(signal);
   const invalidation = buildInvalidation(signal);
   const avoid = buildAvoid(signal);
   const card = signal.intraday_decision_card || {};
-  const summary = dataQuality.executable !== true
-    ? safeText(signal.command_center?.plain_chinese, safeText(signal?.engines?.data_coherence?.reason, '数据冲突，禁止执行。'))
-    : safeText(signal.plain_language?.user_action, action.summary);
-  const title = dataQuality.executable !== true ? '数据守卫阻断｜禁止执行' : action.title;
-  const planLabel = dataQuality.executable !== true
-    ? safeText(signal?.engines?.data_coherence?.trade_permission, 'no_trade')
-    : action.plan;
+  const summary = finalDecision.reason || safeText(signal.plain_language?.user_action, action.summary);
+  const title = finalDecision.instruction || action.title;
+  const planLabel = finalDecision.state || action.plan;
 
   return `
     <section class="command-hero">
@@ -868,23 +844,23 @@ function renderCommandHero(signal) {
           <div class="section-label">盘中决策卡</div>
           <div class="permission-badge ${action.badge}">${action.permission}</div>
         </div>
-        <h1 class="command-title">${escapeHtml(card.current_action || title)}</h1>
+        <h1 class="command-title">${escapeHtml(finalDecision.label || card.current_action || title)}</h1>
         <p class="command-subtitle">${escapeHtml(card.plain_chinese || summary)}</p>
         <div class="tag-row">
           <span class="tag blue">${escapeHtml(planLabel)}</span>
           <span class="tag ${chipClassByRisk(signal.event_context?.event_risk)}">${eventRiskLabel(signal.event_context?.event_risk)}</span>
           <span class="tag ${chipClassByRisk(signal.gamma_regime)}">${gammaLabel(signal.gamma_regime)}</span>
-          <span class="tag violet">${dealerLabel(signal.uw_context?.dealer_bias || signal.signals?.dealer_behavior)}</span>
+          <span class="tag violet">${escapeHtml(finalDecision.direction || 'unknown')}</span>
         </div>
         <div class="command-grid">
-          <div class="command-cell"><span class="card-label">盘面判断</span><b>${escapeHtml(card.market_read || '--')}</b></div>
-          <div class="command-cell"><span class="card-label">现在含义</span><b>${escapeHtml(card.why_now || '--')}</b></div>
-          <div class="command-cell"><span class="card-label">等什么</span><b>${escapeHtml(card.wait_for || trigger)}</b></div>
+          <div class="command-cell"><span class="card-label">盘面判断</span><b>${escapeHtml(finalDecision.reason || card.market_read || '--')}</b></div>
+          <div class="command-cell"><span class="card-label">现在含义</span><b>${escapeHtml(finalDecision.state || card.why_now || '--')}</b></div>
+          <div class="command-cell"><span class="card-label">等什么</span><b>${escapeHtml(finalDecision.waiting_for || card.wait_for || trigger)}</b></div>
           <div class="command-cell"><span class="card-label">关键位</span><b>${escapeHtml(card.key_levels_summary || signal.cross_asset_projection?.plain_chinese || '--')}</b></div>
         </div>
         <div class="command-grid">
-          <div class="command-cell"><span class="card-label">禁做</span><b>${escapeHtml(safeText(card.do_not_do, avoid))}</b></div>
-          <div class="command-cell"><span class="card-label">仓位</span><b>${escapeHtml(card.position || '0 仓。')}</b></div>
+          <div class="command-cell"><span class="card-label">禁做</span><b>${escapeHtml(safeText(finalDecision.do_not_do, avoid))}</b></div>
+          <div class="command-cell"><span class="card-label">仓位</span><b>${escapeHtml(`${finalDecision.position_multiplier ?? 0}x`)}</b></div>
           <div class="command-cell"><span class="card-label">触发</span><b>${escapeHtml(trigger)}</b></div>
           <div class="command-cell"><span class="card-label">作废</span><b>${escapeHtml(invalidation)}</b></div>
         </div>
@@ -970,8 +946,8 @@ function renderLevelMatrix(signal) {
 
 function renderIntelMatrix(signal) {
   const items = [
-    ['Theta', thetaDecisionText(signal), 'Gamma 主环境'],
-    ['TradingView', signal.signals?.tv_signal || '等待结构确认', '价格确认'],
+    ['Theta', signal.theta_conclusion?.status || 'disabled', 'EM 辅助，不做 Dealer 主源'],
+    ['TradingView', signal.tv_sentinel?.event_type || signal.signals?.tv_signal || '等待结构确认', '最终确认，不单独定方向'],
     ['UW Flow', uwSafeValue(signal, 'flow'), '主动流向'],
     ['Strategy', Object.entries(signal.strategy_permissions || {}).map(([key, value]) => `${key}:${value?.permission || 'wait'}`).join(' / '), '策略权限'],
     ['等效价', signal.cross_asset_projection?.target_instrument || 'ES', signal.cross_asset_projection?.plain_chinese || '跨资产投射'],
@@ -1004,6 +980,7 @@ function renderHome(signal) {
     <main class="page">
       ${renderCommandHero(signal)}
       ${renderIntradayDecisionCard(signal)}
+      ${renderStrategyCards(signal)}
       <section class="matrix-grid">
         ${renderLevelMatrix(signal)}
         ${renderIntelMatrix(signal)}
@@ -1064,77 +1041,77 @@ function buildSignalConflictText(signal, spotSourceText) {
     };
   }
   return {
-    title: safeText(signal?.engines?.data_coherence?.reason, 'FMP 现价真实，但 Gamma 地图仍为 mock，禁止执行。'),
+    title: safeText(signal?.engines?.data_coherence?.reason, '等待 final_decision 的下一次确认。'),
     items: [
       `Spot 来源：${spotSourceText} ${displaySpot(signal.market_snapshot || {})}`,
-      `执行状态：${signal.execution_constraints?.theta?.executable === true ? 'ready' : 'blocked / not ready'}`
+      `执行状态：${signal.final_decision?.state || 'wait'} / ${signal.final_decision?.position_multiplier ?? 0}x`
     ]
   };
 }
 
 function renderRadarSummary(signal) {
-  const dataQuality = deriveDataQuality(signal);
   const snap = signal.market_snapshot || {};
   const conflictPoints = signal.conflict?.conflict_points || [];
-  const dealerLive = isDealerLive(signal);
-  const levels = displayLevels(signal);
+  const finalDecision = signal.final_decision || {};
+  const wall = signal.uw_wall_diagnostics || {};
+  const levels = {
+    flip: signal.uw_conclusion?.zero_gamma == null ? '--' : fmtInt(signal.uw_conclusion.zero_gamma),
+    callWall: signal.uw_conclusion?.call_wall == null ? '--' : fmtInt(signal.uw_conclusion.call_wall),
+    putWall: signal.uw_conclusion?.put_wall == null ? '--' : fmtInt(signal.uw_conclusion.put_wall),
+    zeroGamma: signal.uw_conclusion?.zero_gamma == null ? '--' : fmtInt(signal.uw_conclusion.zero_gamma)
+  };
   const intel = displayIntel(signal);
-  const projection = signal.projection?.command_summary || {};
-  const thetaStatus = signal?.theta?.status || signal?.dealer_conclusion?.status || 'unavailable';
-  const dealerStatus = signal?.dealer_engine?.status || signal?.dealer_conclusion?.status || 'unavailable';
-  const executionStatus = `${String(signal.command_center?.final_state || 'wait').toUpperCase()} / 0仓`;
+  const thetaStatus = signal?.theta_conclusion?.status || 'disabled';
+  const dealerStatus = signal?.uw_conclusion?.dealer_confirm || signal?.dealer_engine?.status || 'partial';
+  const executionStatus = `${String(finalDecision.state || 'wait').toUpperCase()} / ${finalDecision.position_multiplier ?? 0}x`;
   const spotSourceText = snap.spot_is_real === true ? `${safeText(snap.spot_source, 'fmp')} real` : safeText(snap.spot_source, 'unavailable');
   const guard = buildDataQualityGuardText(signal, spotSourceText);
   const conflict = buildSignalConflictText(signal, spotSourceText);
   const radarSummary = [
     '【Radar 总结】',
-    `当前状态：${String(signal.command_center?.final_state || 'wait').toUpperCase()} / ${signal.command_center?.action || '等确认'}`,
-    '主因：UW 已 live，但 TV 尚未确认结构。',
-    `资金：UW Flow ${signal.uw_conclusion?.flow_bias || 'unavailable'}，机构流偏空，不能单独追空。`,
-    `Dealer：UW ${signal.dealer_engine?.status || 'unavailable'}，墙位已接入，但 Vanna/Charm/Delta 不完整。`,
-    `波动：${signal.volatility_activation?.strength || 'unavailable'}，单腿不放行。`,
-    `暗池：${signal.darkpool_summary?.bias || 'unavailable'}，没有明确支撑/压力。`,
-    '结论：空头候选需要等 TV breakdown_confirmed 或 retest_failed。当前 0 仓。'
+    `当前状态：${String(finalDecision.state || 'wait').toUpperCase()} / ${finalDecision.label || '等确认'}`,
+    `主因：${finalDecision.reason || '--'}`,
+    `等什么：${finalDecision.waiting_for || '--'}`,
+    `禁做：${safeText(finalDecision.do_not_do, '--')}`,
+    `仓位：${finalDecision.position_multiplier ?? 0}x`
   ].join('\n');
   return `
     <section class="radar-layout">
       <article class="radar-card">
         <div class="radar-title">
           <h2>Radar 总结</h2>
-          <span class="tag amber">${escapeHtml(signal.command_center?.action || '等确认')}</span>
+          <span class="tag amber">${escapeHtml(finalDecision.label || '等确认')}</span>
         </div>
         <p class="radar-note">${escapeHtml(radarSummary)}</p>
       </article>
-      ${dataQuality.executable !== true || signal.uw_provider?.status === 'live' ? `
-        <article class="radar-card">
-          <div class="radar-title">
-            <h2>Data Quality Guard</h2>
-            <span class="tag amber">${escapeHtml(guard.title)}</span>
-          </div>
-          <p class="radar-note">${escapeHtml(guard.title)}</p>
-          <ul class="alert-list">
-            ${(guard.items || [
-              `FMP spot：${spotSourceText} ${displaySpot(snap)}`,
-              `ThetaData：EM auxiliary ${thetaStatus}，不阻断 UW 主线`,
-              `UW：${signal?.uw_conclusion?.status || 'unavailable'}`,
-              `Dealer：${dealerStatus}`,
-              `执行状态：${executionStatus}`
-            ]).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
-          </ul>
-        </article>
-      ` : ''}
+      <article class="radar-card">
+        <div class="radar-title">
+          <h2>Source State</h2>
+          <span class="tag amber">${escapeHtml(guard.title)}</span>
+        </div>
+        <p class="radar-note">${escapeHtml(guard.title)}</p>
+        <ul class="alert-list">
+          ${(guard.items || [
+            `FMP spot：${spotSourceText} ${displaySpot(snap)}`,
+            `ThetaData：EM auxiliary ${thetaStatus}，不阻断 UW 主线`,
+            `UW：${signal?.uw_conclusion?.status || 'unavailable'}`,
+            `Dealer：${dealerStatus}`,
+            `执行状态：${executionStatus}`
+          ]).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+        </ul>
+      </article>
       <article class="radar-card">
         <div class="radar-title">
           <h2>Gamma / Dealer Radar</h2>
-          <span class="tag ${chipClassByRisk(dealerLive ? signal.gamma_regime : 'partial')}">${dealerLive ? gammaLabel(signal.gamma_regime) : 'Gamma未知 / partial'}</span>
+          <span class="tag ${chipClassByRisk(signal.uw_conclusion?.gamma_regime)}">${gammaLabel(signal.uw_conclusion?.gamma_regime)}</span>
         </div>
-        <p class="radar-note">${escapeHtml(signal.dealer_engine?.plain_chinese || 'UW Dealer 等待确认。')}</p>
+        <p class="radar-note">${escapeHtml(wall.plain_chinese || signal.uw_conclusion?.plain_chinese || 'UW Dealer 等待确认。')}</p>
         <div class="matrix-list">
-          <div class="matrix-item"><div class="matrix-name">现价位置</div><div class="matrix-value">${escapeHtml(dataQuality.executable !== true ? safeText(signal?.engines?.data_coherence?.reason, '价格地图不一致') : displaySpotContext(snap))}</div><div class="matrix-number">${displaySpot(snap)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Flip</div><div class="matrix-value">${dealerLive ? fmt(snap.distance_to_flip, 1) + ' pt' : '--'}</div><div class="matrix-number">${escapeHtml(levels.flip)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Call Wall</div><div class="matrix-value">${dealerLive ? fmt(snap.distance_to_call_wall, 1) + ' pt' : '--'}</div><div class="matrix-number">${escapeHtml(levels.callWall)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Put Wall</div><div class="matrix-value">${dealerLive ? fmt(snap.distance_to_put_wall, 1) + ' pt' : '--'}</div><div class="matrix-number">${escapeHtml(levels.putWall)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Zero Gamma</div><div class="matrix-value">${dealerLive ? 'Gamma map' : '--'}</div><div class="matrix-number">${escapeHtml(levels.zeroGamma)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">现价位置</div><div class="matrix-value">${escapeHtml(displaySpotContext(snap))}</div><div class="matrix-number">${displaySpot(snap)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Flip</div><div class="matrix-value">UW zero_gamma</div><div class="matrix-number">${escapeHtml(levels.flip)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Call Wall</div><div class="matrix-value">${escapeHtml(wall.raw_fields_used?.call_gamma_field || 'call_gamma')}</div><div class="matrix-number">${escapeHtml(levels.callWall)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Put Wall</div><div class="matrix-value">${escapeHtml(wall.raw_fields_used?.put_gamma_field || 'put_gamma')}</div><div class="matrix-number">${escapeHtml(levels.putWall)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Zero Gamma</div><div class="matrix-value">${escapeHtml(wall.zero_gamma_method || 'running_net_gamma')}</div><div class="matrix-number">${escapeHtml(levels.zeroGamma)}</div></div>
         </div>
       </article>
 
@@ -1154,15 +1131,12 @@ function renderRadarSummary(signal) {
         </div>
         <p class="radar-note">${escapeHtml([
           buildUwRadarSummary(signal),
-          `Coverage：${safeText(Object.keys(signal.uw_endpoint_coverage || {}).map((key) => `${key}:${(signal.uw_endpoint_coverage?.[key]?.ok || []).length}/${(signal.uw_endpoint_coverage?.[key]?.required || []).length}`), '--')}`,
-          `Factors：${safeText(signal.uw_factors?.flow_factors?.direction, 'none')} / ${safeText(signal.uw_factors?.volatility_factors?.iv_rank, '--')}`,
+          `Allowed：${safeText(finalDecision.allowed_setups, '--')}`,
+          `Trace：${safeText((finalDecision.trace || []).map((item) => item.step || item.reason), '--')}`,
+          `Wall diagnostics：${safeText(wall.plain_chinese, '--')}`,
           `Technical：${safeText(signal.technical_engine?.plain_chinese, '--')}`,
           `Projection：${safeText(signal.cross_asset_projection?.plain_chinese, '--')}`,
-          `Allowed：${safeText(signal.allowed_setups_reason, '--')}`,
-          `Blocked：${safeText(signal.blocked_setups_reason, '--')}`,
-          `支持：${safeText(signal.reflection?.supporting_evidence, '--')}`,
-          `冲突：${safeText(signal.reflection?.conflicting_evidence, '--')}`,
-          `缺口：${safeText(signal.reflection?.missing_inputs, '--')}`
+          `Blocked：${safeText(finalDecision.blocked_setups_reason, '--')}`
         ].join('\n'))}</p>
       </article>
 

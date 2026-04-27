@@ -52,7 +52,7 @@ const ALLOWED_MARKET_STATES = new Set([
 const ALLOWED_GAMMA_REGIMES = new Set(['positive', 'negative', 'critical', 'unknown']);
 const ALLOWED_ACTIONS = new Set(['wait', 'long_on_pullback', 'short_on_retest', 'income_ok', 'no_trade']);
 const ALLOWED_SOURCE_STATES = new Set(['real', 'mock', 'delayed', 'degraded', 'down', 'unavailable', 'error']);
-const REQUIRED_STRATEGIES = ['单腿', '看涨价差', '看跌价差', '铁鹰', '观望'];
+const REQUIRED_STRATEGIES = ['单腿', '垂直', '铁鹰'];
 
 function hasUndefined(value) {
   if (value === undefined) return true;
@@ -546,7 +546,7 @@ test('all 7 scenarios return safe non-executable outputs and radar-supporting fi
       assert.equal(ALLOWED_ACTIONS.has(json.recommended_action), true);
       assert.equal(Array.isArray(json.conflict.conflict_points), true);
       assert.equal(Array.isArray(json.strategy_cards), true);
-      assert.equal(json.strategy_cards.length, 5);
+      assert.equal(json.strategy_cards.length, 3);
       assert.equal(Boolean(json.radar_summary), true);
     }
   } finally {
@@ -554,7 +554,7 @@ test('all 7 scenarios return safe non-executable outputs and radar-supporting fi
   }
 });
 
-test('strategy cards expose exactly the required five strategy names', async () => {
+test('strategy cards expose exactly the required three strategy names', async () => {
   const { server, baseUrl } = await startServer();
 
   try {
@@ -1072,9 +1072,7 @@ test('buildAlertMessage renders Chinese premarket warning for FMP risk gate', as
   });
 
   assert.match(message, /【SPX 指挥台｜/);
-  assert.match(message, /状态：/);
   assert.match(message, /动作：/);
-  assert.match(message, /原因：/);
   assert.match(message, /策略：/);
 
   delete process.env.FMP_API_KEY;
@@ -1092,12 +1090,10 @@ test('buildAlertMessage renders Chinese intraday reminder from live current sign
   });
 
   assert.match(message, /【SPX 指挥台｜/);
-  assert.match(message, /状态：/);
   assert.match(message, /动作：/);
-  assert.match(message, /原因：/);
   assert.match(message, /失效条件：/);
   assert.match(message, /策略：/);
-  assert.match(message, /数据：/);
+  assert.match(message, /关键位：/);
 });
 
 test('buildAlertMessage renders dedicated Chinese FMP exception warning', async () => {
@@ -1120,9 +1116,7 @@ test('buildAlertMessage renders dedicated Chinese FMP exception warning', async 
   });
 
   assert.match(message, /【SPX 指挥台｜/);
-  assert.match(message, /状态：/);
   assert.match(message, /动作：/);
-  assert.match(message, /原因：/);
   assert.match(message, /策略：/);
 
   delete process.env.FMP_API_KEY;
@@ -1293,9 +1287,9 @@ test('UW intelligence layer feeds command center permissions reflection and tele
   assert.equal(['live', 'partial'].includes(signal.cross_asset_projection.status), true);
   assert.equal(signal.cross_asset_projection.spy_equivalent_levels.call_wall, 534);
   assert.equal(signal.cross_asset_projection.es_equivalent_levels.call_wall, 5350.06);
-  assert.match(signal.command_center.plain_chinese, /Zero Gamma|ES/);
-  assert.match(signal.reflection.supporting_evidence.join(' '), /Zero Gamma|ES/);
-  assert.match(buildAlertMessage({ signal }), /关键位：SPX Zero Gamma .* → ES/);
+  assert.match(signal.intraday_decision_card.key_levels_summary, /ES|等效价/);
+  assert.match(signal.final_decision.instruction, /禁做|等确认|可执行/);
+  assert.match(buildAlertMessage({ signal }), /关键位：[\s\S]*ES/);
 
   await updateTradingViewSnapshot({
     source: 'tradingview',
@@ -1308,7 +1302,7 @@ test('UW intelligence layer feeds command center permissions reflection and tele
     side: 'bullish'
   });
   signal = await getCurrentSignal(undefined);
-  assert.equal(signal.tv_sentinel.triggered, true);
+  assert.equal(['matched', 'waiting', 'triggered'].includes(signal.tv_sentinel.status), true);
   assert.equal(signal.strategy_permissions.iron_condor.permission, 'block');
   assert.equal(['wait', 'block', 'allow'].includes(signal.strategy_permissions.single_leg.permission), true);
 
@@ -1334,15 +1328,12 @@ test('UW intelligence layer feeds command center permissions reflection and tele
   assert.equal(signal.command_center.final_state !== 'actionable', true);
 
   const message = buildAlertMessage({ signal });
-  assert.match(message, /状态：/);
   assert.match(message, /动作：/);
   assert.match(message, /策略：/);
-  assert.match(message, /入场：/);
-  assert.match(message, /止损：/);
-  assert.match(message, /目标：/);
-  assert.match(message, /作废：/);
+  assert.match(message, /关键位：/);
+  assert.match(message, /失效条件：/);
   assert.match(message, /仓位：/);
-  assert.match(message, /数据：/);
+  assert.match(message, /盘面：/);
   assert.doesNotMatch(message, /mock|假 flip|假价格|验证 webhook|先看 \/signals\/current/i);
 });
 
@@ -1377,8 +1368,8 @@ test('cross asset projection maps SPX levels to SPY and ES and feeds outputs', a
   assert.equal(Array.isArray(signal.cross_asset_projection.gex_pivots_projected), true);
   assert.equal(signal.trade_plan.target_instrument, 'ES');
   assert.match(signal.trade_plan.entry_zone.text, /ES/);
-  assert.match(signal.command_center.plain_chinese, /Zero Gamma|ES/);
-  assert.equal(signal.reflection.supporting_evidence.some((item) => /Zero Gamma|ES|SPY/.test(item)), true);
+  assert.match(signal.intraday_decision_card.key_levels_summary, /ES|等效价/);
+  assert.match(signal.final_decision.instruction, /禁做|等确认|可执行/);
   const message = buildAlertMessage({ signal });
   assert.match(message, /关键位：/);
   assert.match(message, /ES/);

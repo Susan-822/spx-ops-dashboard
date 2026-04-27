@@ -37,7 +37,7 @@ function buildCompactRealtimeAnalysis({
     dealerConclusion.expected_move_upper != null ? 'Expected Move 可展示' : null
   ].filter(Boolean).slice(0, 2);
   const limits = [
-    dealerConclusion.status !== 'live' ? 'ThetaData Gamma 不完整，Dealer 地图不可执行' : null,
+    dealerConclusion.status !== 'live' ? 'UW Dealer 主数据未完整确认，方向计划等待 final_decision' : null,
     uwConclusion.status !== 'live' ? 'UW 资金行为不可用或不可执行' : null,
     tvSentinel.matched_allowed_setup !== true ? 'TV 未确认结构' : null,
     flowPriceDivergence.action !== 'allow' ? flowPriceDivergence.plain_chinese : null
