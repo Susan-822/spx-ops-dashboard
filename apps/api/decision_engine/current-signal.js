@@ -329,21 +329,32 @@ function buildProjectionPrices({ signal = {}, normalized = {}, tradingViewSnapsh
   const tvEsPrice = numberOrNull(tradingViewSnapshot?.es_price ?? tradingViewSnapshot?.futures_price);
   const tvBasis = numberOrNull(tradingViewSnapshot?.basis);
   const tvSpxEquivalent = numberOrNull(tradingViewSnapshot?.spx_equivalent) ?? (tvEsPrice != null && tvBasis != null ? tvEsPrice + tvBasis : null);
+  const externalSpot = numberOrNull(signal.command_inputs?.external_spot?.spot);
+  const marketSpot = numberOrNull(signal.market_snapshot?.spot);
+  const normalizedExternalSpot = numberOrNull(normalized.external_spot);
+  const normalizedSpot = numberOrNull(normalized.spot);
   const spxPrice = numberOrNull(
-    signal.command_inputs?.external_spot?.spot
-    ?? signal.market_snapshot?.spot
+    externalSpot
+    ?? marketSpot
     ?? tvSpxEquivalent
-    ?? normalized.external_spot
-    ?? normalized.spot
+    ?? normalizedExternalSpot
+    ?? normalizedSpot
   );
   const spxLast = signal.command_inputs?.external_spot?.last_updated || normalized.external_spot_last_updated || normalized.spot_last_updated;
   const spyPrice = numberOrNull(tradingViewSnapshot?.spy_price ?? uwApi.uw_factors?.technical_factors?.spy_price ?? uwApi.uw_raw?.spy_price?.data?.price);
   const esPrice = numberOrNull(tradingViewSnapshot?.es_price ?? tradingViewSnapshot?.futures_price ?? signal.es_proxy?.es_price);
   const spxFresh = priceStatus(spxLast || signal.received_at);
+  const spxSource =
+    externalSpot != null ? signal.command_inputs?.external_spot?.source || 'external'
+    : marketSpot != null ? signal.market_snapshot?.spot_source || 'market_snapshot'
+    : tvSpxEquivalent != null ? 'tradingview_spx_equivalent'
+    : normalizedExternalSpot != null ? normalized.external_spot_source || 'normalized_external'
+    : normalizedSpot != null ? normalized.spot_source || 'normalized'
+    : 'unavailable';
   return {
     spx: {
       price: spxPrice,
-      source: signal.command_inputs?.external_spot?.source || normalized.external_spot_source || normalized.spot_source || (tradingViewSnapshot?.spx_equivalent != null ? 'tradingview_spx_equivalent' : 'unavailable'),
+      source: spxSource,
       ...spxFresh
     },
     spy: {
