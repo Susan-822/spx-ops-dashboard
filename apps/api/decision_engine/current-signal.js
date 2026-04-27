@@ -197,7 +197,8 @@ function buildPriceSourcesV2({ signal = {}, projectionPrices = {}, crossAssetPro
     },
     spx_equivalent_from_es: equivalentFromEs,
     basis: {
-      value: crossAssetProjection.basis ?? null,
+      value: projectionPrices.basis?.value ?? crossAssetProjection.basis ?? null,
+      source: projectionPrices.basis?.source ?? 'projection',
       status: esPrice == null ? 'unavailable' : 'live'
     }
   };
@@ -325,10 +326,13 @@ function priceStatus(lastUpdated, now = new Date()) {
 }
 
 function buildProjectionPrices({ signal = {}, normalized = {}, tradingViewSnapshot = null, uwApi = {} } = {}) {
+  const tvEsPrice = numberOrNull(tradingViewSnapshot?.es_price ?? tradingViewSnapshot?.futures_price);
+  const tvBasis = numberOrNull(tradingViewSnapshot?.basis);
+  const tvSpxEquivalent = numberOrNull(tradingViewSnapshot?.spx_equivalent) ?? (tvEsPrice != null && tvBasis != null ? tvEsPrice + tvBasis : null);
   const spxPrice = numberOrNull(
     signal.command_inputs?.external_spot?.spot
     ?? signal.market_snapshot?.spot
-    ?? tradingViewSnapshot?.spx_equivalent
+    ?? tvSpxEquivalent
     ?? normalized.external_spot
     ?? normalized.spot
   );
@@ -353,6 +357,11 @@ function buildProjectionPrices({ signal = {}, normalized = {}, tradingViewSnapsh
       source: esPrice == null ? 'unavailable' : 'tradingview',
       status: esPrice == null ? 'unavailable' : 'live',
       age_seconds: esPrice == null ? null : 0
+    },
+    basis: {
+      value: tvBasis,
+      source: tvBasis == null ? 'unavailable' : 'tradingview',
+      status: tvBasis == null ? 'unavailable' : 'live'
     }
   };
 }
