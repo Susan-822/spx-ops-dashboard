@@ -3,7 +3,7 @@ import { normalizeMockScenario } from '../normalizer/build-normalized-signal.js'
 import { runMasterEngine } from './master-engine.js';
 import { getTradingViewSnapshot } from '../storage/tradingview-snapshot.js';
 import { getThetaSnapshot } from '../storage/theta-snapshot.js';
-import { getUwSourceStatus, readUwSnapshot } from '../state/uwSnapshotStore.js';
+import { readUwProvider } from '../state/uwProvider.js';
 import { getFmpSnapshot } from '../adapters/fmp/index.js';
 import { normalizeUwSummary } from '../../../integrations/unusual-whales/normalizer/uw-summary-normalizer.js';
 import {
@@ -16,6 +16,105 @@ import { runUwConclusionEngine } from './uw-conclusion-engine.js';
 
 function hasFiniteNumber(value) {
   return Number.isFinite(Number(value));
+}
+
+function permissionEntry(permission, reason = '') {
+  return {
+    permission: ['allow', 'wait', 'block'].includes(permission) ? permission : 'block',
+    reason: reason || ''
+  };
+}
+
+function hasActionablePlanFields(tradePlan = {}) {
+  const hasEntry = tradePlan.entry_zone && tradePlan.entry_zone.text && tradePlan.entry_zone.text !== '--';
+  const hasStop = tradePlan.stop_loss && tradePlan.stop_loss.text && tradePlan.stop_loss.text !== '--';
+  const hasTarget = Array.isArray(tradePlan.targets) && tradePlan.targets.some((item) => item.level != null);
+  const hasInvalidation = tradePlan.invalidation && tradePlan.invalidation.text && tradePlan.invalidation.text !== '--';
+  return Boolean(hasEntry && hasStop && hasTarget && hasInvalidation);
+}
+
+function buildStrategyPermissions({ signal = {}, uwProvider = {} } = {}) {
+  const tradePlan = signal.trade_plan || {};
+  const allowedSetups = signal.allowed_setups || {};
+  const tradePermissions = tradePlan.strategy_permission || {};
+  const actionable = tradePlan.status === 'ready' && hasActionablePlanFields(tradePlan);
+  const hardBlocked = tradePlan.status === 'blocked' || signal.command_environment?.state === 'blocked';
+  const sourceLimited =
+    signal.tv_sentinel?.status === 'waiting'
+    || signal.tv_sentinel?.fresh !== true
+    || !['live', 'partial'].includes(signal.dealer_conclusion?.status)
+    || signal.dealer_conclusion?.status !== 'live'
+    || !['live', 'partial'].includes(signal.uw_conclusion?.status)
+    || signal.uw_conclusion?.status !== 'live'
+    || uwProvider.status !== 'live';
+
+  const families = ['single_leg', 'vertical', 'iron_condor'];
+  return families.reduce((acc, family) => {
+    const allowed = allowedSetups?.[family]?.allowed === true;
+    const planPermission = tradePermissions?.[family] || (allowed ? 'allow' : 'block');
+    let permission = planPermission === 'allow' && allowed ? 'allow' : planPermission === 'wait' ? 'wait' : 'block';
+    let reason = allowedSetups?.[family]?.reason || tradePlan.plain_chinese || '';
+
+    if (hardBlocked) {
+      permission = 'block';
+      reason = tradePlan.plain_chinese || signal.command_environment?.reason || 'trade_plan blocked';
+    } else if (!actionable && permission === 'allow') {
+      permission = 'wait';
+      reason = 'entry / stop / target / invalidation 未完全可执行。';
+    }
+
+    if (sourceLimited && permission === 'allow') {
+      permission = 'wait';
+      reason = 'TV / ThetaData / UW 未全部 live，不允许 full allow。';
+    }
+
+    acc[family] = permissionEntry(permission, reason);
+    return acc;
+  }, {});
+}
+
+function buildEsProxy() {
+  return {
+    status: 'unavailable',
+    es_price: null,
+    spx_equivalent: null,
+    basis: null,
+    basis_status: 'unknown',
+    plain_chinese: 'ES proxy 数据不可用，不能用 FMP 偏向替代。'
+  };
+}
+
+function buildSessionEngine() {
+  return {
+    session: 'unknown',
+    handoff_state: 'unavailable',
+    premarket_bias: 'unknown',
+    open_risk: 'unknown',
+    plain_chinese: 'Session engine 尚无实时会话输入。'
+  };
+}
+
+function cleanProductionNotes(notes = [], isMock = false) {
+  const safeNotes = Array.isArray(notes) ? notes.filter((note) => typeof note === 'string') : [];
+  if (isMock) {
+    return safeNotes;
+  }
+  return safeNotes.filter((note) => !/mock master-engine|no real api integration/i.test(note));
+}
+
+function replaceUndefined(value) {
+  if (value === undefined) {
+    return null;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => replaceUndefined(item));
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, replaceUndefined(item)])
+    );
+  }
+  return value;
 }
 
 function isFmpRiskDegraded(snapshot) {
@@ -255,7 +354,11 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   };
   const snapshot = await getTradingViewSnapshot();
   const thetaSnapshot = await getThetaSnapshot();
-  const uwSnapshot = await readUwSnapshot();
+  const {
+    snapshot: uwSnapshot,
+    sourceStatus: uwSourceStatus,
+    provider: uwProvider
+  } = await readUwProvider();
   const fmpSnapshot = await getFmpSnapshot(options.fmp);
   const enrichedScenario = applyTradingViewPriceFallback(
     applyFmpPriceSnapshot(
@@ -275,46 +378,49 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   const signal = runMasterEngine(normalized);
 
   const normalizedUw = normalizeUwSummary(uwSnapshot).uw;
-  const uwSourceStatus = getUwSourceStatus(uwSnapshot);
   const uwConclusion = runUwConclusionEngine({
     normalized: {
       uw: normalizedUw
     }
   });
+  const uwConclusionWithProvider = {
+    ...uwConclusion,
+    provider_mode: uwProvider.mode
+  };
   const uwExecutionConstraint = {
-    available: !['unavailable', 'error'].includes(uwConclusion.status),
-    executable: uwConclusion.status === 'live',
+    available: !['unavailable', 'error'].includes(uwConclusionWithProvider.status),
+    executable: uwConclusionWithProvider.status === 'live',
     reason:
-      uwConclusion.status === 'live'
+      uwConclusionWithProvider.status === 'live'
         ? ''
-        : uwConclusion.status === 'partial'
+        : uwConclusionWithProvider.status === 'partial'
           ? 'UW partial'
-          : uwConclusion.status === 'stale'
+          : uwConclusionWithProvider.status === 'stale'
             ? 'UW stale'
-            : uwConclusion.status === 'error'
+            : uwConclusionWithProvider.status === 'error'
               ? 'UW error'
               : 'UW unavailable'
   };
   const safeUwContext = {
-    flow_bias: uwConclusion.flow_bias || 'unavailable',
-    dark_pool_bias: uwConclusion.darkpool_bias || 'unavailable',
-    dealer_bias: uwConclusion.dealer_crosscheck || 'unavailable',
+    flow_bias: uwConclusionWithProvider.flow_bias || 'unavailable',
+    dark_pool_bias: uwConclusionWithProvider.darkpool_bias || 'unavailable',
+    dealer_bias: uwConclusionWithProvider.dealer_crosscheck || 'unavailable',
     advanced_greeks: signal.uw_context?.advanced_greeks || {}
   };
   const safeRadarSummary = {
     ...(signal.radar_summary || {}),
     order_flow:
-      uwConclusion.status === 'live'
+      uwConclusionWithProvider.status === 'live'
         ? signal.radar_summary?.order_flow
-        : `${uwConclusion.status} / 仅参考，不可执行`,
+        : `${uwConclusionWithProvider.status} / 仅参考，不可执行`,
     dealer:
       signal.dealer_conclusion?.status === 'live'
         ? signal.radar_summary?.dealer
         : `${signal.dealer_conclusion?.status || 'unavailable'} / Gamma 不完整，不可执行`,
     dark_pool:
-      uwConclusion.status === 'live'
+      uwConclusionWithProvider.status === 'live'
         ? signal.radar_summary?.dark_pool
-        : `${uwConclusion.status} / unavailable`,
+        : `${uwConclusionWithProvider.status} / unavailable`,
     plan_alignment: 'blocked / not ready'
   };
 
@@ -344,16 +450,17 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
       ]
     : signal.source_status;
 
-  return {
+  const enrichedSignal = {
     ...signal,
     source_status: sourceStatus,
     uw: normalizedUw,
-    uw_conclusion: uwConclusion,
+    uw_conclusion: uwConclusionWithProvider,
+    uw_provider: uwProvider,
     uw_context: safeUwContext,
     radar_summary: safeRadarSummary,
     signals: {
       ...(signal.signals || {}),
-      uw_signal: uwConclusion.status === 'live' ? signal.signals?.uw_signal : 'unavailable',
+      uw_signal: uwConclusionWithProvider.status === 'live' ? signal.signals?.uw_signal : 'unavailable',
       dealer_behavior: signal.dealer_conclusion?.status === 'live' ? signal.signals?.dealer_behavior : 'unknown'
     },
     projection: {
@@ -379,6 +486,18 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
         text: '等待 TV 结构信号，不提前交易。'
       }],
       ttl_text: signal.trade_plan?.ttl_text || '等待状态无有效交易 TTL。'
-    }
+    },
+    institutional_alert: signal.institutional_entry_alert || {},
+    es_proxy: buildEsProxy(),
+    session_engine: buildSessionEngine(),
+    notes: cleanProductionNotes(signal.notes, signal.is_mock === true)
   };
+
+  return replaceUndefined({
+    ...enrichedSignal,
+    strategy_permissions: buildStrategyPermissions({
+      signal: enrichedSignal,
+      uwProvider
+    })
+  });
 }

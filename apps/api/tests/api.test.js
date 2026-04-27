@@ -21,6 +21,7 @@ const {
 const { getCurrentSignal } = await import('../decision_engine/current-signal.js');
 const { buildAlertMessage } = await import('../alerts/build-alert-message.js');
 const { resetTvSnapshotStoreForTests } = await import('../state/tvSnapshotStore.js');
+const { resetUwSnapshotStoreForTests, clearUwSnapshot } = await import('../state/uwSnapshotStore.js');
 const {
   buildDealerConclusionEngine,
   calculateThetaDealerSummary,
@@ -51,6 +52,15 @@ const ALLOWED_GAMMA_REGIMES = new Set(['positive', 'negative', 'critical', 'unkn
 const ALLOWED_ACTIONS = new Set(['wait', 'long_on_pullback', 'short_on_retest', 'income_ok', 'no_trade']);
 const ALLOWED_SOURCE_STATES = new Set(['real', 'mock', 'delayed', 'degraded', 'down', 'unavailable', 'error']);
 const REQUIRED_STRATEGIES = ['单腿', '看涨价差', '看跌价差', '铁鹰', '观望'];
+
+function hasUndefined(value) {
+  if (value === undefined) return true;
+  if (Array.isArray(value)) return value.some((item) => hasUndefined(item));
+  if (value && typeof value === 'object') {
+    return Object.values(value).some((item) => hasUndefined(item));
+  }
+  return false;
+}
 
 function startServer() {
   clearTradingViewSnapshot();
@@ -91,6 +101,18 @@ async function resetThetaStateEnv(overrides = {}) {
   Object.assign(process.env, overrides);
   await resetThetaSnapshotStoreForTests();
   await clearThetaSnapshot();
+}
+
+async function resetUwStateEnv(overrides = {}) {
+  delete process.env.UW_STATE_STORE;
+  delete process.env.UW_REDIS_URL;
+  delete process.env.UW_SNAPSHOT_FILE;
+  delete process.env.UW_SNAPSHOT_TTL_SECONDS;
+  delete process.env.UW_SNAPSHOT_STALE_SECONDS;
+  process.env.UW_STATE_STORE = 'memory';
+  Object.assign(process.env, overrides);
+  await resetUwSnapshotStoreForTests();
+  await clearUwSnapshot();
 }
 
 function sampleThetaPayload(overrides = {}) {
@@ -1207,6 +1229,7 @@ test('coherent live theta data can remain executable', async () => {
 test('live fallback with theta partial and uw unavailable hides mock projections', async () => {
   await resetThetaStateEnv();
   await resetTvStateEnv();
+  await resetUwStateEnv();
   process.env.FMP_API_KEY = 'test-key';
   await writeThetaSnapshot(sampleThetaPayload({
     secret: undefined,
@@ -1271,8 +1294,28 @@ test('live fallback with theta partial and uw unavailable hides mock projections
   assert.equal(signal.volume_pressure.status, 'unavailable');
   assert.equal(signal.channel_shape.status, 'unavailable');
   assert.equal(signal.volatility_activation.state, 'inactive');
+  assert.equal(signal.volatility_activation.light, 'green');
+  assert.equal(signal.volatility_activation.score > 0, true);
+  assert.equal(signal.volatility_activation.single_leg_permission, 'wait');
+  assert.equal(signal.volatility_activation.vertical_permission, 'wait');
+  assert.equal(signal.volatility_activation.iron_condor_permission, 'block');
   assert.equal(signal.market_sentiment.state, 'mixed');
   assert.equal(signal.institutional_entry_alert.status, 'unavailable');
+  assert.deepEqual(signal.institutional_alert, signal.institutional_entry_alert);
+  assert.equal(signal.strategy_permissions.single_leg.permission, 'block');
+  assert.equal(signal.strategy_permissions.vertical.permission, 'block');
+  assert.equal(signal.strategy_permissions.iron_condor.permission, 'block');
+  assert.equal(signal.uw_provider.mode, 'unavailable');
+  assert.equal(signal.uw_provider.status, 'unavailable');
+  assert.equal(signal.uw_provider.last_update, null);
+  assert.equal(signal.uw_provider.age_seconds, null);
+  assert.equal(signal.uw_provider.is_mock, false);
+  assert.equal(signal.uw_conclusion.provider_mode, 'unavailable');
+  assert.equal(signal.es_proxy.status, 'unavailable');
+  assert.equal(signal.es_proxy.es_price, null);
+  assert.equal(signal.es_proxy.basis_status, 'unknown');
+  assert.equal(signal.session_engine.session, 'unknown');
+  assert.equal(signal.session_engine.handoff_state, 'unavailable');
   assert.equal(signal.uw_dealer_greeks.status, 'unavailable');
   assert.equal(signal.dealer_path.status, 'partial');
   assert.equal(signal.dealer_path.path, 'unknown');
@@ -1299,6 +1342,8 @@ test('live fallback with theta partial and uw unavailable hides mock projections
   assert.match(signal.projection.s_level_summary, /【结论】/);
   assert.match(signal.projection.s_level_summary, /UW：unavailable/);
   assert.equal(signal.trade_plan.stop_loss.text, '--');
+  assert.equal(signal.notes.some((note) => /mock master-engine|no real api integration/i.test(note)), false);
+  assert.equal(hasUndefined(signal), false);
   assert.equal(JSON.stringify(signal).includes('flip 5285'), false);
   assert.equal(JSON.stringify(signal.market_snapshot).includes('5320'), false);
   assert.equal(JSON.stringify(signal.market_snapshot).includes('5225'), false);
