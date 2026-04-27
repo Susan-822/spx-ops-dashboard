@@ -10,6 +10,7 @@ export {
 export {
   applySetupPermissionRules,
   buildConfidenceScore,
-  evaluateReadyGate
+  evaluateReadyGate,
+  reconcileConflictResolver
 } from './setup-permission-rules.js';
 export { buildCommandProjection } from './projection-rules.js';

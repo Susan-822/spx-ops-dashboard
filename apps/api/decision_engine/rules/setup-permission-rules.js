@@ -28,6 +28,59 @@ export function evaluateReadyGate(inputs = {}) {
   };
 }
 
+export function reconcileConflictResolver({
+  conflictResolver = {},
+  commandEnvironment = {},
+  tradePlan = {},
+  dealerConclusion = {}
+} = {}) {
+  const reason = String(commandEnvironment?.reason || commandEnvironment?.plain_chinese || '');
+  const baseConflicts = Array.isArray(conflictResolver.conflicts)
+    ? conflictResolver.conflicts
+    : [];
+
+  if (/价格地图冲突|mock key levels|mock.*key|price_map_conflict/i.test(reason)) {
+    return {
+      ...conflictResolver,
+      has_conflict: true,
+      severity: 'high',
+      action: 'block',
+      conflicts: [...new Set([...baseConflicts, 'price_map_conflict'])],
+      plain_chinese: '价格地图冲突，禁止执行。'
+    };
+  }
+
+  const thetaPartialBlocked =
+    dealerConclusion?.status === 'partial'
+    || /ThetaData dealer partial|Theta partial|dealer partial|partial，不可执行|dealer 不可执行/i.test(reason);
+
+  if (thetaPartialBlocked) {
+    return {
+      ...conflictResolver,
+      has_conflict: false,
+      severity: conflictResolver.severity === 'high' ? 'medium' : conflictResolver.severity || 'low',
+      action: conflictResolver.action === 'block' ? 'block' : 'wait',
+      conflicts: [...new Set([...baseConflicts, 'theta_partial'])],
+      plain_chinese: 'ThetaData partial，Dealer 主源不完整，只能等待。'
+    };
+  }
+
+  if (
+    commandEnvironment?.state === 'blocked'
+    || commandEnvironment?.executable === false
+    || tradePlan?.status === 'blocked'
+  ) {
+    return {
+      ...conflictResolver,
+      action: conflictResolver.action === 'block' ? 'block' : 'wait',
+      conflicts: baseConflicts.length > 0 ? baseConflicts : ['waiting_gate'],
+      plain_chinese: conflictResolver.plain_chinese || '硬门槛未通过，只能等待。'
+    };
+  }
+
+  return conflictResolver;
+}
+
 export function applySetupPermissionRules({
   commandEnvironment = {},
   allowedSetups = {},
