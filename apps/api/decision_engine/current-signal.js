@@ -159,9 +159,14 @@ function buildFmpConclusionV2(signal = {}) {
 }
 
 function buildPriceSourcesV2({ signal = {}, projectionPrices = {}, crossAssetProjection = {} } = {}) {
-  const spxPrice = signal.market_snapshot?.spot_is_real === true
-    ? (projectionPrices.spx?.price ?? signal.market_snapshot?.spot ?? null)
-    : null;
+  const externalSpot = signal.command_inputs?.external_spot || {};
+  const spxPrice = projectionPrices.spx?.source === 'tradingview_spx_equivalent'
+    ? projectionPrices.spx.price
+    : externalSpot.is_real === true && externalSpot.spot != null
+      ? externalSpot.spot
+    : signal.market_snapshot?.spot_is_real === true
+      ? (projectionPrices.spx?.price ?? signal.market_snapshot?.spot ?? null)
+      : null;
   const esPrice = projectionPrices.es?.price ?? null;
   const spyPrice = projectionPrices.spy?.price ?? null;
   const equivalentFromEs = spxPrice != null && esPrice != null
@@ -320,7 +325,13 @@ function priceStatus(lastUpdated, now = new Date()) {
 }
 
 function buildProjectionPrices({ signal = {}, normalized = {}, tradingViewSnapshot = null, uwApi = {} } = {}) {
-  const spxPrice = numberOrNull(signal.command_inputs?.external_spot?.spot ?? signal.market_snapshot?.spot ?? normalized.external_spot ?? normalized.spot);
+  const spxPrice = numberOrNull(
+    signal.command_inputs?.external_spot?.spot
+    ?? signal.market_snapshot?.spot
+    ?? tradingViewSnapshot?.spx_equivalent
+    ?? normalized.external_spot
+    ?? normalized.spot
+  );
   const spxLast = signal.command_inputs?.external_spot?.last_updated || normalized.external_spot_last_updated || normalized.spot_last_updated;
   const spyPrice = numberOrNull(tradingViewSnapshot?.spy_price ?? uwApi.uw_factors?.technical_factors?.spy_price ?? uwApi.uw_raw?.spy_price?.data?.price);
   const esPrice = numberOrNull(tradingViewSnapshot?.es_price ?? tradingViewSnapshot?.futures_price ?? signal.es_proxy?.es_price);
@@ -328,7 +339,7 @@ function buildProjectionPrices({ signal = {}, normalized = {}, tradingViewSnapsh
   return {
     spx: {
       price: spxPrice,
-      source: signal.command_inputs?.external_spot?.source || normalized.external_spot_source || normalized.spot_source || 'unavailable',
+      source: signal.command_inputs?.external_spot?.source || normalized.external_spot_source || normalized.spot_source || (tradingViewSnapshot?.spx_equivalent != null ? 'tradingview_spx_equivalent' : 'unavailable'),
       ...spxFresh
     },
     spy: {
@@ -647,7 +658,8 @@ function applyTradingViewPriceFallback(baseScenario, snapshot) {
     return baseScenario;
   }
 
-  if (!hasFiniteNumber(snapshot.price)) {
+  const snapshotSpot = hasFiniteNumber(snapshot.spx_equivalent) ? Number(snapshot.spx_equivalent) : hasFiniteNumber(snapshot.price) ? Number(snapshot.price) : null;
+  if (!hasFiniteNumber(snapshotSpot)) {
     return baseScenario;
   }
 
@@ -656,13 +668,13 @@ function applyTradingViewPriceFallback(baseScenario, snapshot) {
     ...(baseScenario.scenario_mode === true
       ? {}
       : {
-          spot: Number(snapshot.price),
+          spot: snapshotSpot,
           spot_source: 'tradingview',
           spot_last_updated: snapshot.last_updated || snapshot.received_at || baseScenario.last_updated.tradingview,
           spot_is_real: snapshot.is_mock !== true && snapshot.status !== 'stale'
         }),
-    external_spot: Number(snapshot.price),
-    external_spot_source: 'tradingview',
+    external_spot: snapshotSpot,
+    external_spot_source: hasFiniteNumber(snapshot.spx_equivalent) ? 'tradingview_spx_equivalent' : 'tradingview',
     external_spot_last_updated: snapshot.last_updated || snapshot.received_at || baseScenario.last_updated.tradingview,
     external_spot_is_real: snapshot.is_mock !== true && snapshot.status !== 'stale'
   };
@@ -1421,6 +1433,19 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     uwConclusion: rawNoteV2.uw_conclusion,
     diagnostics: rawNoteV2.uw_wall_diagnostics
   });
+  const finalProjection = buildCrossAssetProjection({
+    prices: priceSourcesV2,
+    spxLevels: {
+      call_wall: keyLevelsV2.call_wall.level,
+      put_wall: keyLevelsV2.put_wall.level,
+      zero_gamma: keyLevelsV2.zero_gamma.level,
+      max_pain: keyLevelsV2.max_pain.level,
+      gex_pivots: keyLevelsV2.gex_pivots,
+      oi_walls: keyLevelsV2.oi_walls,
+      volume_magnets: keyLevelsV2.volume_magnets
+    },
+    targetInstrument: process.env.TARGET_INSTRUMENT || 'ES'
+  });
   const normalizedRawNote = rawNoteV2;
   const finalOutput = {
     ...output,
@@ -1438,6 +1463,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     },
     trade_plan: buildLegacyTradePlanShell(rawNoteV2.final_decision, output.trade_plan, crossAssetProjection),
     key_levels: keyLevelsV2,
+    cross_asset_projection: finalProjection,
     intraday_decision_card: finalCard,
     strategy_cards: rawNoteV2.strategy_cards,
     allowed_setups: rawNoteV2.allowed_setups,

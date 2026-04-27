@@ -1,4 +1,9 @@
 const TRADINGVIEW_EVENT_MAP = Object.freeze({
+  heartbeat: {
+    tv_structure_event: 'waiting',
+    sentinel_signal: 'heartbeat',
+    plain_chinese: 'TradingView heartbeat 更新价格快照。'
+  },
   breakout_confirmed: {
     tv_structure_event: 'breakout_confirmed_pullback_ready',
     sentinel_signal: 'A_long_candidate',

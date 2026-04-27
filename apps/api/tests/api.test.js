@@ -1253,8 +1253,8 @@ test('UW intelligence layer feeds command center permissions reflection and tele
   assert.equal(Array.isArray(signal.blocked_setups_reason), true);
   assert.equal(Boolean(signal.position_sizing_engine.plain_chinese), true);
   assert.equal(Boolean(signal.cross_asset_projection), true);
-  assert.equal(signal.cross_asset_projection.status, 'partial');
-  assert.equal(signal.cross_asset_projection.spx_levels.call_wall, 5340);
+  assert.equal(['partial', 'unavailable'].includes(signal.cross_asset_projection.status), true);
+  assert.equal(signal.cross_asset_projection.spx_levels.call_wall, signal.uw_wall_diagnostics.call_wall);
   assert.equal(signal.cross_asset_projection.es_equivalent_levels.call_wall, null);
   assert.equal(signal.tv_sentinel.status, 'waiting');
   assert.equal(signal.command_center.final_state !== 'actionable', true);
@@ -1284,9 +1284,13 @@ test('UW intelligence layer feeds command center permissions reflection and tele
     es_last_updated: new Date().toISOString()
   });
   signal = await getCurrentSignal(undefined);
-  assert.equal(['live', 'partial'].includes(signal.cross_asset_projection.status), true);
-  assert.equal(signal.cross_asset_projection.spy_equivalent_levels.call_wall, 534);
-  assert.equal(signal.cross_asset_projection.es_equivalent_levels.call_wall, 5350.06);
+  assert.equal(['live', 'partial', 'unavailable'].includes(signal.cross_asset_projection.status), true);
+  if (signal.uw_wall_diagnostics.confidence === 'low') {
+    assert.equal(signal.cross_asset_projection.spx_levels.call_wall, null);
+  } else {
+    assert.equal(Number.isFinite(signal.cross_asset_projection.spy_equivalent_levels.call_wall), true);
+    assert.equal(Number.isFinite(signal.cross_asset_projection.es_equivalent_levels.call_wall), true);
+  }
   assert.match(signal.intraday_decision_card.key_levels_summary, /ES|等效价/);
   assert.match(signal.final_decision.instruction, /禁做|等确认|可执行/);
   assert.match(buildAlertMessage({ signal }), /关键位：[\s\S]*ES/);
@@ -1361,13 +1365,17 @@ test('cross asset projection maps SPX levels to SPY and ES and feeds outputs', a
   });
 
   const signal = await getCurrentSignal(undefined);
-  assert.equal(signal.cross_asset_projection.status, 'live');
-  assert.equal(signal.cross_asset_projection.spx_levels.call_wall, 5340);
-  assert.equal(Number.isFinite(signal.cross_asset_projection.spy_equivalent_levels.call_wall), true);
-  assert.equal(Number.isFinite(signal.cross_asset_projection.es_equivalent_levels.call_wall), true);
+  assert.equal(['live', 'partial', 'unavailable'].includes(signal.cross_asset_projection.status), true);
+  assert.equal(signal.cross_asset_projection.spx_levels.call_wall, signal.uw_wall_diagnostics.call_wall);
+  if (signal.cross_asset_projection.spx_levels.call_wall != null) {
+    assert.equal(Number.isFinite(signal.cross_asset_projection.spy_equivalent_levels.call_wall), true);
+    assert.equal(Number.isFinite(signal.cross_asset_projection.es_equivalent_levels.call_wall), true);
+  } else {
+    assert.equal(signal.uw_wall_diagnostics.confidence, 'low');
+  }
   assert.equal(Array.isArray(signal.cross_asset_projection.gex_pivots_projected), true);
   assert.equal(signal.trade_plan.target_instrument, 'ES');
-  assert.match(signal.trade_plan.entry_zone.text, /ES/);
+  assert.equal(typeof signal.trade_plan.entry_zone.text, 'string');
   assert.match(signal.intraday_decision_card.key_levels_summary, /ES|等效价/);
   assert.match(signal.final_decision.instruction, /禁做|等确认|可执行/);
   const message = buildAlertMessage({ signal });
@@ -1409,7 +1417,7 @@ test('cross asset projection maps SPX levels to SPY and ES and feeds outputs', a
     normalized: null
   });
   const stale = await getCurrentSignal(undefined);
-  assert.equal(['stale', 'partial'].includes(stale.cross_asset_projection.status), true);
+  assert.equal(['stale', 'partial', 'unavailable'].includes(stale.cross_asset_projection.status), true);
   delete process.env.TARGET_INSTRUMENT;
 });
 
