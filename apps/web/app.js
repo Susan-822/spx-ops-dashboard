@@ -121,7 +121,7 @@ function displaySpot(snapshot = {}) {
 
 function displaySpotContext(snapshot = {}) {
   if (snapshot?.spot_is_real === true) {
-    return `FMP · ${minutesAgo(snapshot.spot_last_updated)}`;
+    return `FMP real · ${minutesAgo(snapshot.spot_last_updated)}`;
   }
   if (snapshot?.spot_source === 'fmp') {
     return 'FMP unavailable';
@@ -224,6 +224,92 @@ function dealerLabel(value) {
     hedge: '对冲为主',
     unclear: '不清楚'
   }[value] || value || '不清楚';
+}
+
+function thetaStatus(signal = {}) {
+  return signal?.dealer_conclusion?.status || signal?.theta?.status || 'unavailable';
+}
+
+function thetaIsLive(signal = {}) {
+  return thetaStatus(signal) === 'live';
+}
+
+function thetaLevel(signal, value) {
+  return thetaIsLive(signal) ? fmtInt(value) : '--';
+}
+
+function thetaLevelNote(signal, fallback) {
+  if (thetaIsLive(signal)) return fallback;
+  if (thetaStatus(signal) === 'partial') return 'Theta partial / 仅参考 / 不可执行';
+  return 'Theta unavailable / 不可执行';
+}
+
+function uwSafeValue(signal, field) {
+  const status = signal?.uw_conclusion?.status || signal?.uw?.status || 'unavailable';
+  if (status === 'live') {
+    if (field === 'flow') return flowLabel(signal.uw_conclusion?.flow_bias || signal.uw_context?.flow_bias);
+    if (field === 'darkpool') return darkPoolLabel(signal.uw_conclusion?.darkpool_bias || signal.uw_context?.dark_pool_bias);
+    if (field === 'dealer') return dealerLabel(signal.uw_conclusion?.dealer_crosscheck || signal.uw_context?.dealer_bias);
+  }
+  if (status === 'partial') return 'partial / 仅参考，不可执行';
+  return 'unavailable';
+}
+
+function thetaDecisionText(signal) {
+  if (thetaStatus(signal) === 'partial') {
+    return 'partial：期权链/OI/IV 已接入，Gamma 不完整，不可执行';
+  }
+  if (thetaStatus(signal) === 'live') {
+    return signal.signals?.theta_signal || gammaLabel(signal.gamma_regime);
+  }
+  return 'unavailable';
+}
+
+function dealerDecisionText(signal) {
+  if (!thetaIsLive(signal)) return thetaStatus(signal);
+  return dealerLabel(signal.uw_context?.dealer_bias || signal.signals?.dealer_behavior);
+}
+
+function isThetaLive(signal = {}) {
+  return thetaIsLive(signal);
+}
+
+function isDealerLive(signal = {}) {
+  return thetaIsLive(signal) && signal?.dealer_conclusion?.status === 'live';
+}
+
+function thetaPartialNote(signal) {
+  return thetaLevelNote(signal, 'Theta live');
+}
+
+function displayLevels(signal = {}) {
+  const dealer = signal.dealer_conclusion || {};
+  return {
+    flip: '--',
+    callWall: thetaLevel(signal, dealer.call_wall),
+    putWall: thetaLevel(signal, dealer.put_wall),
+    maxPain: thetaLevel(signal, dealer.max_pain),
+    zeroGamma: thetaLevel(signal, dealer.zero_gamma)
+  };
+}
+
+function displayIntel(signal = {}) {
+  return {
+    theta: thetaDecisionText(signal),
+    uwFlow: uwSafeValue(signal, 'flow'),
+    darkPool: uwSafeValue(signal, 'darkpool'),
+    dealer: dealerDecisionText(signal)
+  };
+}
+
+function spotSourceText(snapshot = {}) {
+  if (snapshot.spot_is_real === true && snapshot.spot_source === 'fmp') {
+    return 'FMP real';
+  }
+  if (snapshot.spot_source === 'fmp') {
+    return 'FMP unavailable';
+  }
+  return 'Spot unavailable';
 }
 
 function eventRiskLabel(value) {
@@ -607,12 +693,17 @@ function renderStrategyCards(signal) {
 function renderLevelMatrix(signal) {
   const dataQuality = deriveDataQuality(signal);
   const snap = signal.market_snapshot || {};
+  const keyLevelsLive = isThetaLive(signal) && isDealerLive(signal);
+  const levelValue = (value) => keyLevelsLive ? fmtInt(value) : '--';
+  const levelNote = (distance, fallback = '数据未 live / 不可交易') => keyLevelsLive && dataQuality.executable === true
+    ? `距离 ${fmt(distance, 1)} pt`
+    : fallback;
   const items = [
-    ['SPX', displaySpot(snap), snap.spot_is_real ? `当前现价 · ${snap.spot_source || 'fmp'}` : '当前现价 unavailable'],
-    ['Flip', fmtInt(snap.flip_level), dataQuality.executable !== true ? '数据冲突 / 不可交易' : `距离 ${fmt(snap.distance_to_flip, 1)} pt`],
-    ['Call Wall', fmtInt(snap.call_wall), dataQuality.executable !== true ? '数据冲突 / 不可交易' : `距离 ${fmt(snap.distance_to_call_wall, 1)} pt`],
-    ['Put Wall', fmtInt(snap.put_wall), dataQuality.executable !== true ? '数据冲突 / 不可交易' : `距离 ${fmt(snap.distance_to_put_wall, 1)} pt`],
-    ['Max Pain', fmtInt(snap.max_pain), '中轴参考'],
+    ['SPX', displaySpot(snap), spotSourceText(snap)],
+    ['Flip', levelValue(snap.flip_level), levelNote(snap.distance_to_flip)],
+    ['Call Wall', levelValue(snap.call_wall), levelNote(snap.distance_to_call_wall, thetaPartialNote(signal))],
+    ['Put Wall', levelValue(snap.put_wall), levelNote(snap.distance_to_put_wall, thetaPartialNote(signal))],
+    ['Max Pain', levelValue(snap.max_pain), keyLevelsLive ? '中轴参考' : thetaPartialNote(signal)],
     ['Confidence', fmtInt(signal.confidence_score), '指令可信度']
   ];
   return `
@@ -675,6 +766,13 @@ function renderRadarSummary(signal) {
   const dataQuality = deriveDataQuality(signal);
   const snap = signal.market_snapshot || {};
   const conflictPoints = signal.conflict?.conflict_points || [];
+  const dealerLive = isDealerLive(signal);
+  const levels = displayLevels(signal);
+  const intel = displayIntel(signal);
+  const thetaStatus = signal?.theta?.status || signal?.dealer_conclusion?.status || 'unavailable';
+  const dealerStatus = signal?.dealer_conclusion?.status || 'unavailable';
+  const executionStatus = signal?.execution_constraints?.theta?.executable === true ? 'ready' : 'blocked / not ready';
+  const spotSourceText = snap.spot_is_real === true ? `${safeText(snap.spot_source, 'fmp')} real` : safeText(snap.spot_source, 'unavailable');
   return `
     <section class="radar-layout">
       ${dataQuality.executable !== true ? `
@@ -685,36 +783,38 @@ function renderRadarSummary(signal) {
           </div>
           <p class="radar-note">${escapeHtml(safeText(signal?.engines?.data_coherence?.reason, '价格地图不一致，禁止执行。'))}</p>
           <ul class="alert-list">
-            <li>Spot 来源：${escapeHtml(signal?.engines?.data_coherence?.spot_source || snap.spot_source || '--')} ${escapeHtml(displaySpot(snap))}</li>
-            <li>Gamma 来源：${escapeHtml(signal?.engines?.data_coherence?.map_source || '--')}</li>
-            <li>结论：价格地图不一致，禁止执行</li>
-            <li>策略目标：全部禁用</li>
+            <li>FMP spot：${escapeHtml(spotSourceText)} ${escapeHtml(displaySpot(snap))}</li>
+            <li>ThetaData：${escapeHtml(thetaStatus)}</li>
+            <li>UW：${escapeHtml(signal?.uw_conclusion?.status || 'unavailable')}</li>
+            <li>Dealer：${escapeHtml(dealerStatus)}</li>
+            <li>执行状态：${escapeHtml(executionStatus)}</li>
           </ul>
         </article>
       ` : ''}
       <article class="radar-card">
         <div class="radar-title">
           <h2>Gamma / Dealer Radar</h2>
-          <span class="tag ${chipClassByRisk(signal.gamma_regime)}">${gammaLabel(signal.gamma_regime)}</span>
+          <span class="tag ${chipClassByRisk(dealerLive ? signal.gamma_regime : 'partial')}">${dealerLive ? gammaLabel(signal.gamma_regime) : 'Gamma未知 / partial'}</span>
         </div>
         <p class="radar-note">${escapeHtml(dataQuality.executable !== true ? safeText(signal?.dealer_conclusion?.plain_chinese, safeText(signal?.engines?.data_coherence?.reason, '价格地图不一致，禁止执行。')) : safeText(signal.radar_summary?.dealer, safeText(signal.plain_language?.dealer_behavior, '等待 dealer 行为确认。')))}</p>
         <div class="matrix-list">
           <div class="matrix-item"><div class="matrix-name">现价位置</div><div class="matrix-value">${escapeHtml(dataQuality.executable !== true ? safeText(signal?.engines?.data_coherence?.reason, '价格地图不一致') : displaySpotContext(snap))}</div><div class="matrix-number">${displaySpot(snap)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Flip</div><div class="matrix-value">${dataQuality.executable !== true ? '--' : fmt(snap.distance_to_flip, 1) + ' pt'}</div><div class="matrix-number">${fmtInt(snap.flip_level)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Call Wall</div><div class="matrix-value">${dataQuality.executable !== true ? '--' : fmt(snap.distance_to_call_wall, 1) + ' pt'}</div><div class="matrix-number">${fmtInt(snap.call_wall)}</div></div>
-          <div class="matrix-item"><div class="matrix-name">Put Wall</div><div class="matrix-value">${dataQuality.executable !== true ? '--' : fmt(snap.distance_to_put_wall, 1) + ' pt'}</div><div class="matrix-number">${fmtInt(snap.put_wall)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Flip</div><div class="matrix-value">${dealerLive ? fmt(snap.distance_to_flip, 1) + ' pt' : '--'}</div><div class="matrix-number">${escapeHtml(levels.flip)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Call Wall</div><div class="matrix-value">${dealerLive ? fmt(snap.distance_to_call_wall, 1) + ' pt' : '--'}</div><div class="matrix-number">${escapeHtml(levels.callWall)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Put Wall</div><div class="matrix-value">${dealerLive ? fmt(snap.distance_to_put_wall, 1) + ' pt' : '--'}</div><div class="matrix-number">${escapeHtml(levels.putWall)}</div></div>
+          <div class="matrix-item"><div class="matrix-name">Zero Gamma</div><div class="matrix-value">${dealerLive ? 'Gamma map' : '--'}</div><div class="matrix-number">${escapeHtml(levels.zeroGamma)}</div></div>
         </div>
       </article>
 
       <article class="radar-card">
         <div class="radar-title">
           <h2>Flow / UW Radar</h2>
-          <span class="tag violet">${dealerLabel(signal.uw_context?.dealer_bias)}</span>
+          <span class="tag violet">${escapeHtml(intel.dealer)}</span>
         </div>
         <p class="radar-note">${escapeHtml(safeText(signal.radar_summary?.order_flow, 'UW 只作为辅助情报，不直接替代价格确认。'))}</p>
         <div class="tag-row">
-          <span class="tag blue">Flow ${flowLabel(signal.uw_context?.flow_bias)}</span>
-          <span class="tag green">Dark Pool ${darkPoolLabel(signal.uw_context?.dark_pool_bias)}</span>
+          <span class="tag blue">Flow ${escapeHtml(intel.uwFlow)}</span>
+          <span class="tag green">Dark Pool ${escapeHtml(intel.darkPool)}</span>
           <span class="tag amber">Theta Weight ${fmtInt((signal.weights?.theta || 0) * 100)}%</span>
           <span class="tag violet">UW Weight ${fmtInt((signal.weights?.uw || 0) * 100)}%</span>
         </div>
@@ -741,10 +841,10 @@ function renderRadarSummary(signal) {
         <ul class="alert-list">
           ${((dataQuality.executable !== true
             ? [
-                `Spot 来源：${signal?.engines?.data_coherence?.spot_source || snap.spot_source || '--'} ${displaySpot(snap)}`,
-                `Gamma 来源：${signal?.engines?.data_coherence?.map_source || '--'} ${fmtInt(snap.flip_level)}`,
-                '结论：价格地图不一致，禁止执行',
-                '策略目标：全部禁用'
+                `Spot 来源：${spotSourceText} ${displaySpot(snap)}`,
+                `ThetaData：${thetaStatus}`,
+                `Dealer：${dealerStatus}`,
+                `执行状态：${executionStatus}`
               ]
             : (conflictPoints.length ? conflictPoints : ['没有强冲突，但仍必须等触发。']))).map((item) => `<li>${escapeHtml(safeText(item))}</li>`).join('')}
         </ul>

@@ -162,6 +162,30 @@ function buildStrategyCards({ normalized, action, marketRegime, dataCoherence, c
 }
 
 function buildRadarSummary({ normalized, priceStructure, uwFlow, eventRisk, action, gammaWall }) {
+  const thetaLive = normalized.theta?.status === 'live' && normalized.theta_dealer_conclusion?.status === 'live';
+  const uwStatus = normalized.uw?.status || 'unavailable';
+  const uwUsable = uwStatus === 'live';
+  if (!thetaLive || !uwUsable) {
+    return {
+      order_flow: `FMP spot: ${normalized.spot_source === 'fmp' && normalized.spot_is_real ? 'real' : 'unavailable'}；ThetaData: ${normalized.theta?.status || 'unavailable'}；UW: ${uwStatus}；执行状态：blocked / not ready`,
+      dealer: `Dealer: ${normalized.theta_dealer_conclusion?.status || 'unavailable'}；Gamma ${normalized.theta_dealer_conclusion?.gamma_regime || 'unknown'}；Theta partial / 仅参考 / 不可执行`,
+      dark_pool: {
+        support_below: 'unavailable',
+        resistance_above: 'unavailable',
+        key_levels: [],
+        distance_to_spot: [],
+        dark_pool_bias: 'unavailable',
+        explanation: 'UW partial / unavailable，仅参考，不可执行。'
+      },
+      plan_alignment: {
+        status: 'blocked / not ready',
+        support_reason: 'ThetaData 或 UW 不完整，不放行。',
+        conflict_reason: 'partial/unavailable sources are display-only.',
+        effect_on_action: '不可执行。'
+      }
+    };
+  }
+
   const callBuy = normalized.uw_flow_bias === 'bullish' ? 4.2 : 1.6;
   const putBuy = normalized.theta_signal === 'bearish_pressure' ? 4.4 : 1.8;
   const zeroDteCallBuy = normalized.tv_structure_event.includes('breakout') ? 2.1 : 0.8;
@@ -324,10 +348,10 @@ export function runMasterEngine(normalized) {
   });
   const externalSpotInput = {
     source:
-      (normalized.spot_source && normalized.spot != null
-        ? normalized.spot_source
-        : normalized.external_spot_source && normalized.external_spot_source !== 'unavailable'
-          ? normalized.external_spot_source
+      (normalized.external_spot_source && normalized.external_spot_source !== 'unavailable'
+        ? normalized.external_spot_source
+        : normalized.spot_source && normalized.spot != null
+          ? normalized.spot_source
           : 'unavailable'),
     price: normalized.external_spot ?? normalized.spot ?? null,
     last_updated: normalized.external_spot_last_updated || normalized.spot_last_updated || null,
@@ -424,6 +448,27 @@ export function runMasterEngine(normalized) {
   const thetaExecutionConstraint =
     normalized.theta_execution_constraint
     || deriveThetaExecutionConstraint(normalized.theta_dealer_conclusion);
+  const displayKeyLevels = thetaExecutionConstraint.executable === true
+    ? {
+        flip_level: normalized.flip_level,
+        call_wall: normalized.call_wall,
+        put_wall: normalized.put_wall,
+        max_pain: normalized.max_pain,
+        distance_to_flip: displaySpotSnapshot.distance_to_flip,
+        distance_to_call_wall: displaySpotSnapshot.distance_to_call_wall,
+        distance_to_put_wall: displaySpotSnapshot.distance_to_put_wall,
+        spot_position: displaySpotSnapshot.spot_position
+      }
+    : {
+        flip_level: null,
+        call_wall: null,
+        put_wall: null,
+        max_pain: null,
+        distance_to_flip: null,
+        distance_to_call_wall: null,
+        distance_to_put_wall: null,
+        spot_position: 'unknown'
+      };
   return createNormalizedSignal({
     timestamp: normalized.timestamp,
     data_timestamp: normalized.data_timestamp,
@@ -448,14 +493,7 @@ export function runMasterEngine(normalized) {
       spot_is_real: displaySpotSnapshot.spot_is_real,
       day_change: displaySpotSnapshot.day_change,
       day_change_percent: displaySpotSnapshot.day_change_percent,
-      flip_level: normalized.flip_level,
-      call_wall: normalized.call_wall,
-      put_wall: normalized.put_wall,
-      max_pain: normalized.max_pain,
-      distance_to_flip: displaySpotSnapshot.distance_to_flip,
-      distance_to_call_wall: displaySpotSnapshot.distance_to_call_wall,
-      distance_to_put_wall: displaySpotSnapshot.distance_to_put_wall,
-      spot_position: displaySpotSnapshot.spot_position
+      ...displayKeyLevels
     },
     uw_context: {
       flow_bias: normalized.uw_flow_bias,

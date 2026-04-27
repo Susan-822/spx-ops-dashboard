@@ -1,0 +1,4 @@
+node_modules/
+creds.txt
+*.pyc
+__pycache__/

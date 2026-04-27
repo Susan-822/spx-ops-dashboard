@@ -195,13 +195,11 @@ function applyThetaSnapshot(baseScenario, snapshot) {
   });
   const executionConstraint = deriveThetaExecutionConstraint(dealerConclusion);
   const thetaSourceStatus = mapThetaSnapshotToSourceStatus(snapshot);
-  const callWall = dealerConclusion.call_wall ?? baseScenario.call_wall;
-  const putWall = dealerConclusion.put_wall ?? baseScenario.put_wall;
-  const maxPain = dealerConclusion.max_pain ?? baseScenario.max_pain;
-  const gammaRegime = dealerConclusion.gamma_regime !== 'unknown'
-    ? dealerConclusion.gamma_regime
-    : baseScenario.gamma_regime;
-  const thetaSignal = deriveThetaSignalFromSnapshot(snapshot) || baseScenario.theta_signal;
+  const callWall = dealerConclusion.call_wall ?? null;
+  const putWall = dealerConclusion.put_wall ?? null;
+  const maxPain = dealerConclusion.max_pain ?? null;
+  const gammaRegime = dealerConclusion.gamma_regime || 'unknown';
+  const thetaSignal = deriveThetaSignalFromSnapshot(snapshot);
   const lastUpdate = snapshot.last_update || snapshot.last_updated || baseScenario.last_updated.theta;
   const shouldAdoptThetaSpot =
     baseScenario.scenario_mode !== true
@@ -296,6 +294,28 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
               ? 'UW error'
               : 'UW unavailable'
   };
+  const safeUwContext = {
+    flow_bias: uwConclusion.flow_bias || 'unavailable',
+    dark_pool_bias: uwConclusion.darkpool_bias || 'unavailable',
+    dealer_bias: uwConclusion.dealer_crosscheck || 'unavailable',
+    advanced_greeks: signal.uw_context?.advanced_greeks || {}
+  };
+  const safeRadarSummary = {
+    ...(signal.radar_summary || {}),
+    order_flow:
+      uwConclusion.status === 'live'
+        ? signal.radar_summary?.order_flow
+        : `${uwConclusion.status} / 仅参考，不可执行`,
+    dealer:
+      signal.dealer_conclusion?.status === 'live'
+        ? signal.radar_summary?.dealer
+        : `${signal.dealer_conclusion?.status || 'unavailable'} / Gamma 不完整，不可执行`,
+    dark_pool:
+      uwConclusion.status === 'live'
+        ? signal.radar_summary?.dark_pool
+        : `${uwConclusion.status} / unavailable`,
+    plan_alignment: 'blocked / not ready'
+  };
 
   const uwLastUpdate = uwSourceStatus.last_update || signal.received_at || new Date().toISOString();
   const sourceStatus = Array.isArray(signal.source_status)
@@ -328,6 +348,23 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     source_status: sourceStatus,
     uw: normalizedUw,
     uw_conclusion: uwConclusion,
+    uw_context: safeUwContext,
+    radar_summary: safeRadarSummary,
+    signals: {
+      ...(signal.signals || {}),
+      uw_signal: uwConclusion.status === 'live' ? signal.signals?.uw_signal : 'unavailable',
+      dealer_behavior: signal.dealer_conclusion?.status === 'live' ? signal.signals?.dealer_behavior : 'unknown'
+    },
+    projection: {
+      ...(signal.projection || {}),
+      dealer_summary: {
+        ...(signal.projection?.dealer_summary || {}),
+        call_wall: signal.dealer_conclusion?.status === 'live' ? signal.projection?.dealer_summary?.call_wall : null,
+        put_wall: signal.dealer_conclusion?.status === 'live' ? signal.projection?.dealer_summary?.put_wall : null,
+        max_pain: signal.dealer_conclusion?.status === 'live' ? signal.projection?.dealer_summary?.max_pain : null,
+        zero_gamma: signal.dealer_conclusion?.status === 'live' ? signal.projection?.dealer_summary?.zero_gamma : null
+      }
+    },
     execution_constraints: {
       ...(signal.execution_constraints || {}),
       uw: uwExecutionConstraint
