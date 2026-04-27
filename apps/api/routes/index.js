@@ -32,6 +32,28 @@ function getBuildMetadata() {
   };
 }
 
+function safeUwProviderMode(value) {
+  if (!value) {
+    return null;
+  }
+  return String(value).toLowerCase() === 'api' ? 'api' : 'unavailable';
+}
+
+function buildEnvStatus() {
+  const uwApiKey = process.env.UW_API_KEY || '';
+  return {
+    uw_provider_mode: safeUwProviderMode(process.env.UW_PROVIDER_MODE),
+    has_uw_api_key: uwApiKey.length > 0,
+    uw_api_key_length: uwApiKey.length,
+    uw_api_base_url: process.env.UW_API_BASE_URL || null,
+    uw_stale_seconds: process.env.UW_STALE_SECONDS || null,
+    uw_poll_interval_seconds: process.env.UW_POLL_INTERVAL_SECONDS || null,
+    uw_client_api_id: process.env.UW_CLIENT_API_ID || null,
+    node_env: process.env.NODE_ENV || '',
+    build_sha: getBuildMetadata().build_sha
+  };
+}
+
 const MAX_THETA_INGEST_BYTES = 64 * 1024;
 
 function hasForbiddenThetaFields(payload) {
@@ -147,6 +169,10 @@ export async function handleApiRoute(req, res) {
       is_mock: true,
       ...getBuildMetadata()
     });
+  }
+
+  if (req.method === 'GET' && url.pathname === '/debug/env-status') {
+    return sendJson(res, 200, buildEnvStatus());
   }
 
   if (req.method === 'GET' && url.pathname === '/sources/status') {
