@@ -1145,7 +1145,6 @@ test('live mode TV sentinel remains gated by command environment safety', async 
   await resetThetaStateEnv();
   await seedDefaultThetaLiveSnapshot();
   await resetTvStateEnv();
-  const { updateTradingViewSnapshot } = await import('../storage/tradingview-snapshot.js');
   const triggerTime = new Date().toISOString();
   await updateTradingViewSnapshot({
     source: 'tradingview',
@@ -1258,6 +1257,10 @@ test('UW intelligence layer feeds command center permissions reflection and tele
   assert.equal(Array.isArray(signal.allowed_setups_reason), true);
   assert.equal(Array.isArray(signal.blocked_setups_reason), true);
   assert.equal(Boolean(signal.position_sizing_engine.plain_chinese), true);
+  assert.equal(Boolean(signal.cross_asset_projection), true);
+  assert.equal(signal.cross_asset_projection.status, 'partial');
+  assert.equal(signal.cross_asset_projection.spx_levels.call_wall, 5340);
+  assert.equal(signal.cross_asset_projection.es_equivalent_levels.call_wall, null);
   assert.equal(signal.tv_sentinel.status, 'waiting');
   assert.equal(signal.command_center.final_state !== 'actionable', true);
   assert.equal(signal.strategy_permissions.iron_condor.permission, 'block');
@@ -1270,7 +1273,29 @@ test('UW intelligence layer feeds command center permissions reflection and tele
   assert.equal(hasUndefined(signal), false);
   assert.equal(signal.uw_provider.is_mock, false);
 
-  const { updateTradingViewSnapshot } = await import('../storage/tradingview-snapshot.js');
+  await updateTradingViewSnapshot({
+    source: 'tradingview',
+    symbol: 'SPX',
+    timeframe: '1m',
+    event_type: 'pullback_holding',
+    price: 5310,
+    external_spot: 5310,
+    trigger_time: new Date().toISOString(),
+    level: 5298,
+    side: 'bullish',
+    spy_price: 531,
+    spy_last_updated: new Date().toISOString(),
+    es_price: 5320,
+    es_last_updated: new Date().toISOString()
+  });
+  signal = await getCurrentSignal(undefined);
+  assert.equal(['live', 'partial'].includes(signal.cross_asset_projection.status), true);
+  assert.equal(signal.cross_asset_projection.spy_equivalent_levels.call_wall, 534);
+  assert.equal(signal.cross_asset_projection.es_equivalent_levels.call_wall, 5350.06);
+  assert.match(signal.command_center.plain_chinese, /Zero Gamma|ES/);
+  assert.match(signal.reflection.supporting_evidence.join(' '), /Zero Gamma|ES/);
+  assert.match(buildAlertMessage({ signal }), /关键位：SPX Zero Gamma .* → ES/);
+
   await updateTradingViewSnapshot({
     source: 'tradingview',
     symbol: 'SPX',
@@ -1318,6 +1343,82 @@ test('UW intelligence layer feeds command center permissions reflection and tele
   assert.match(message, /仓位：/);
   assert.match(message, /数据：/);
   assert.doesNotMatch(message, /mock|假 flip|假价格|验证 webhook|先看 \/signals\/current/i);
+});
+
+test('cross asset projection maps SPX levels to SPY and ES and feeds outputs', async () => {
+  await resetUwApiStateEnv({ UW_PROVIDER_MODE: 'api', UW_API_KEY: 'live-key', UW_STALE_SECONDS: '300' });
+  await resetThetaStateEnv();
+  await resetTvStateEnv();
+  process.env.TARGET_INSTRUMENT = 'ES';
+  await seedDefaultThetaLiveSnapshot();
+  await fetchUwApiSnapshot({ fetchImpl: async (url) => uwApiResponseForUrl(String(url)) });
+  await updateTradingViewSnapshot({
+    source: 'tradingview',
+    symbol: 'SPX',
+    timeframe: '1m',
+    event_type: 'pullback_holding',
+    price: 5310,
+    external_spot: 5310,
+    spy_last_updated: new Date().toISOString(),
+    es_last_updated: new Date().toISOString(),
+    es_price: 5305,
+    spy_price: 530,
+    trigger_time: new Date().toISOString(),
+    level: 5298,
+    side: 'bullish'
+  });
+
+  const signal = await getCurrentSignal(undefined);
+  assert.equal(signal.cross_asset_projection.status, 'live');
+  assert.equal(signal.cross_asset_projection.spx_levels.call_wall, 5340);
+  assert.equal(Number.isFinite(signal.cross_asset_projection.spy_equivalent_levels.call_wall), true);
+  assert.equal(Number.isFinite(signal.cross_asset_projection.es_equivalent_levels.call_wall), true);
+  assert.equal(Array.isArray(signal.cross_asset_projection.gex_pivots_projected), true);
+  assert.equal(signal.trade_plan.target_instrument, 'ES');
+  assert.match(signal.trade_plan.entry_zone.text, /ES/);
+  assert.match(signal.command_center.plain_chinese, /Zero Gamma|ES/);
+  assert.equal(signal.reflection.supporting_evidence.some((item) => /Zero Gamma|ES|SPY/.test(item)), true);
+  const message = buildAlertMessage({ signal });
+  assert.match(message, /关键位：/);
+  assert.match(message, /ES/);
+  assert.equal(hasUndefined(signal), false);
+
+  await resetTvStateEnv();
+  await updateTradingViewSnapshot({
+    source: 'tradingview',
+    symbol: 'SPX',
+    timeframe: '1m',
+    event_type: 'pullback_holding',
+    price: 5310,
+    trigger_time: new Date().toISOString(),
+    level: 5298,
+    side: 'bullish'
+  });
+  const partial = await getCurrentSignal(undefined);
+  assert.equal(partial.cross_asset_projection.status, 'partial');
+  assert.equal(partial.cross_asset_projection.es_equivalent_levels.call_wall, null);
+  assert.doesNotMatch(partial.trade_plan.entry_zone.text, /^ES 回踩 \d/);
+
+  await writeUwApiSnapshot({
+    source: 'unusual_whales_api',
+    last_update: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+    status: 'live',
+    provider: {
+      mode: 'api',
+      status: 'live',
+      last_update: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+      endpoints_ok: ['greek_exposure'],
+      endpoints_failed: [],
+      endpoint_coverage: {},
+      is_mock: false,
+      rate_limit: { daily_limit: null, per_minute_limit: null, remaining: null }
+    },
+    raw: {},
+    normalized: null
+  });
+  const stale = await getCurrentSignal(undefined);
+  assert.equal(['stale', 'partial'].includes(stale.cross_asset_projection.status), true);
+  delete process.env.TARGET_INSTRUMENT;
 });
 
 test('coherence guard marks distant real spot vs gamma map as conflict and blocks targets', async () => {

@@ -788,6 +788,7 @@ function renderCommandHero(signal) {
         </div>
         <div class="command-grid">
           <div class="command-cell"><span class="card-label">Command Center</span><b>${escapeHtml(signal.command_center?.action || '等确认')}</b></div>
+          <div class="command-cell"><span class="card-label">等效关键位</span><b>${escapeHtml(signal.cross_asset_projection?.plain_chinese || '跨资产投射不可用。')}</b></div>
           <div class="command-cell"><span class="card-label">机构</span><b>${escapeHtml(signal.institutional_alert?.plain_chinese || '机构信号不可用。')}</b></div>
           <div class="command-cell"><span class="card-label">波动</span><b>${escapeHtml(signal.volatility_activation?.plain_chinese || '波动状态不可用。')}</b></div>
           <div class="command-cell"><span class="card-label">反射</span><b>${escapeHtml(signal.reflection?.plain_chinese || '等待反射分析。')}</b></div>
@@ -889,6 +890,7 @@ function renderIntelMatrix(signal) {
     ['TradingView', signal.signals?.tv_signal || '等待结构确认', '价格确认'],
     ['UW Flow', uwSafeValue(signal, 'flow'), '主动流向'],
     ['Strategy', Object.entries(signal.strategy_permissions || {}).map(([key, value]) => `${key}:${value?.permission || 'wait'}`).join(' / '), '策略权限'],
+    ['等效价', signal.cross_asset_projection?.target_instrument || 'ES', signal.cross_asset_projection?.plain_chinese || '跨资产投射'],
     ['Dark Pool', signal.darkpool_summary?.bias || uwSafeValue(signal, 'darkpool'), signal.darkpool_summary?.plain_chinese || '资金区'],
     ['Dealer', signal.dealer_engine?.behavior || dealerDecisionText(signal), signal.dealer_engine?.plain_chinese || '做市商路径'],
     ['UW Greek', signal.uw_dealer_greeks?.status || 'unavailable', signal.uw_dealer_greeks?.plain_chinese || 'Greek Exposure'],
@@ -989,6 +991,7 @@ function renderRadarSummary(signal) {
           `Coverage：${safeText(Object.keys(signal.uw_endpoint_coverage || {}).map((key) => `${key}:${(signal.uw_endpoint_coverage?.[key]?.ok || []).length}/${(signal.uw_endpoint_coverage?.[key]?.required || []).length}`), '--')}`,
           `Factors：${safeText(signal.uw_factors?.flow_factors?.direction, 'none')} / ${safeText(signal.uw_factors?.volatility_factors?.iv_rank, '--')}`,
           `Technical：${safeText(signal.technical_engine?.plain_chinese, '--')}`,
+          `Projection：${safeText(signal.cross_asset_projection?.plain_chinese, '--')}`,
           `Allowed：${safeText(signal.allowed_setups_reason, '--')}`,
           `Blocked：${safeText(signal.blocked_setups_reason, '--')}`,
           `支持：${safeText(signal.reflection?.supporting_evidence, '--')}`,

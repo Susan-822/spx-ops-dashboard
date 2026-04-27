@@ -45,7 +45,7 @@ function buildEnvStatus() {
     uw_provider_mode: safeUwProviderMode(process.env.UW_PROVIDER_MODE),
     has_uw_api_key: uwApiKey.length > 0,
     uw_api_key_length: uwApiKey.length,
-    uw_api_base_url: process.env.UW_API_BASE_URL || null,
+    uw_api_base_url: process.env.UW_API_BASE_URL || 'https://api.unusualwhales.com',
     uw_stale_seconds: process.env.UW_STALE_SECONDS || null,
     uw_poll_interval_seconds: process.env.UW_POLL_INTERVAL_SECONDS || null,
     uw_client_api_id: process.env.UW_CLIENT_API_ID || null,

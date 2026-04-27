@@ -20,6 +20,7 @@ import { runFlowValidationEngine } from '../engines/flow-validation-engine.js';
 import { runSetupSynthesisEngine } from '../engines/setup-synthesis-engine.js';
 import { runPositionSizingEngine } from '../engines/position-sizing-engine.js';
 import { buildEndpointCoverageReport } from '../engines/endpoint-coverage-engine.js';
+import { buildCrossAssetProjection } from './rules/level-projection-rules.js';
 import {
   buildDealerConclusionEngine,
   deriveThetaExecutionConstraint,
@@ -119,6 +120,63 @@ function replaceUndefined(value) {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceUndefined(item)]));
   }
   return value;
+}
+
+function numberOrNull(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function priceStatus(lastUpdated, now = new Date()) {
+  if (!lastUpdated) return { status: 'unavailable', age_seconds: null };
+  const age = Math.max(0, Math.floor((new Date(now).getTime() - new Date(lastUpdated).getTime()) / 1000));
+  return {
+    status: age <= 120 ? 'live' : age <= 300 ? 'stale' : 'unavailable',
+    age_seconds: Number.isFinite(age) ? age : null
+  };
+}
+
+function buildProjectionPrices({ signal = {}, normalized = {}, tradingViewSnapshot = null, uwApi = {} } = {}) {
+  const spxPrice = numberOrNull(signal.command_inputs?.external_spot?.spot ?? signal.market_snapshot?.spot ?? normalized.external_spot ?? normalized.spot);
+  const spxLast = signal.command_inputs?.external_spot?.last_updated || normalized.external_spot_last_updated || normalized.spot_last_updated;
+  const spyPrice = numberOrNull(tradingViewSnapshot?.spy_price ?? uwApi.uw_factors?.technical_factors?.spy_price ?? uwApi.uw_raw?.spy_price?.data?.price);
+  const esPrice = numberOrNull(tradingViewSnapshot?.es_price ?? tradingViewSnapshot?.futures_price ?? signal.es_proxy?.es_price);
+  const spxFresh = priceStatus(spxLast || signal.received_at);
+  return {
+    spx: {
+      price: spxPrice,
+      source: signal.command_inputs?.external_spot?.source || normalized.external_spot_source || normalized.spot_source || 'unavailable',
+      ...spxFresh
+    },
+    spy: {
+      price: spyPrice,
+      source: spyPrice == null ? 'unavailable' : tradingViewSnapshot?.spy_price != null ? 'tradingview' : 'uw',
+      status: spyPrice == null ? 'unavailable' : 'live',
+      age_seconds: spyPrice == null ? null : 0
+    },
+    es: {
+      price: esPrice,
+      source: esPrice == null ? 'unavailable' : 'tradingview',
+      status: esPrice == null ? 'unavailable' : 'live',
+      age_seconds: esPrice == null ? null : 0
+    }
+  };
+}
+
+function buildProjectionLevels({ signal = {}, dealerEngine = {}, uwApi = {} } = {}) {
+  const dealerFactors = uwApi.uw_factors?.dealer_factors || {};
+  const volumeOi = uwApi.uw_factors?.volume_oi_factors || {};
+  return {
+    call_wall: dealerEngine.upper_wall ?? signal.dealer_conclusion?.call_wall ?? signal.market_snapshot?.call_wall ?? null,
+    put_wall: dealerEngine.lower_wall ?? signal.dealer_conclusion?.put_wall ?? signal.market_snapshot?.put_wall ?? null,
+    zero_gamma: dealerEngine.flip_zone ?? signal.dealer_conclusion?.zero_gamma ?? signal.market_snapshot?.flip_level ?? null,
+    max_pain: volumeOi.max_pain ?? signal.dealer_conclusion?.max_pain ?? signal.market_snapshot?.max_pain ?? null,
+    em_upper: signal.dealer_conclusion?.expected_move_upper ?? null,
+    em_lower: signal.dealer_conclusion?.expected_move_lower ?? null,
+    gex_pivots: dealerFactors.gex_pivots || [],
+    oi_walls: volumeOi.volume_magnet_candidates || [],
+    volume_magnets: volumeOi.volume_wall_candidates || []
+  };
 }
 
 function isFmpRiskDegraded(snapshot) {
@@ -348,6 +406,75 @@ function applyThetaSnapshot(baseScenario, snapshot) {
   };
 }
 
+function enrichTradePlanWithProjection(tradePlan = {}, crossAssetProjection = {}, instrument = process.env.TARGET_INSTRUMENT || 'ES') {
+  const targetInstrument = ['SPX', 'SPY', 'ES', 'MES'].includes(String(instrument).toUpperCase())
+    ? String(instrument).toUpperCase()
+    : 'ES';
+  const levelSet = targetInstrument === 'SPY'
+    ? crossAssetProjection.spy_equivalent_levels
+    : targetInstrument === 'SPX'
+      ? crossAssetProjection.spx_levels
+      : crossAssetProjection.es_equivalent_levels;
+  const callWall = levelSet?.call_wall ?? null;
+  const putWall = levelSet?.put_wall ?? null;
+  const zeroGamma = levelSet?.zero_gamma ?? null;
+  const hasProjectedLevels = targetInstrument === 'SPX' || callWall != null || putWall != null || zeroGamma != null;
+  const targetLabel = targetInstrument === 'MES' ? 'MES/ES' : targetInstrument;
+  const targets = Array.isArray(tradePlan.targets) ? tradePlan.targets : [];
+
+  return {
+    ...tradePlan,
+    target_instrument: targetInstrument,
+    entry_zone: {
+      ...(tradePlan.entry_zone || {}),
+      low: zeroGamma,
+      high: zeroGamma,
+      text: hasProjectedLevels && zeroGamma != null
+        ? `${targetLabel} 回踩 ${zeroGamma.toFixed(2)} 附近守住后观察。`
+        : tradePlan.entry_zone?.text || '--',
+      source_level: zeroGamma != null ? {
+        spx: crossAssetProjection.spx_levels?.zero_gamma ?? null,
+        spy_equiv: crossAssetProjection.spy_equivalent_levels?.zero_gamma ?? null,
+        es_equiv: crossAssetProjection.es_equivalent_levels?.zero_gamma ?? null,
+        type: 'zero_gamma'
+      } : null
+    },
+    stop_loss: {
+      ...(tradePlan.stop_loss || {}),
+      level: putWall,
+      text: hasProjectedLevels && putWall != null
+        ? `${targetLabel} 跌破 ${putWall.toFixed(2)} 且收不回，作废。`
+        : tradePlan.stop_loss?.text || '--',
+      source_level: putWall != null ? {
+        spx: crossAssetProjection.spx_levels?.put_wall ?? null,
+        spy_equiv: crossAssetProjection.spy_equivalent_levels?.put_wall ?? null,
+        es_equiv: crossAssetProjection.es_equivalent_levels?.put_wall ?? null,
+        type: 'put_wall'
+      } : null
+    },
+    targets: targets.map((target, index) => index === 0 && callWall != null ? {
+      ...target,
+      label: target.label || target.name || 'TP1',
+      level: callWall,
+      reason: `${targetLabel} ${callWall.toFixed(2)}（SPX Call Wall ${crossAssetProjection.spx_levels?.call_wall ?? '--'} 等效）`,
+      source_level: {
+        spx: crossAssetProjection.spx_levels?.call_wall ?? null,
+        spy_equiv: crossAssetProjection.spy_equivalent_levels?.call_wall ?? null,
+        es_equiv: crossAssetProjection.es_equivalent_levels?.call_wall ?? null,
+        type: 'call_wall'
+      }
+    } : target),
+    invalidation: {
+      ...(tradePlan.invalidation || {}),
+      level: putWall,
+      text: hasProjectedLevels && putWall != null
+        ? `${targetLabel} 跌破下方墙位等效价 ${putWall.toFixed(2)} 后计划失效。`
+        : tradePlan.invalidation?.text || '--'
+    },
+    projection_note: crossAssetProjection.plain_chinese
+  };
+}
+
 export async function getCurrentSignal(requestedScenario, options = {}) {
   const scenarioMode = typeof requestedScenario === 'string' && requestedScenario.length > 0;
   const scenario = {
@@ -431,6 +558,22 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     marketSentiment,
     dealerEngine,
     technicalEngine
+  });
+  const projectionPrices = buildProjectionPrices({
+    signal,
+    normalized,
+    tradingViewSnapshot: snapshot,
+    uwApi
+  });
+  const projectionLevels = buildProjectionLevels({
+    signal,
+    dealerEngine,
+    uwApi
+  });
+  const crossAssetProjection = buildCrossAssetProjection({
+    prices: projectionPrices,
+    spxLevels: projectionLevels,
+    targetInstrument: process.env.TARGET_INSTRUMENT || 'ES'
   });
   const uwEndpointCoverage = buildEndpointCoverageReport(uwProvider.endpoint_coverage || uwSnapshot?.endpoint_coverage || {});
   const coverageInputs = Object.fromEntries(
@@ -585,6 +728,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     health_matrix: healthMatrix,
     flow_validation: flowValidation,
     technical_engine: technicalEngine,
+    cross_asset_projection: crossAssetProjection,
     allowed_setups: setupSynthesis.allowed_setups,
     allowed_setups_reason: setupSynthesis.allowed_setups_reason,
     blocked_setups_reason: setupSynthesis.blocked_setups_reason,
@@ -599,6 +743,9 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     notes: cleanProductionNotes(signal.notes, signal.is_mock === true)
   };
 
+  const projectedTradePlan = enrichTradePlanWithProjection(enrichedSignal.trade_plan, crossAssetProjection);
+  enrichedSignal.trade_plan = projectedTradePlan;
+
   const commandCenter = runCommandCenterEngine({
     uwProvider,
     dealerEngine,
@@ -611,7 +758,8 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     theta: enrichedSignal.theta,
     tradePlan: enrichedSignal.trade_plan,
     flowPriceDivergence: enrichedSignal.flow_price_divergence,
-    conflictResolver: enrichedSignal.conflict_resolver
+    conflictResolver: enrichedSignal.conflict_resolver,
+    crossAssetProjection
   });
   const strategyPermissions = buildStrategyPermissions({
     signal: enrichedSignal,
@@ -633,12 +781,17 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     volatilityActivation,
     marketSentiment,
     darkpoolSummary,
-    tradePlan: enrichedSignal.trade_plan,
-    signal: enrichedSignal
+    tradePlan: projectedTradePlan,
+    signal: {
+      ...enrichedSignal,
+      trade_plan: projectedTradePlan
+    },
+    crossAssetProjection
   });
 
   return replaceUndefined({
     ...enrichedSignal,
+    trade_plan: projectedTradePlan,
     command_center: commandCenter,
     strategy_permissions: strategyPermissions,
     position_sizing_engine: positionSizingEngine,

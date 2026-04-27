@@ -34,7 +34,7 @@ function buildTargetsLine(targets = []) {
   const parts = targets
     .map((item) => {
       const level = item?.level == null ? '--' : item.level;
-      return `${item?.name || 'TP'} ${level}${item?.basis ? ` ${item.basis}` : ''}`;
+      return `${item?.name || item?.label || 'TP'} ${level}${item?.reason ? `（${item.reason}）` : item?.basis ? ` ${item.basis}` : ''}`;
     })
     .filter(Boolean);
   return parts.length > 0 ? parts.join('；') : '--';
@@ -120,6 +120,11 @@ export function buildTradePlanTelegramMessage({ signal }) {
     const reflection = signal.reflection || {};
     const plan = signal.trade_plan || {};
     const sizing = signal.position_sizing_engine || {};
+    const projection = signal.cross_asset_projection || {};
+    const zeroGammaProjection = projection.projected_levels?.find?.((item) => item.type === 'zero_gamma');
+    const keyLevel = zeroGammaProjection?.es_equiv != null
+      ? `SPX Zero Gamma ${zeroGammaProjection.spx} → ES ${zeroGammaProjection.es_equiv}`
+      : projection.plain_chinese || '--';
     const provider = signal.uw_provider || {};
     const theta = signal.theta?.status || signal.dealer_conclusion?.status || 'unavailable';
     const tv = signal.tv_sentinel?.status || 'waiting';
@@ -128,6 +133,7 @@ export function buildTradePlanTelegramMessage({ signal }) {
       `【SPX 指挥台｜${safeLine(cc.final_state, 'wait')}】`,
       '',
       `动作：${safeLine(cc.action)}`,
+      `关键位：${safeLine(keyLevel)}`,
       `原因：${safeLine(cc.main_reason)}`,
       `策略：${buildStrategyLine(signal.strategy_permissions || {})}`,
       `入场：${safeLine(plan.entry_zone?.text)}`,

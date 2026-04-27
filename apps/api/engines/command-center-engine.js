@@ -28,7 +28,8 @@ export function runCommandCenterEngine({
   tradePlan = {},
   flowPriceDivergence = {},
   conflictResolver = {},
-  healthMatrix = {}
+  healthMatrix = {},
+  crossAssetProjection = {}
 } = {}) {
   const reasons = [];
   const direction = directionFromInputs({ institutionalAlert, dealerEngine, darkpoolSummary, marketSentiment });
@@ -96,6 +97,7 @@ export function runCommandCenterEngine({
     candidate: '候选',
     actionable: '可执行'
   }[finalState];
+  const projectionLine = crossAssetProjection?.projected_levels?.find((item) => item.type === 'zero_gamma' && item.es_equiv != null);
   const mainReason = reasons[0] || 'UW / TV / Theta 条件同步，等待执行细节确认。';
   const confidence = Math.max(0, Math.min(100,
     (uwProvider.status === 'live' ? 25 : uwProvider.status === 'partial' ? 15 : 0)
@@ -112,6 +114,8 @@ export function runCommandCenterEngine({
     main_reason: mainReason,
     forbidden_action: finalState === 'actionable' ? '禁止自动下单。' : '不追高，不提前押方向。',
     confidence_score: Math.round(confidence),
-    plain_chinese: `${action}：${mainReason}`
+    plain_chinese: projectionLine
+      ? `${action}：${mainReason} 关键位：SPX Zero Gamma ${projectionLine.spx} → ES ${projectionLine.es_equiv}。`
+      : `${action}：${mainReason}`
   };
 }
