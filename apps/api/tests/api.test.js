@@ -1276,6 +1276,11 @@ test('live fallback with theta partial and uw unavailable hides mock projections
   assert.equal(signal.uw_dealer_greeks.status, 'unavailable');
   assert.equal(signal.dealer_path.status, 'partial');
   assert.equal(signal.dealer_path.path, 'unknown');
+  assert.equal(signal.command_environment.state, 'blocked');
+  assert.match(signal.command_environment.reason, /ThetaData dealer partial|价格地图冲突/);
+  assert.equal(signal.conflict_resolver.has_conflict, true);
+  assert.equal(signal.conflict_resolver.action, 'block');
+  assert.deepEqual(signal.conflict_resolver.conflicts, ['price_map_conflict']);
   assert.equal(signal.projection.one_line_instruction, '禁做 / 等确认');
   assert.match(signal.projection.s_level_summary, /【总判断】/);
   assert.match(signal.projection.s_level_summary, /【UW】/);

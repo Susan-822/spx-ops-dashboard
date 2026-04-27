@@ -33,6 +33,7 @@ import {
   buildVolatilityActivation,
   buildVolumePressure,
   evaluateReadyGate,
+  reconcileConflictResolver,
   normalizeExternalSpot
 } from './rules/index.js';
 
@@ -456,10 +457,17 @@ export function runMasterEngine(normalized) {
     command_environment: commandEnvironment,
     allowed_setups: allowedSetups
   });
+  const commandConflictResolver = reconcileConflictResolver({
+    conflictResolver,
+    commandEnvironment,
+    tradePlan,
+    dealerConclusion: normalized.theta_dealer_conclusion,
+    dataCoherence
+  });
   const readyGate = evaluateReadyGate({
     commandEnvironment,
     dataHealth,
-    conflictResolver,
+    conflictResolver: commandConflictResolver,
     tvSentinel,
     tradePlan
   });
@@ -470,7 +478,7 @@ export function runMasterEngine(normalized) {
   const confidenceScore = buildConfidenceScore({
     ...baseRuleInputs,
     externalSpot,
-    conflictResolver,
+    conflictResolver: commandConflictResolver,
     tradePlan,
     volumePressure,
     channelShape,
@@ -493,7 +501,7 @@ export function runMasterEngine(normalized) {
     marketSentiment: commandMarketSentiment,
     institutionalEntryAlert,
     tvSentinel,
-    conflictResolver,
+    conflictResolver: commandConflictResolver,
     commandEnvironment,
     tradePlan
   });
@@ -509,7 +517,7 @@ export function runMasterEngine(normalized) {
       coherence: dataCoherence.data_mode,
       data_mode: dataCoherence.data_mode
     },
-    conflictResolver
+    conflictResolver: commandConflictResolver
   });
   const finalProjection = {
     ...projection,
@@ -633,7 +641,7 @@ export function runMasterEngine(normalized) {
       ...dataHealth,
       data_mode: dataCoherence.data_mode
     },
-    conflict_resolver: conflictResolver,
+    conflict_resolver: commandConflictResolver,
     radar_summary,
     tv_structure_event: normalized.tv_structure_event,
     signals: {
@@ -704,7 +712,7 @@ export function runMasterEngine(normalized) {
       fmp_conclusion: fmpConclusion,
       uw_conclusion: uwConclusion,
       command_inputs: commandInputs,
-      conflict_resolver: conflictResolver,
+      conflict_resolver: commandConflictResolver,
       market_regime: marketRegime,
       gamma_wall: gammaWall,
       data_coherence: dataCoherence,
