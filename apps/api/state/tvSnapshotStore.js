@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createClient } from 'redis';
 
 const DEFAULT_MODE = 'file';
-const DEFAULT_FILE_PATH = '/var/data/tv_snapshot.json';
+const DEFAULT_FILE_PATH = '/tmp/tv_snapshot.json';
 const DEFAULT_TTL_SECONDS = 21600;
 const DEFAULT_STALE_SECONDS = 900;
 const REDIS_KEY = 'spx:tv-snapshot:latest';
@@ -242,7 +242,20 @@ export async function readTvSnapshot() {
 
 export async function writeTvSnapshot(snapshot) {
   const store = await getStore();
-  return store.write(snapshot);
+  try {
+    return await store.write(snapshot);
+  } catch {
+    const memoryStore = new MemoryTvSnapshotStore();
+    storeSingleton = memoryStore;
+    storeMetadata = {
+      ...memoryStore.describe(),
+      mode: 'memory',
+      stale_seconds: getStoreConfig().staleSeconds,
+      ttl_seconds: getStoreConfig().ttlSeconds,
+      message: 'TradingView snapshot store fell back to memory after write failure.'
+    };
+    return memoryStore.write(snapshot);
+  }
 }
 
 export async function clearTvSnapshot() {
