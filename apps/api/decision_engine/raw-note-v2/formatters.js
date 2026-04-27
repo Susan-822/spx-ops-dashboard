@@ -53,12 +53,12 @@ export function decisionToTelegram({ final_decision, uw_conclusion = {}, theta_c
     ? final_decision.do_not_do.join('；')
     : '无结构确认不下单。';
   return [
-    `【SPX 指挥台｜${title}】`,
+    `【SPX / ES 指挥台｜${title}】`,
     '',
     `动作：${final_decision.instruction || final_decision.label}`,
     '',
     `盘面：`,
-    final_decision.reason || `FMP 真实，UW ${uw_conclusion.status || 'unavailable'}。ThetaData ${theta_conclusion.status || 'disabled'} 仅影响 EM。`,
+    final_decision.market_read || final_decision.reason || `UW ${uw_conclusion.status || 'partial'}，等待 TV 确认。`,
     '',
     `等什么：`,
     final_decision.waiting_for || '--',

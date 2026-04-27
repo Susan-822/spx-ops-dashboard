@@ -38,6 +38,13 @@ function baseDecision() {
       invalidation: null,
       ttl_minutes: null
     },
+    market_read: '',
+    reflection: {
+      supporting: [],
+      conflicting: [],
+      missing: [],
+      invalidation: []
+    },
     trace: []
   };
 }
@@ -57,6 +64,49 @@ function candidateLabel(setups = []) {
   return LABELS[first] || '等确认';
 }
 
+function buildReflection(inputs, context = {}) {
+  const supporting = [];
+  const missing = [];
+  const invalidation = ['TV 结构反向或 stale。'];
+  const spot = inputs.spot_conclusion || { status: 'unavailable' };
+  const gex = inputs.gex_engine || { status: 'unavailable' };
+  const flow = inputs.flow_aggression_engine || { status: 'unavailable' };
+  const darkpool = inputs.darkpool_engine || { status: 'unavailable' };
+  const volatility = inputs.volatility_engine || { status: 'unavailable' };
+  const basis = inputs.basis_tracker || { status: 'unavailable' };
+  const event = inputs.event_conclusion || { risk: 'unknown' };
+  if (spot.status !== 'unavailable') supporting.push(spot.plain_chinese);
+  if (gex.status !== 'unavailable') supporting.push(gex.plain_chinese);
+  if (flow.status !== 'unavailable') supporting.push(flow.plain_chinese);
+  if (darkpool.status !== 'unavailable') supporting.push(darkpool.plain_chinese);
+  if (volatility.status !== 'unavailable') supporting.push(volatility.plain_chinese);
+  if (basis.status !== 'unavailable') supporting.push(basis.plain_chinese);
+  if (event.risk !== 'normal') missing.push(event.plain_chinese);
+  if (gex.confidence === 'low') missing.push('UW 墙位低可信，暂不用于交易。');
+  if (basis.status === 'unavailable') missing.push('Basis 暂不可用，ES 投射降级。');
+  return {
+    supporting: supporting.filter(Boolean),
+    conflicting: context.direction_blocked ? ['Flow 与 Dealer 方向冲突。'] : [],
+    missing: missing.filter(Boolean),
+    invalidation
+  };
+}
+
+function buildMarketRead(inputs) {
+  return [
+    inputs.flow_aggression_engine?.plain_chinese,
+    inputs.gex_engine?.plain_chinese,
+    inputs.darkpool_engine?.plain_chinese,
+    inputs.volatility_engine?.plain_chinese
+  ].filter(Boolean).join(' ');
+}
+
+function tvWaitingText(direction = 'mixed') {
+  if (direction === 'bearish') return '等待 ES 在 UW 投射关键位附近触发 breakdown_confirmed / retest_failed。';
+  if (direction === 'bullish') return '等待 ES 在 UW 投射关键位附近触发 breakout_confirmed / pullback_holding。';
+  return '等待 ES 在 UW 投射关键位附近触发 breakout_confirmed / pullback_holding / breakdown_confirmed / retest_failed。';
+}
+
 export function buildFinalDecision(inputs) {
   const decision = baseDecision();
   const health = evaluateHealthMatrix(inputs);
@@ -72,6 +122,8 @@ export function buildFinalDecision(inputs) {
       position_multiplier: 0,
       waiting_for: health.reason,
       do_not_do: ['不下单', '不卖波动', '不根据旧 RAW NOTE 操作'],
+      market_read: buildMarketRead(inputs),
+      reflection: buildReflection(inputs),
       trace: decision.trace
     };
   }
@@ -93,6 +145,11 @@ export function buildFinalDecision(inputs) {
     direction_blocked: false,
     trace: decision.trace
   };
+  if (inputs.event_conclusion.risk === 'unknown' || inputs.event_conclusion.risk === 'caution') {
+    context.allowed_setups = context.allowed_setups.filter((setup) => setup !== 'iron_condor_observe');
+    context.blocked_setups_reason.push('事件风险未知/谨慎：禁止铁鹰和卖波。');
+    context.position_multiplier = Math.min(context.position_multiplier, 0.5);
+  }
 
   if (health.data_tier === 'critical') {
     context.allowed_setups = [];
@@ -123,6 +180,8 @@ export function buildFinalDecision(inputs) {
       allowed_setups_reason: context.allowed_setups_reason,
       waiting_for: context.reason || '等待通道/数据恢复。',
       do_not_do: ['不追单', '通道阻断时不开新仓'],
+      market_read: buildMarketRead(inputs),
+      reflection: buildReflection(inputs, context),
       trace: context.trace
     };
   }
@@ -140,6 +199,8 @@ export function buildFinalDecision(inputs) {
       allowed_setups_reason: context.allowed_setups_reason,
       waiting_for: '等待 UW/TV 条件重新同向。',
       do_not_do: ['不追单', '不做方向单', '不把 ThetaData 当 Dealer 主源'],
+      market_read: buildMarketRead(inputs),
+      reflection: buildReflection(inputs, context),
       trace: context.trace
     };
   }
@@ -157,6 +218,8 @@ export function buildFinalDecision(inputs) {
       blocked_setups_reason: context.blocked_setups_reason,
       allowed_setups_reason: context.allowed_setups_reason,
       do_not_do: ['不追随旧信号', '等待新 TV 结构'],
+      market_read: buildMarketRead(inputs),
+      reflection: buildReflection(inputs, context),
       trace: tv.trace
     };
   }
@@ -173,6 +236,8 @@ export function buildFinalDecision(inputs) {
       allowed_setups_reason: context.allowed_setups_reason,
       waiting_for: '等待新鲜 TV 信号。',
       do_not_do: ['不根据 stale TV 下单'],
+      market_read: buildMarketRead(inputs),
+      reflection: buildReflection(inputs, context),
       trace: tv.trace
     };
   }
@@ -182,14 +247,16 @@ export function buildFinalDecision(inputs) {
       state: tv.state === 'wait' ? 'wait' : 'candidate',
       label: tv.state === 'wait' ? '等确认' : candidateLabel(allowed),
       direction: directionFromSetup(allowed[0], context.dealer_bias),
-      reason: `UW ${inputs.uw_conclusion.status}，${context.dealer_bias}；TV 未最终匹配。`,
+      reason: 'UW 给出资金线索，但 TV 尚未在 ES 关键位附近确认。',
       instruction: '等确认，不追单',
       position_multiplier: 0,
       allowed_setups: allowed,
       blocked_setups_reason: context.blocked_setups_reason,
       allowed_setups_reason: context.allowed_setups_reason,
-      waiting_for: '等 TV breakout_confirmed / breakdown_confirmed / pullback_holding / retest_failed 匹配候选。',
-      do_not_do: ['不追单', 'TV 未确认不进场'],
+      waiting_for: tvWaitingText(directionFromSetup(allowed[0], context.dealer_bias)),
+      do_not_do: ['不追单', '不开铁鹰', '不在中轴提前下单'],
+      market_read: buildMarketRead(inputs),
+      reflection: buildReflection(inputs, context),
       trace: tv.trace
     };
   }
@@ -209,6 +276,8 @@ export function buildFinalDecision(inputs) {
     waiting_for: '',
     do_not_do: ['不扩大仓位', '失效位触发立即作废', '不自动下单'],
     trade_plan: tradePlan,
+    market_read: buildMarketRead(inputs),
+    reflection: buildReflection(inputs, context),
     trace: [...tv.trace, { step: 'final_decision', state: 'actionable', setup: tv.matched_setup }]
   };
 }

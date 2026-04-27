@@ -158,6 +158,110 @@ function buildFmpConclusionV2(signal = {}) {
   };
 }
 
+function buildSpotConclusion({ fmpConclusion = {}, priceSources = {} } = {}) {
+  const fmpSpot = numberOrNull(fmpConclusion.spot);
+  const spx = priceSources.spx || {};
+  if (spx.price != null && ['live', 'degraded'].includes(spx.status)) {
+    const source = spx.source || 'unknown';
+    return {
+      status: source === 'fmp' ? 'live' : source === 'uw_spx_price' ? 'live' : 'degraded',
+      spot: spx.price,
+      source,
+      confidence: source === 'fmp' || source === 'uw_spx_price' ? 'high' : source === 'tradingview_spx_equivalent' ? 'medium' : 'low',
+      plain_chinese: `SPX spot 来自 ${source}。`
+    };
+  }
+  if (fmpConclusion.spot_is_real === true && fmpSpot != null) {
+    return { status: 'live', spot: fmpSpot, source: 'fmp', confidence: 'high', plain_chinese: 'FMP SPX spot 可用。' };
+  }
+  return { status: 'unavailable', spot: null, source: 'unavailable', confidence: 'unavailable', plain_chinese: 'SPX spot 暂不可用。' };
+}
+
+function buildEventConclusion({ fmpConclusion = {}, uwConclusion = {} } = {}) {
+  if (fmpConclusion.event_risk === 'blocked') {
+    return { risk: 'blocked', source: 'fmp', sell_vol_permission: 'block', plain_chinese: 'FMP 事件风险阻断。' };
+  }
+  const caution = ['panic', 'elevated'].includes(uwConclusion.iv_state) || uwConclusion.iv_rank >= 80;
+  return {
+    risk: caution ? 'caution' : 'unknown',
+    source: caution ? 'uw' : 'unavailable',
+    sell_vol_permission: 'block',
+    plain_chinese: caution ? 'UW 波动指标提示谨慎，卖波禁做。' : '事件风险未知，卖波禁做。'
+  };
+}
+
+function buildBasisTracker(priceSources = {}) {
+  const es = priceSources.es || {};
+  const spx = priceSources.spx || {};
+  const rawBasis = priceSources.basis?.value;
+  const calculated = es.price != null && spx.price != null ? es.price - spx.price : null;
+  const basis = typeof rawBasis === 'number' ? rawBasis : calculated;
+  return {
+    status: es.status === 'live' && spx.status === 'live' && basis != null ? 'live' : es.status === 'live' ? 'partial' : 'unavailable',
+    es_price: es.price ?? null,
+    spx_equivalent: spx.price ?? null,
+    basis,
+    basis_source: typeof rawBasis === 'number' ? 'tradingview' : calculated != null ? 'calculated' : 'unavailable',
+    basis_confidence: typeof rawBasis === 'number' ? 'high' : calculated != null ? 'medium' : 'low',
+    plain_chinese: basis == null ? 'Basis 暂不可用。' : `ES/SPX basis ${basis}。`
+  };
+}
+
+function buildInstitutionalEngines({ uwConclusion = {}, diagnostics = {}, priceSources = {}, darkpoolSummary = {}, volatilityActivation = {}, marketSentiment = {}, institutionalAlert = {}, uwApi = {} } = {}) {
+  const gexEngine = {
+    status: diagnostics.confidence === 'low' ? 'partial' : uwConclusion.status || 'unavailable',
+    net_gex: uwConclusion.net_gex ?? null,
+    gamma_regime: uwConclusion.gamma_regime || 'unknown',
+    gamma_flip: uwConclusion.zero_gamma ?? null,
+    call_wall: diagnostics.confidence === 'low' ? null : uwConclusion.call_wall ?? null,
+    put_wall: diagnostics.confidence === 'low' ? null : uwConclusion.put_wall ?? null,
+    max_pain: uwConclusion.max_pain ?? null,
+    top_call_gamma_strikes: diagnostics.top_call_gamma_strikes || [],
+    top_put_gamma_strikes: diagnostics.top_put_gamma_strikes || [],
+    top_net_gex_strikes: diagnostics.top_net_gex_strikes || [],
+    confidence: diagnostics.confidence || 'low',
+    plain_chinese: diagnostics.confidence === 'low' ? 'UW GEX strike 区间低可信，墙位不用于交易。' : 'UW GEX 已进入 Dealer/GEX 引擎。'
+  };
+  const flow = uwApi.uw_factors?.flow_factors || {};
+  const flowEngine = {
+    status: uwConclusion.flow_available ? 'live' : flow.net_premium_5m != null ? 'partial' : 'unavailable',
+    bias: uwConclusion.flow_bias === 'unavailable' ? 'mixed' : uwConclusion.flow_bias,
+    aggression: flow.call_put_ratio > 1.25 ? 'ask_side_attack' : flow.call_put_ratio < 0.8 ? 'bid_side_attack' : 'unknown',
+    net_premium: flow.net_premium_5m ?? null,
+    ask_side_pct: null,
+    bid_side_pct: null,
+    large_trade_count: flow.large_trade_count_5m ?? null,
+    confidence: uwConclusion.flow_available ? 'high' : 'low',
+    plain_chinese: uwConclusion.flow_available ? `UW Flow ${uwConclusion.flow_bias}。` : 'UW Flow 不足，只做候选参考。'
+  };
+  const darkpoolEngine = {
+    status: ['bullish', 'bearish', 'neutral'].includes(uwConclusion.darkpool_bias) ? 'live' : 'unavailable',
+    bias: darkpoolSummary.bias || uwConclusion.darkpool_bias || 'unknown',
+    large_prints: darkpoolSummary.large_levels || [],
+    nearest_support: darkpoolSummary.nearest_support ?? null,
+    nearest_resistance: darkpoolSummary.nearest_resistance ?? null,
+    confidence: darkpoolSummary.bias && darkpoolSummary.bias !== 'unknown' ? 'medium' : 'low',
+    plain_chinese: darkpoolSummary.plain_chinese || '暗池中性或不可用。'
+  };
+  const volEngine = {
+    status: volatilityActivation.strength ? 'partial' : 'unavailable',
+    iv_state: volatilityActivation.strength === 'extreme' ? 'panic' : volatilityActivation.strength === 'strong' ? 'elevated' : 'unknown',
+    term_structure: 'unknown',
+    volatility_activation: volatilityActivation.strength === 'off' ? 'inactive' : volatilityActivation.strength || 'inactive',
+    single_leg_permission: ['active', 'strong', 'extreme'].includes(volatilityActivation.strength) ? 'allow' : 'wait',
+    vertical_permission: volatilityActivation.strength === 'off' ? 'wait' : 'allow',
+    iron_condor_permission: volatilityActivation.light === 'red' ? 'wait' : 'block',
+    plain_chinese: volatilityActivation.plain_chinese || '波动未启动。'
+  };
+  const sentimentEngine = {
+    status: marketSentiment.state && marketSentiment.state !== 'unavailable' ? 'live' : 'unavailable',
+    state: marketSentiment.state === 'unavailable' ? 'unknown' : marketSentiment.state || 'unknown',
+    score: null,
+    plain_chinese: marketSentiment.plain_chinese || ''
+  };
+  return { gexEngine, flowEngine, darkpoolEngine, volEngine, sentimentEngine };
+}
+
 function buildPriceSourcesV2({ signal = {}, projectionPrices = {}, crossAssetProjection = {} } = {}) {
   const externalSpot = signal.command_inputs?.external_spot || {};
   const spxPrice = projectionPrices.spx?.source === 'tradingview_spx_equivalent'

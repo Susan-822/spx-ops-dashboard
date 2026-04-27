@@ -23,33 +23,44 @@ export function applyHealthMatrix(ctx, draft) {
     trace.push({ step: 0, rule: 'time_window', result: 'ok' });
   }
 
-  if (!ctx.fmp_conclusion.spot_is_real) {
-    trace.push({ step: 1, rule: 'fmp_spot_unavailable', result: 'blocked' });
+  if (ctx.spot_conclusion.status === 'unavailable') {
+    trace.push({ step: 1, rule: 'spot_unavailable', result: 'blocked' });
     return {
       ...draft,
       state: 'blocked',
       label: '禁做',
       direction: 'unknown',
-      reason: 'FMP 现价不可靠。',
-      instruction: '禁做，等待真实现价。',
+      reason: 'SPX/ES 等效现价不可用。',
+      instruction: '禁做，等待 SPX/ES 等效现价恢复。',
       position_multiplier: 0,
-      do_not_do: [...draft.do_not_do, '现价不可靠时不开仓。'],
+      do_not_do: [...draft.do_not_do, '现价不可用时不开仓。'],
       stop: true
     };
   }
 
-  if (ctx.fmp_conclusion.event_risk === 'blocked') {
+  if (ctx.spot_conclusion.status === 'degraded') {
+    draft.position_multiplier = Math.min(draft.position_multiplier, 0.5);
+    trace.push({ step: 1, rule: 'spot_degraded', result: 'position_0.5' });
+  }
+
+  if (ctx.event_conclusion.risk === 'blocked') {
     trace.push({ step: 1, rule: 'event_risk_blocked', result: 'blocked' });
     return {
       ...draft,
       state: 'blocked',
       label: '禁做',
-      reason: 'FMP 事件风险阻断。',
+      reason: '事件风险阻断。',
       instruction: '禁做，等待事件风险解除。',
       position_multiplier: 0,
       do_not_do: [...draft.do_not_do, '事件风险阻断时不开仓。'],
       stop: true
     };
+  }
+
+  if (ctx.event_conclusion.risk === 'unknown' || ctx.event_conclusion.sell_vol_permission === 'block') {
+    draft.allowed_setups = (draft.allowed_setups || []).filter((setup) => setup !== 'iron_condor_observe');
+    draft.blocked_setups_reason = [...(draft.blocked_setups_reason || []), '事件风险未知：禁止铁鹰/卖波。'];
+    trace.push({ step: 1, rule: 'event_unknown_no_short_vol', result: 'iron_condor_removed' });
   }
 
   if (ctx.uw_conclusion.status === 'unavailable') {

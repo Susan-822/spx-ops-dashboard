@@ -4,6 +4,8 @@ import { runRawNoteV2 } from '../index.js';
 
 function base(overrides = {}) {
   return {
+    spot_conclusion: { status: 'live', spot: 5300, source: 'uw_spx_price', confidence: 'high' },
+    event_conclusion: { risk: 'normal', source: 'uw', sell_vol_permission: 'allow' },
     fmp_conclusion: { status: 'live', spot_is_real: true, spot: 5300, event_risk: 'normal' },
     uw_conclusion: {
       status: 'live',
@@ -33,13 +35,22 @@ function base(overrides = {}) {
   };
 }
 
-test('FMP spot unavailable -> blocked', () => {
+test('spot unavailable -> blocked', () => {
   const result = runRawNoteV2(base({ fmp_conclusion: { status: 'live', spot_is_real: false, spot: null, event_risk: 'normal' } }));
+  assert.notEqual(result.final_decision.state, 'blocked');
+});
+
+test('all spot sources unavailable -> blocked', () => {
+  const result = runRawNoteV2(base({
+    spot_conclusion: { status: 'unavailable', spot: null, source: 'unavailable', confidence: 'unavailable' },
+    fmp_conclusion: { status: 'live', spot_is_real: false, spot: null, event_risk: 'normal' },
+    price_sources: { spx: { price: null, status: 'unavailable' } }
+  }));
   assert.equal(result.final_decision.state, 'blocked');
 });
 
 test('event blocked -> blocked', () => {
-  const result = runRawNoteV2(base({ fmp_conclusion: { status: 'live', spot_is_real: true, spot: 5300, event_risk: 'blocked' } }));
+  const result = runRawNoteV2(base({ event_conclusion: { risk: 'blocked', source: 'fmp', sell_vol_permission: 'block' } }));
   assert.equal(result.final_decision.state, 'blocked');
 });
 

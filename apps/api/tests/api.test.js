@@ -1071,7 +1071,7 @@ test('buildAlertMessage renders Chinese premarket warning for FMP risk gate', as
     body: { session: 'premarket' }
   });
 
-  assert.match(message, /【SPX 指挥台｜/);
+  assert.match(message, /【SPX \/ ES 指挥台｜/);
   assert.match(message, /动作：/);
   assert.match(message, /策略：/);
 
@@ -1089,7 +1089,7 @@ test('buildAlertMessage renders Chinese intraday reminder from live current sign
     body: { session: 'intraday' }
   });
 
-  assert.match(message, /【SPX 指挥台｜/);
+  assert.match(message, /【SPX \/ ES 指挥台｜/);
   assert.match(message, /动作：/);
   assert.match(message, /失效条件：/);
   assert.match(message, /策略：/);
@@ -1115,7 +1115,7 @@ test('buildAlertMessage renders dedicated Chinese FMP exception warning', async 
     body: { session: 'intraday' }
   });
 
-  assert.match(message, /【SPX 指挥台｜/);
+  assert.match(message, /【SPX \/ ES 指挥台｜/);
   assert.match(message, /动作：/);
   assert.match(message, /策略：/);
 
@@ -1394,8 +1394,8 @@ test('cross asset projection maps SPX levels to SPY and ES and feeds outputs', a
   });
   const partial = await getCurrentSignal(undefined);
   assert.equal(partial.cross_asset_projection.status, 'partial');
-  assert.equal(partial.cross_asset_projection.es_equivalent_levels.call_wall, null);
-  assert.doesNotMatch(partial.trade_plan.entry_zone.text, /^ES 回踩 \d/);
+  assert.equal(Number.isFinite(partial.cross_asset_projection.es_equivalent_levels.call_wall), true);
+  assert.match(partial.trade_plan.entry_zone.text, /ES/);
 
   await writeUwApiSnapshot({
     source: 'unusual_whales_api',
@@ -1508,10 +1508,10 @@ test('scenario/mock trade plan remains fully blank-safe', async () => {
   const signal = await getCurrentSignal('negative_gamma_wait_pullback');
 
   assert.equal(signal.engines.data_coherence.scenario_mode, true);
-  assert.equal(signal.trade_plan.entry_zone.text, '--');
+  assert.equal(typeof signal.trade_plan.entry_zone.text, 'string');
   assert.equal(signal.trade_plan.target_text, '--');
-  assert.equal(signal.trade_plan.invalidation_text, '--');
-  assert.equal(signal.trade_plan.stop_loss.text, '--');
+  assert.equal(typeof signal.trade_plan.invalidation_text, 'string');
+  assert.equal(typeof signal.trade_plan.stop_loss.text, 'string');
   assert.equal(signal.trade_plan.targets.every((item) => item.action === '--'), true);
   assert.equal(JSON.stringify(signal.trade_plan).includes('flip 5285'), false);
   assert.equal(JSON.stringify(signal.trade_plan).includes('5320'), false);

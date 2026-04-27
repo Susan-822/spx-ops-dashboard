@@ -38,9 +38,26 @@ export function normalizeRawNoteInputs(input = {}, now = new Date()) {
   const theta = input.theta_conclusion || {};
   const tv = input.tv_sentinel || {};
   const priceSources = input.price_sources || {};
-  const spxSpot = numberOrNull(priceSources.spx?.price ?? fmp.spot ?? input.market_snapshot?.spot);
+  const spotConclusion = input.spot_conclusion || {};
+  const eventConclusion = input.event_conclusion || {};
+  const spxSpot = numberOrNull(spotConclusion.spot ?? spotConclusion.spx_value ?? priceSources.spx?.price ?? fmp.spot ?? input.market_snapshot?.spot);
 
   return {
+    spot_conclusion: {
+      status: status(spotConclusion.status, spxSpot == null ? 'unavailable' : 'degraded'),
+      spot: spxSpot,
+      spx_value: spxSpot,
+      source: status(spotConclusion.source, spxSpot == null ? 'unavailable' : 'unknown'),
+      confidence: status(spotConclusion.confidence, spxSpot == null ? 'unavailable' : 'low'),
+      plain_chinese: spotConclusion.plain_chinese || ''
+    },
+    event_conclusion: {
+      risk: status(eventConclusion.risk, 'unknown'),
+      source: status(eventConclusion.source, 'unavailable'),
+      sell_vol_permission: status(eventConclusion.sell_vol_permission, 'wait'),
+      reason: eventConclusion.reason || '',
+      plain_chinese: eventConclusion.plain_chinese || ''
+    },
     fmp_conclusion: {
       status: status(fmp.status, fmp.spot_is_real === true ? 'live' : 'unavailable'),
       spot_is_real: fmp.spot_is_real === true || fmp.price_status === 'valid',

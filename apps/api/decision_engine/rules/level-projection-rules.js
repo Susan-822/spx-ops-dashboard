@@ -14,10 +14,12 @@ function priceStatus(price = {}) {
   return n(price.price) == null ? 'unavailable' : price.status || 'live';
 }
 
-function projectLevel(label, key, spx, prices, source = 'uw_spot_exposure', confidence = 'medium') {
+function projectLevel(label, key, spx, prices, source = 'uw_spot_exposure', confidence = 'medium', basisValue = null) {
   const spxLevel = n(spx);
   const spy = convertSpxToSpy(spxLevel, prices.spy.price, prices.spx.price);
-  const es = convertSpxToEs(spxLevel, prices.es.price, prices.spx.price);
+  const es = basisValue != null && spxLevel != null
+    ? spxLevel + basisValue
+    : convertSpxToEs(spxLevel, prices.es.price, prices.spx.price);
   return {
     label,
     type: key,
@@ -33,7 +35,7 @@ function projectLevel(label, key, spx, prices, source = 'uw_spot_exposure', conf
   };
 }
 
-function mapScalarLevels(spxLevels = {}, prices = {}) {
+function mapScalarLevels(spxLevels = {}, prices = {}, basisValue = null) {
   return Object.fromEntries(
     [
       ['call_wall', 'Call Wall'],
@@ -42,7 +44,7 @@ function mapScalarLevels(spxLevels = {}, prices = {}) {
       ['max_pain', 'Max Pain'],
       ['em_upper', 'EM Upper'],
       ['em_lower', 'EM Lower']
-    ].map(([key, label]) => [key, projectLevel(label, key, spxLevels[key], prices)])
+    ].map(([key, label]) => [key, projectLevel(label, key, spxLevels[key], prices, 'uw_spot_exposure', 'medium', basisValue)])
   );
 }
 
@@ -78,11 +80,14 @@ export function buildCrossAssetProjection({ prices = {}, spxLevels = {}, targetI
     spy: { price: n(prices.spy?.price), source: prices.spy?.source || 'unavailable', status: priceStatus(prices.spy), age_seconds: prices.spy?.age_seconds ?? null },
     es: { price: n(prices.es?.price), source: prices.es?.source || 'unavailable', status: priceStatus(prices.es), age_seconds: prices.es?.age_seconds ?? null }
   };
-  const scalar = mapScalarLevels(spxLevels, safePrices);
+  const rawBasis = typeof prices.basis?.value === 'number' ? prices.basis.value : null;
+  const inferredBasis = safePrices.es.price && safePrices.spx.price ? safePrices.es.price - safePrices.spx.price : null;
+  const basisValue = rawBasis ?? inferredBasis;
+  const scalar = mapScalarLevels(spxLevels, safePrices, basisValue);
   const status = statusFor(safePrices, spxLevels);
   const spyRatio = safePrices.spy.price && safePrices.spx.price ? safePrices.spy.price / safePrices.spx.price : null;
   const esRatio = safePrices.es.price && safePrices.spx.price ? safePrices.es.price / safePrices.spx.price : null;
-  const basisPoints = safePrices.es.price && safePrices.spx.price ? safePrices.es.price - safePrices.spx.price : null;
+  const basisPoints = basisValue;
   const targetKey = String(targetInstrument || 'ES').toUpperCase() === 'SPY' ? 'spy_equiv' : String(targetInstrument || 'ES').toUpperCase() === 'SPX' ? 'spx' : 'es_equiv';
 
   return {
@@ -90,6 +95,8 @@ export function buildCrossAssetProjection({ prices = {}, spxLevels = {}, targetI
     target_instrument: String(targetInstrument || 'ES').toUpperCase(),
     prices: safePrices,
     basis: {
+      value: round(rawBasis ?? basisPoints),
+      source: rawBasis == null ? (basisPoints == null ? 'unavailable' : 'calculated') : 'tradingview',
       spy_spx_ratio: round(spyRatio, 6),
       es_spx_ratio: round(esRatio, 6),
       es_spx_basis_points: round(basisPoints),
