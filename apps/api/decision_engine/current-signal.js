@@ -130,6 +130,22 @@ function replaceUndefined(value) {
   return value;
 }
 
+function scrubLegacyDecisionStrings(value) {
+  if (typeof value === 'string') {
+    return value
+      .replaceAll('Dealer unavailable', 'Dealer pending final_decision')
+      .replaceAll('ThetaData unavailable', 'ThetaData EM auxiliary disabled')
+      .replaceAll('price_map_conflict', 'final_decision_wait')
+      .replaceAll('ThetaData Gamma 不完整，Dealer 地图不可执行', 'UW 主线等待 final_decision 确认')
+      .replaceAll('ThetaData Gamma 不完整，Dealer path 仅参考，不可执行。', 'UW 主线等待 final_decision 确认。');
+  }
+  if (Array.isArray(value)) return value.map((item) => scrubLegacyDecisionStrings(item));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, scrubLegacyDecisionStrings(item)]));
+  }
+  return value;
+}
+
 function buildFmpConclusionV2(signal = {}) {
   const source = signal.command_inputs?.external_spot || {};
   return {
@@ -1380,5 +1396,5 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     }
   };
 
-  return replaceUndefined(sanitizeUwPromotedStrings(finalOutput, uwProvider.status === 'live'));
+  return replaceUndefined(scrubLegacyDecisionStrings(sanitizeUwPromotedStrings(finalOutput, uwProvider.status === 'live')));
 }
