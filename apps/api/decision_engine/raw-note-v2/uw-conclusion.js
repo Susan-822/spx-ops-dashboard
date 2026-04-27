@@ -155,9 +155,10 @@ export function buildUwConclusionV2({ provider = {}, factors = {}, raw = {}, ins
     spot: raw.spot ?? raw.spx_price ?? null,
     maxPain: volumeOi.max_pain ?? null
   });
-  const callWall = diagnostics.call_wall ?? dealer.call_wall_candidate ?? dealer.top_call_gamma_strikes?.[0]?.strike ?? null;
-  const putWall = diagnostics.put_wall ?? dealer.put_wall_candidate ?? dealer.top_put_gamma_strikes?.[0]?.strike ?? null;
-  const zeroGamma = diagnostics.zero_gamma ?? dealer.zero_gamma_or_flip ?? dealer.gex_pivots?.[0]?.strike ?? null;
+  const diagnosticsUsable = diagnostics.confidence !== 'low' && diagnostics.rows_used > 0;
+  const callWall = diagnosticsUsable ? diagnostics.call_wall : null;
+  const putWall = diagnosticsUsable ? diagnostics.put_wall : null;
+  const zeroGamma = diagnosticsUsable ? diagnostics.zero_gamma : null;
   const netGex = numberOrNull(dealer.gex ?? diagnostics.top_net_gex_strikes.reduce((sum, item) => sum + (item.value ?? 0), 0));
   const greeksAvailable = callWall != null || putWall != null || netGex != null || dealer.vanna != null || dealer.charm != null || dealer.dex != null;
   const flowBias = institutionalAlert.direction && institutionalAlert.direction !== 'none'
