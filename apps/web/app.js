@@ -855,17 +855,23 @@ function renderStrategyCards(signal) {
 function renderLevelMatrix(signal) {
   const dataQuality = deriveDataQuality(signal);
   const snap = signal.market_snapshot || {};
-  const keyLevelsLive = isThetaLive(signal) && isDealerLive(signal);
-  const levelValue = (value) => keyLevelsLive ? fmtInt(value) : '--';
-  const levelNote = (distance, fallback = '数据未 live / 不可交易') => keyLevelsLive && dataQuality.executable === true
-    ? `距离 ${fmt(distance, 1)} pt`
-    : fallback;
+  const keyLevels = signal.key_levels || {};
+  const useUwLevels = keyLevels.source === 'uw';
+  const keyLevelsLive = useUwLevels || (isThetaLive(signal) && isDealerLive(signal));
+  const levelValue = (name, fallback) => {
+    if (useUwLevels) return keyLevels?.[name]?.level == null ? '--' : fmtInt(keyLevels[name].level);
+    return keyLevelsLive ? fmtInt(fallback) : '--';
+  };
+  const levelNote = (name, distance, fallback = '数据未 live / 不可交易') => {
+    if (useUwLevels) return keyLevels?.[name]?.source || 'uw';
+    return keyLevelsLive && dataQuality.executable === true ? `距离 ${fmt(distance, 1)} pt` : fallback;
+  };
   const items = [
     ['SPX', displaySpot(snap), spotSourceText(snap)],
-    ['Flip', levelValue(snap.flip_level), levelNote(snap.distance_to_flip)],
-    ['Call Wall', levelValue(snap.call_wall), levelNote(snap.distance_to_call_wall, thetaPartialNote(signal))],
-    ['Put Wall', levelValue(snap.put_wall), levelNote(snap.distance_to_put_wall, thetaPartialNote(signal))],
-    ['Max Pain', levelValue(snap.max_pain), keyLevelsLive ? '中轴参考' : thetaPartialNote(signal)],
+    ['Flip', levelValue('zero_gamma', snap.flip_level), levelNote('zero_gamma', snap.distance_to_flip)],
+    ['Call Wall', levelValue('call_wall', snap.call_wall), levelNote('call_wall', snap.distance_to_call_wall, thetaPartialNote(signal))],
+    ['Put Wall', levelValue('put_wall', snap.put_wall), levelNote('put_wall', snap.distance_to_put_wall, thetaPartialNote(signal))],
+    ['Max Pain', levelValue('max_pain', snap.max_pain), useUwLevels ? keyLevels.max_pain?.source || 'uw' : keyLevelsLive ? '中轴参考' : thetaPartialNote(signal)],
     ['Confidence', fmtInt(signal.confidence_score), '指令可信度']
   ];
   return `
@@ -893,7 +899,7 @@ function renderIntelMatrix(signal) {
     ['等效价', signal.cross_asset_projection?.target_instrument || 'ES', signal.cross_asset_projection?.plain_chinese || '跨资产投射'],
     ['Dark Pool', signal.darkpool_summary?.bias || uwSafeValue(signal, 'darkpool'), signal.darkpool_summary?.plain_chinese || '资金区'],
     ['Dealer', signal.dealer_engine?.behavior || dealerDecisionText(signal), signal.dealer_engine?.plain_chinese || '做市商路径'],
-    ['UW Greek', signal.uw_dealer_greeks?.status || 'unavailable', signal.uw_dealer_greeks?.plain_chinese || 'Greek Exposure'],
+    ['UW Greek', signal.uw_conclusion?.greek_exposure_status || signal.dealer_engine?.status || 'unavailable', signal.dealer_engine?.plain_chinese || 'Greek Exposure'],
     ['量比', signal.volume_pressure?.level || 'unavailable', signal.volume_pressure?.plain_chinese || '推动强度'],
     ['波动启动', signal.volatility_activation?.strength || signal.volatility_activation?.state || 'unavailable', signal.volatility_activation?.plain_chinese || '波动状态'],
     ['反射', signal.reflection?.confidence_score ?? 0, signal.reflection?.plain_chinese || '反射分析不可用'],

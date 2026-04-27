@@ -43,10 +43,6 @@ export function runHealthMatrixEngine({
     state = 'BLOCKED';
     reasons.push('UW gamma 完全不可用');
   }
-  if (!tradePlan.stop_loss || tradePlan.stop_loss.level == null) {
-    state = 'BLOCKED';
-    reasons.push('stop_loss 缺失');
-  }
   if (state !== 'BLOCKED' && uwProvider.status === 'live' && tvSentinel.matched_allowed_setup === true && dealerEngine.status === 'live') {
     state = 'READY';
   } else if (state !== 'BLOCKED' && ['partial', 'stale'].includes(uwProvider.status) && tvSentinel.matched_allowed_setup === true) {

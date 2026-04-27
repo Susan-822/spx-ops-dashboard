@@ -35,7 +35,10 @@ export function runCommandCenterEngine({
   const direction = directionFromInputs({ institutionalAlert, dealerEngine, darkpoolSummary, marketSentiment });
   let finalState = 'wait';
 
-  if (dataHealth.summary?.label === 'BLOCKED' || dataHealth.executable === false) {
+  if (
+    (dataHealth.summary?.label === 'BLOCKED' || dataHealth.executable === false)
+    && dealerEngine.status === 'unavailable'
+  ) {
     finalState = 'blocked';
     reasons.push(dataHealth.summary?.plain_chinese || 'data_health blocked');
   }
@@ -65,8 +68,8 @@ export function runCommandCenterEngine({
     if (finalState !== 'blocked') finalState = 'wait';
     reasons.push('TV waiting，不得 actionable。');
   }
-  if (theta.status === 'unavailable' || dealerEngine.status === 'unavailable') {
-    reasons.push('Theta unavailable，Dealer 主结论降级。');
+  if (dealerEngine.status === 'unavailable') {
+    reasons.push('Dealer 主结论不可用。');
   }
   if (!hasActionableTradePlan(tradePlan)) {
     if (finalState !== 'blocked') finalState = 'wait';

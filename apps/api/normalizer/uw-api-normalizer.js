@@ -23,6 +23,14 @@ function firstNumber(row = {}, keys = []) {
   return null;
 }
 
+function biasFromNumber(value, positive = 'bullish', negative = 'bearish') {
+  const parsed = numberOrNull(value);
+  if (parsed == null) return 'unknown';
+  if (parsed > 0) return positive;
+  if (parsed < 0) return negative;
+  return 'neutral';
+}
+
 function sumRows(rows, keys) {
   let total = 0;
   let seen = false;
@@ -74,7 +82,10 @@ function normalizeDealer(raw = {}) {
     top_call_gamma_strikes: topByAbs(strikeRows, ['call_gex', 'call_gamma', 'call_gamma_exposure']),
     top_put_gamma_strikes: topByAbs(strikeRows, ['put_gex', 'put_gamma', 'put_gamma_exposure']),
     zero_gamma_or_flip: firstNumber(first, ['zero_gamma', 'zero_gamma_level', 'flip', 'flip_point']),
-    expiry_breakdown: expiryRows.slice(0, 10)
+    expiry_breakdown: expiryRows.slice(0, 10),
+    vanna_bias: biasFromNumber(firstNumber(first, ['vanna', 'net_vanna']) ?? sumRows(combined, ['vanna', 'net_vanna'])),
+    charm_bias: biasFromNumber(firstNumber(first, ['charm', 'net_charm']) ?? sumRows(combined, ['charm', 'net_charm'])),
+    delta_bias: biasFromNumber(firstNumber(first, ['dex', 'delta_exposure', 'net_dex']) ?? sumRows(combined, ['dex', 'delta_exposure', 'net_dex']))
   };
 }
 

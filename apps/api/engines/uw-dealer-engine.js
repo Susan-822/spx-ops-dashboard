@@ -7,7 +7,14 @@ function statusFrom(provider = {}, factors = {}) {
   if (provider.status === 'error') return 'error';
   if (provider.status === 'stale') return 'stale';
   if (provider.status === 'unavailable') return 'unavailable';
-  return factors.gex == null && factors.dex == null && factors.zero_gamma_or_flip == null ? 'partial' : provider.status || 'unavailable';
+  const hasWall = factors.call_wall_candidate != null
+    || factors.put_wall_candidate != null
+    || (Array.isArray(factors.top_call_gamma_strikes) && factors.top_call_gamma_strikes.length > 0)
+    || (Array.isArray(factors.top_put_gamma_strikes) && factors.top_put_gamma_strikes.length > 0);
+  const hasGreek = factors.gex != null || factors.dex != null || factors.vanna != null || factors.charm != null || factors.zero_gamma_or_flip != null;
+  if (hasWall && hasGreek && provider.status === 'live') return 'live';
+  if (hasWall || hasGreek) return 'partial';
+  return provider.status === 'live' ? 'partial' : provider.status || 'unavailable';
 }
 
 export function runUwDealerEngine({ provider = {}, dealerFactors = {}, spotGexFactors = {} } = {}) {
@@ -39,6 +46,7 @@ export function runUwDealerEngine({ provider = {}, dealerFactors = {}, spotGexFa
 
   return {
     status,
+    source: ['live', 'partial', 'stale'].includes(status) ? 'uw' : 'unavailable',
     regime,
     behavior,
     path_of_least_resistance: path,

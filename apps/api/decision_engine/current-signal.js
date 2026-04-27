@@ -179,6 +179,32 @@ function buildProjectionLevels({ signal = {}, dealerEngine = {}, uwApi = {} } = 
   };
 }
 
+function buildKeyLevels({ dealerEngine = {}, uwApi = {}, signal = {} } = {}) {
+  const dealerFactors = uwApi.uw_factors?.dealer_factors || {};
+  const volumeOi = uwApi.uw_factors?.volume_oi_factors || {};
+  const source = dealerEngine.status === 'live' || dealerEngine.status === 'partial' ? 'uw' : 'theta';
+  const status = (value, fallbackStatus = dealerEngine.status) => value == null ? 'unavailable' : (fallbackStatus || 'partial');
+  const callWall = dealerEngine.upper_wall ?? signal.dealer_conclusion?.call_wall ?? null;
+  const putWall = dealerEngine.lower_wall ?? signal.dealer_conclusion?.put_wall ?? null;
+  const zeroGamma = dealerEngine.flip_zone ?? signal.dealer_conclusion?.zero_gamma ?? null;
+  const maxPain = volumeOi.max_pain ?? signal.dealer_conclusion?.max_pain ?? null;
+
+  return {
+    source,
+    call_wall: { level: callWall, source: source === 'uw' ? 'uw_spot_gex' : 'theta', status: status(callWall) },
+    put_wall: { level: putWall, source: source === 'uw' ? 'uw_spot_gex' : 'theta', status: status(putWall) },
+    zero_gamma: { level: zeroGamma, source: source === 'uw' ? 'uw_spot_gex' : 'theta', status: status(zeroGamma) },
+    max_pain: { level: maxPain, source: source === 'uw' ? 'uw_max_pain' : 'theta', status: status(maxPain, volumeOi.max_pain == null ? 'unavailable' : 'live') },
+    gex_pivots: dealerFactors.gex_pivots || [],
+    oi_walls: volumeOi.volume_magnet_candidates || [],
+    volume_magnets: volumeOi.volume_wall_candidates || [],
+    plain_chinese:
+      source === 'uw'
+        ? `UW Key Levels：Call Wall ${callWall ?? '--'}，Put Wall ${putWall ?? '--'}，Zero Gamma ${zeroGamma ?? '--'}。`
+        : 'UW 墙位不可用，Key Levels 回落到 Theta 或 unavailable。'
+  };
+}
+
 function isFmpRiskDegraded(snapshot) {
   if (!snapshot) {
     return false;
@@ -648,6 +674,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
         : `${uwConclusion.status} / unavailable`,
     plan_alignment: 'blocked / not ready'
   };
+  const keyLevels = buildKeyLevels({ dealerEngine, uwApi, signal });
 
   const uwLastUpdate = uwProvider.last_update || uwSourceStatus.last_update || signal.received_at || new Date().toISOString();
   const sourceStatus = Array.isArray(signal.source_status)
@@ -725,6 +752,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     volatility_activation: volatilityActivation,
     market_sentiment: marketSentiment,
     darkpool_summary: darkpoolSummary,
+    key_levels: keyLevels,
     health_matrix: healthMatrix,
     flow_validation: flowValidation,
     technical_engine: technicalEngine,

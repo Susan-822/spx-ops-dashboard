@@ -22,6 +22,7 @@ export function runReflectionEngine({
 
   addIf(supporting, uwProvider.status === 'live', `UW API live: ${uwProvider.endpoints_ok?.join(', ') || 'core endpoints ok'}`);
   addIf(supporting, dealerEngine.status === 'live', `Dealer regime ${dealerEngine.regime}, path ${dealerEngine.path_of_least_resistance}`);
+  addIf(supporting, dealerEngine.status === 'partial', `UW Dealer partial: wall data ${dealerEngine.upper_wall ?? '--'} / ${dealerEngine.lower_wall ?? '--'}`);
   addIf(supporting, institutionalAlert.state !== 'unavailable' && institutionalAlert.state !== 'none', `Institutional ${institutionalAlert.state} ${institutionalAlert.direction}`);
   addIf(supporting, darkpoolSummary.bias !== 'unavailable', `Dark pool ${darkpoolSummary.bias}`);
   addIf(supporting, marketSentiment.state !== 'unavailable', `Sentiment ${marketSentiment.state}`);
@@ -29,15 +30,15 @@ export function runReflectionEngine({
   const callWallProjection = crossAssetProjection?.projected_levels?.find((item) => item.type === 'call_wall' && item.es_equiv != null);
   addIf(supporting, Boolean(zeroGammaProjection), `SPX Zero Gamma ${zeroGammaProjection?.spx} 对应 ES ${zeroGammaProjection?.es_equiv}。`);
 
-  addIf(conflicting, signal?.flow_price_divergence?.action === 'wait', signal?.flow_price_divergence?.plain_chinese || 'Flow 与价格背离。');
-  addIf(conflicting, signal?.conflict_resolver?.action === 'block', signal?.conflict_resolver?.plain_chinese || 'Data conflict blocks execution.');
+  addIf(conflicting, signal?.flow_validation?.conflict === true, signal?.flow_validation?.plain_chinese || 'Flow validation conflict.');
+  addIf(conflicting, signal?.conflict_resolver?.action === 'block' && !signal?.uw_price_map_active, signal?.conflict_resolver?.plain_chinese || 'Data conflict blocks execution.');
   addIf(conflicting, institutionalAlert.direction === 'bullish' && signal?.tv_sentinel?.direction === 'bearish', 'Flow bullish 但 TV bearish。');
   addIf(conflicting, institutionalAlert.direction === 'bearish' && signal?.tv_sentinel?.direction === 'bullish', 'Flow bearish 但 TV bullish。');
   addIf(conflicting, Boolean(callWallProjection), `SPX Call Wall ${callWallProjection?.spx} 对应 ES ${callWallProjection?.es_equiv}，上方空间需降权。`);
 
   addIf(missing, uwProvider.status !== 'live', `UW ${uwProvider.status || 'unavailable'}`);
-  addIf(missing, dealerEngine.status !== 'live', 'UW dealer factors incomplete');
-  addIf(missing, signal?.dealer_conclusion?.status !== 'live', 'Theta dealer 主源未 live');
+  addIf(missing, dealerEngine.status === 'unavailable', 'UW dealer factors unavailable');
+  addIf(missing, dealerEngine.status === 'partial', 'vanna/charm/delta field partial');
   addIf(missing, signal?.tv_sentinel?.matched_allowed_setup !== true, 'TV matched setup missing');
   addIf(missing, !signal?.trade_plan?.entry_zone || signal.trade_plan.entry_zone.text === '--', 'entry missing');
   addIf(missing, !signal?.trade_plan?.stop_loss || signal.trade_plan.stop_loss.text === '--', 'stop missing');
