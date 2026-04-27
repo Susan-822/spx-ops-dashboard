@@ -500,6 +500,39 @@ function chipClassByRisk(value) {
 }
 
 function getStrategyCard(signal, type) {
+  const projectionText = signal.cross_asset_projection?.status === 'partial'
+    ? '暂参考 SPX 原始墙位；ES/SPY 等效价暂不可用。'
+    : signal.cross_asset_projection?.plain_chinese || '--';
+  if (type === '单腿') {
+    return {
+      strategy_name: '单腿',
+      suitable_when: '波动未启动，TV 未确认，不能提前做。',
+      entry_condition: '--',
+      target_zone: '--',
+      invalidation: '--',
+      avoid_when: '禁止追单，0仓等待。'
+    };
+  }
+  if (type === '垂直') {
+    return {
+      strategy_name: '垂直',
+      suitable_when: 'UW Flow 偏空，但还需要 TV breakdown_confirmed 或 retest_failed。',
+      entry_condition: '等 TV 空头结构确认后再生成。',
+      target_zone: projectionText,
+      invalidation: 'TV 结构不成立，或 Flow 转向。',
+      avoid_when: '没有 TV 确认不进场。'
+    };
+  }
+  if (type === '铁鹰') {
+    return {
+      strategy_name: '铁鹰',
+      suitable_when: '机构流偏空并有轰炸，不是平静磨盘环境。',
+      entry_condition: '--',
+      target_zone: '--',
+      invalidation: '--',
+      avoid_when: '不开铁鹰。'
+    };
+  }
   const cards = Array.isArray(signal.strategy_cards) ? signal.strategy_cards : [];
   const callSpread = cards.find((c) => c.strategy_name === '看涨价差');
   const putSpread = cards.find((c) => c.strategy_name === '看跌价差');

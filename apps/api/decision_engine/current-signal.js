@@ -152,7 +152,12 @@ function sanitizeUwPromotedStrings(value, uwActive = false) {
       .replaceAll('FMP 现价真实，但 Gamma 地图仍为 mock，禁止执行。', 'FMP 现价真实，UW 墙位地图已接管，等待 TV 确认。')
       .replaceAll('ThetaData unavailable.', 'ThetaData EM auxiliary unavailable.')
       .replaceAll('ThetaData unavailable', 'ThetaData EM auxiliary unavailable')
-      .replaceAll('Theta dealer 主源未 live', 'Theta EM auxiliary 未 live');
+      .replaceAll('Theta dealer 主源未 live', 'Theta EM auxiliary 未 live')
+      .replaceAll('ThetaData Gamma 不完整，Dealer path 仅参考，不可执行。', 'UW Dealer partial，墙位已接入，Vanna/Charm/Delta 部分缺失。')
+      .replaceAll('ThetaData Gamma 不完整，Dealer 地图不可执行', 'UW Dealer partial，墙位已接入，等待 TV 确认')
+      .replaceAll('现价与 Flip/Wall/Max Pain 地图严重冲突，禁止执行。', 'UW 墙位已接入；当前是交易条件未满足，不是数据崩溃。')
+      .replaceAll('blocked / not ready', 'WAIT / 等确认 / 0仓')
+      .replaceAll('禁做 / 等确认', '等确认 / 不追单');
   }
   if (Array.isArray(value)) return value.map((item) => sanitizeUwPromotedStrings(item, uwActive));
   if (value && typeof value === 'object') {
