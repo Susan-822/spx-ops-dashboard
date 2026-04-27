@@ -1294,8 +1294,10 @@ test('live fallback with theta partial and uw unavailable hides mock projections
   assert.equal(signal.conflict_resolver.action, 'block');
   assert.deepEqual(signal.conflict_resolver.conflicts, ['price_map_conflict']);
   assert.equal(signal.projection.one_line_instruction, '禁做 / 等确认');
-  assert.match(signal.projection.s_level_summary, /【总判断】/);
-  assert.match(signal.projection.s_level_summary, /【UW】/);
+  assert.match(signal.projection.s_level_summary, /【数据状态】/);
+  assert.match(signal.projection.s_level_summary, /【交互判断】/);
+  assert.match(signal.projection.s_level_summary, /【结论】/);
+  assert.match(signal.projection.s_level_summary, /UW：unavailable/);
   assert.equal(signal.trade_plan.stop_loss.text, '--');
   assert.equal(JSON.stringify(signal).includes('flip 5285'), false);
   assert.equal(JSON.stringify(signal.market_snapshot).includes('5320'), false);

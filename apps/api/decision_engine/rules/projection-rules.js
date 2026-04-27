@@ -17,67 +17,58 @@ export function buildCommandProjection({
   tvSentinel = {},
   conflictResolver = {},
   commandEnvironment = {},
-  tradePlan = {}
+  tradePlan = {},
+  dataSources = {},
+  degradation = {},
+  flowPriceDivergence = {}
 } = {}) {
   const expectedMove = dealerConclusion.expected_move_upper != null && dealerConclusion.expected_move_lower != null
     ? `${dealerConclusion.expected_move_lower} - ${dealerConclusion.expected_move_upper}`
     : '--';
-  const missing = [
-    dealerConclusion.status !== 'live' ? 'Theta Gamma live' : null,
-    uwDealerGreeks.status !== 'live' ? 'UW Greek Exposure live' : null,
-    tvSentinel.matched_allowed_setup !== true ? 'TV matched setup' : null
+  const availableItems = [
+    externalSpot.status === 'real' ? 'FMP 现价真实' : null,
+    fmpConclusion.event_risk === 'normal' ? '事件风险正常' : null,
+    expectedMove !== '--' ? 'Expected Move 可展示' : null
   ].filter(Boolean);
+  const limits = [
+    dealerConclusion.status !== 'live' ? 'ThetaData Gamma 不完整，Dealer 地图不可执行' : null,
+    uwConclusion.status !== 'live' ? 'UW 资金行为不可用或不完整' : null,
+    uwDealerGreeks.status !== 'live' ? 'UW Greek Exposure 不可用' : null,
+    tvSentinel.matched_allowed_setup !== true ? 'TV 未确认结构' : null,
+    tradePlan?.stop_loss?.level === 0 || tradePlan?.stop_loss?.text === '--' ? '止损未满足 ready 硬门槛' : null
+  ].filter(Boolean);
+  const action = tradePlan.status === 'ready' ? tradePlan.title : '禁做 / 等确认';
+  const reason = limits.length > 0
+    ? limits.slice(0, 3).join('；')
+    : tradePlan.plain_chinese || commandEnvironment.reason || '等待价格哨兵。';
+  const rawNote = [
+    `【数据状态】${dataSources?.summary?.label || 'BLOCKED'}`,
+    line('数据健康度', dataSources?.summary?.plain_chinese || '关键源不可执行或存在阻断，禁止交易。'),
+    line('FMP', `${dataSources?.fmp?.status || externalSpot.status || 'unavailable'} · ${dataSources?.fmp?.age_label || 'unavailable'}`),
+    line('ThetaData', `${dataSources?.theta?.status || dealerConclusion.status || 'unavailable'}${dataSources?.theta?.gamma_status === 'incomplete' ? '，Gamma 不完整' : ''}`),
+    line('UW', dataSources?.uw?.status || uwConclusion.status || 'unavailable'),
+    line('TV', dataSources?.tv?.status || tvSentinel.status || 'waiting'),
+    '',
+    '【交互判断】',
+    line('✓ 可用项', availableItems.join('；') || '暂无核心可用项'),
+    line('✗ 限制项', limits.slice(0, 4).join('；') || '--'),
+    line('→ 冲突', (conflictResolver.conflicts || []).join('；') || flowPriceDivergence.plain_chinese || '无真实价格冲突，但关键源不完整'),
+    line('→ 降级方案', degradation.plain_chinese || '不可降级，全部禁止'),
+    '',
+    '【结论】',
+    action,
+    '',
+    '【原因】',
+    reason,
+    '',
+    '【我现在该做什么】',
+    tradePlan.wait_conditions?.[0]?.text || '等待 TV 结构信号，不提前交易。'
+  ].join('\n');
 
   return {
-    s_level_summary: [
-      '【总判断】',
-      line('环境', commandEnvironment.plain_chinese || commandEnvironment.reason),
-      line('动作', tradePlan.plain_chinese || '等待'),
-      '',
-      '【量价 / 通道】',
-      line('FMP spot', `${externalSpot.source || 'unavailable'} ${externalSpot.status || 'unavailable'} ${externalSpot.spot ?? '--'}`),
-      line('量比', `${volumePressure.level} / ${volumePressure.rvol ?? '--'}`),
-      line('通道形态', channelShape.shape),
-      line('推动方向', volumePressure.direction),
-      '',
-      '【波动】',
-      line('Expected Move', expectedMove),
-      line('波动状态', volatilityActivation.state),
-      line('允许', (volatilityActivation.allow || []).join(', ') || '--'),
-      line('禁止', (volatilityActivation.block || []).join(', ') || '--'),
-      '',
-      '【Dealer】',
-      line('ThetaData', dealerConclusion.status),
-      line('Gamma', dealerConclusion.gamma_regime),
-      line('Call Wall', dealerConclusion.call_wall),
-      line('Put Wall', dealerConclusion.put_wall),
-      line('Max Pain', dealerConclusion.max_pain),
-      line('Zero Gamma', dealerConclusion.zero_gamma),
-      line('Dealer Path', dealerPath.path),
-      '',
-      '【UW】',
-      line('Flow', uwConclusion.flow_bias),
-      line('Dark Pool', uwConclusion.darkpool_bias),
-      line('Market Tide', uwConclusion.market_tide),
-      line('Greek Exposure', uwDealerGreeks.status),
-      line('Vanna', uwDealerGreeks.net_vanna_bias),
-      line('Charm', uwDealerGreeks.net_charm_bias),
-      line('Delta', uwDealerGreeks.net_delta_bias),
-      line('Dealer cross-check', uwDealerGreeks.dealer_crosscheck),
-      '',
-      '【TV 哨兵】',
-      line('结构', tvSentinel.event_type || tvSentinel.tv_signal),
-      line('是否 matched', tvSentinel.matched_allowed_setup === true ? 'YES' : 'NO'),
-      '',
-      '【冲突】',
-      line('缺什么', missing.join(', ') || '--'),
-      line('冲突什么', (conflictResolver.conflicts || []).join('；') || '--'),
-      line('为什么不能 ready', tradePlan.status === 'ready' ? '--' : tradePlan.plain_chinese || commandEnvironment.reason),
-      '',
-      '【我现在该做什么】',
-      line('一句话指令', tradePlan.status === 'ready' ? tradePlan.title : '禁做 / 等确认')
-    ].join('\n'),
-    one_line_instruction: tradePlan.status === 'ready' ? tradePlan.title : '禁做 / 等确认',
+    s_level_summary: rawNote,
+    raw_note: rawNote,
+    one_line_instruction: action,
     radar_sections: {
       total: {
         environment: commandEnvironment.state,
