@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createClient } from 'redis';
 
-const DEFAULT_MODE = 'memory';
+const DEFAULT_MODE = 'file';
 const DEFAULT_FILE_PATH = '/var/data/tv_snapshot.json';
 const DEFAULT_TTL_SECONDS = 21600;
 const DEFAULT_STALE_SECONDS = 900;
