@@ -318,6 +318,60 @@ function spotSourceText(snapshot = {}) {
   return 'Spot unavailable';
 }
 
+function buildRealtimeAnalysis(signal = {}) {
+  const snap = signal.market_snapshot || {};
+  const dealer = signal.dealer_conclusion || {};
+  const uwGreeks = signal.uw_dealer_greeks || {};
+  const action = signal.projection?.one_line_instruction || '禁做 / 等确认';
+  const expectedMove = dealer.expected_move_lower != null && dealer.expected_move_upper != null
+    ? `${fmt(dealer.expected_move_lower, 2)} - ${fmt(dealer.expected_move_upper, 2)}`
+    : '--';
+  const wallNote = (value) => value == null ? '--' : `${fmtInt(value)}（OI fallback / 仅参考）`;
+  const reason =
+    signal.trade_plan?.plain_chinese
+    || signal.command_environment?.reason
+    || 'ThetaData 当前不可执行，TV 尚未确认价格结构，不能出 ready。';
+
+  return [
+    '【总判断】',
+    `当前：${action}`,
+    `原因：${reason}`,
+    '',
+    '【盘面结构】',
+    `现价：${displaySpot(snap)} ${spotSourceText(snap)}`,
+    `ES/SPX状态：${safeText(signal.fmp_conclusion?.market_bias, 'unavailable')}`,
+    `量比：${safeText(signal.volume_pressure?.plain_chinese, '量比不可用')}`,
+    `通道：${safeText(signal.channel_shape?.plain_chinese, '通道形态不可用')}`,
+    `波动状态：${safeText(signal.volatility_activation?.plain_chinese, '波动状态不可用')}`,
+    '',
+    '【Dealer】',
+    `ThetaData：${safeText(signal.theta?.status, 'unavailable')}，${safeText(dealer.plain_chinese, 'Dealer 地图不能执行，只能观察。')}`,
+    `Expected Move：${expectedMove}`,
+    `Call Wall：${wallNote(dealer.call_wall)}`,
+    `Put Wall：${wallNote(dealer.put_wall)}`,
+    `Max Pain：${wallNote(dealer.max_pain)}`,
+    `Zero Gamma：${dealer.zero_gamma == null ? '--' : fmtInt(dealer.zero_gamma)}`,
+    `Dealer路径：${safeText(signal.dealer_path?.plain_chinese, 'Dealer path unavailable')}`,
+    '',
+    '【UW】',
+    `Flow：${safeText(signal.uw_conclusion?.flow_bias, 'unavailable')}`,
+    `Dark Pool：${safeText(signal.uw_conclusion?.darkpool_bias, 'unavailable')}`,
+    `Market Tide：${safeText(signal.uw_conclusion?.market_tide, 'unavailable')}`,
+    `Greek Exposure：${safeText(uwGreeks.status, 'unavailable')}`,
+    `Vanna：${safeText(uwGreeks.net_vanna_bias, 'unavailable')}`,
+    `Charm：${safeText(uwGreeks.net_charm_bias, 'unavailable')}`,
+    `Delta：${safeText(uwGreeks.net_delta_bias, 'unavailable')}`,
+    `Dealer cross-check：${safeText(uwGreeks.dealer_crosscheck, 'unavailable')}`,
+    '',
+    '【TV哨兵】',
+    `当前结构：${safeText(signal.tv_sentinel?.plain_chinese, 'TV 尚未确认价格结构，不能出 ready。')}`,
+    `是否确认：${signal.tv_sentinel?.matched_allowed_setup === true ? 'YES' : 'NO'}`,
+    '',
+    '【我现在该做什么】',
+    `一句话指令：${action}`
+  ].join('\n');
+}
+
 function eventRiskLabel(value) {
   return {
     high: '高风险',
