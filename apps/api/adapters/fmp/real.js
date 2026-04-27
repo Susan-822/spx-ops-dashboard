@@ -95,9 +95,16 @@ async function fetchJson(url, fetchImpl, timeoutMs = 6000) {
     signal: AbortSignal.timeout(timeoutMs)
   });
 
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
   return {
     response,
-    payload: response.ok ? await response.json() : null
+    payload
   };
 }
 
@@ -180,7 +187,8 @@ function buildPriceStatus({
   latency_ms,
   price,
   day_change,
-  day_change_percent
+  day_change_percent,
+  audit = []
 }) {
   return {
     source: 'fmp_price',
@@ -197,7 +205,25 @@ function buildPriceStatus({
     latency_ms,
     price,
     day_change,
-    day_change_percent
+    day_change_percent,
+    audit
+  };
+}
+
+function sanitizeUrl(url) {
+  const safe = new URL(url);
+  if (safe.searchParams.has('apikey')) {
+    safe.searchParams.set('apikey', '[REDACTED]');
+  }
+  return safe.toString();
+}
+
+function bodyShape(payload) {
+  const first = asArray(payload)[0];
+  return {
+    top_level_keys: payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 20) : [],
+    data_length: asArray(payload).length,
+    first_item_keys: first && typeof first === 'object' ? Object.keys(first).slice(0, 30) : []
   };
 }
 

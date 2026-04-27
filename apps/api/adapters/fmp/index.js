@@ -43,6 +43,7 @@ function createFmpPriceFailureFallback(real = {}, overrides = {}) {
     price: null,
     day_change: null,
     day_change_percent: null,
+    audit: real.audit || null,
     ...overrides
   });
 }

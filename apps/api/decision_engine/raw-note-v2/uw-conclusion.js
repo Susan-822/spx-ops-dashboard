@@ -44,9 +44,30 @@ function findZeroGamma(rows) {
   return null;
 }
 
-export function buildUwWallDiagnostics(raw = {}) {
+function median(values = []) {
+  const sorted = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+function boundsFor(rows, spot, maxPain) {
+  const numericSpot = numberOrNull(spot);
+  const numericMaxPain = numberOrNull(maxPain);
+  if (numericSpot != null) {
+    return { min: numericSpot * 0.85, max: numericSpot * 1.15, method: 'spot_pm_15pct' };
+  }
+  if (numericMaxPain != null) {
+    return { min: numericMaxPain * 0.8, max: numericMaxPain * 1.2, method: 'max_pain_pm_20pct' };
+  }
+  const center = median(rows.map((row) => row.strike));
+  return center == null
+    ? { min: null, max: null, method: 'unbounded_no_reference' }
+    : { min: center * 0.8, max: center * 1.2, method: 'strike_cluster_pm_20pct' };
+}
+
+export function buildUwWallDiagnostics(raw = {}, { spot = null, maxPain = null } = {}) {
   const rows = asArray(raw.spot_gex_strike ?? raw.spot_gex);
-  const normalized = rows.map((row) => {
+  const mapped = rows.map((row) => {
     const strike = firstNumber(row, ['strike', 'price', 'level']);
     const call = firstNumber(row, ['call_gamma_oi', 'call_gex', 'call_gamma', 'call_gamma_exposure']);
     const putRaw = firstNumber(row, ['put_gamma_oi', 'put_gex', 'put_gamma', 'put_gamma_exposure']);
@@ -65,11 +86,23 @@ export function buildUwWallDiagnostics(raw = {}) {
       }
     };
   }).filter((row) => row.strike != null);
+  const rawStrikeValues = mapped.map((row) => row.strike).filter((value) => Number.isFinite(value));
+  const bounds = boundsFor(mapped, spot, maxPain);
+  const normalized = mapped.filter((row) => (
+    row.strike > 0
+    && (bounds.min == null || row.strike >= bounds.min)
+    && (bounds.max == null || row.strike <= bounds.max)
+  ));
 
   const sorted = [...normalized].sort((a, b) => a.strike - b.strike);
   const callWall = top(normalized, 'call_gamma', 1)[0]?.strike ?? null;
   const putWall = top(normalized, 'put_gamma', 1)[0]?.strike ?? null;
-  const zeroGamma = findZeroGamma(sorted);
+  const zeroGammaRaw = findZeroGamma(sorted);
+  const zeroGamma = zeroGammaRaw != null
+    && (bounds.min == null || zeroGammaRaw >= bounds.min)
+    && (bounds.max == null || zeroGammaRaw <= bounds.max)
+    ? zeroGammaRaw
+    : null;
   const first = normalized.find((row) => row.fields.strike || row.fields.call || row.fields.put || row.fields.net) || { fields: {} };
   const confidence = normalized.length >= 5 && callWall != null && putWall != null ? 'high' : normalized.length > 0 ? 'medium' : 'low';
   const sameWall = callWall != null && callWall === putWall;
@@ -84,11 +117,19 @@ export function buildUwWallDiagnostics(raw = {}) {
     top_call_gamma_strikes: top(normalized, 'call_gamma'),
     top_put_gamma_strikes: top(normalized, 'put_gamma'),
     top_net_gex_strikes: top(normalized, 'net_gamma'),
+    top_abs_net_gamma_strikes: top(normalized, 'net_gamma', 10),
+    rows_before_filter: rows.length,
     rows_used: normalized.length,
+    rows_after_filter: normalized.length,
+    strike_min: rawStrikeValues.length ? Math.min(...rawStrikeValues) : null,
+    strike_max: rawStrikeValues.length ? Math.max(...rawStrikeValues) : null,
+    filtered_strike_min: normalized.length ? Math.min(...normalized.map((row) => row.strike)) : null,
+    filtered_strike_max: normalized.length ? Math.max(...normalized.map((row) => row.strike)) : null,
+    strike_filter_method: bounds.method,
     call_wall: callWall,
     put_wall: putWall,
     zero_gamma: zeroGamma,
-    zero_gamma_method: zeroGamma == null ? 'running_net_gamma_no_cross' : 'running_net_gamma_first_cross',
+    zero_gamma_method: zeroGamma == null ? (zeroGammaRaw == null ? 'running_net_gamma_no_cross' : 'running_net_gamma_outside_filter') : 'running_net_gamma_first_cross',
     confidence,
     plain_chinese: sameWall
       ? `Call Wall 与 Put Wall 同为 ${callWall}，因为该 strike 同时拥有最大的 call/put gamma；需要人工复核字段。`
@@ -110,7 +151,10 @@ export function buildUwConclusionV2({ provider = {}, factors = {}, raw = {}, ins
   const volumeOi = factors.volume_oi_factors || {};
   const technical = factors.technical_factors || {};
   const volatility = factors.volatility_factors || {};
-  const diagnostics = buildUwWallDiagnostics(raw);
+  const diagnostics = buildUwWallDiagnostics(raw, {
+    spot: raw.spot ?? raw.spx_price ?? null,
+    maxPain: volumeOi.max_pain ?? null
+  });
   const callWall = diagnostics.call_wall ?? dealer.call_wall_candidate ?? dealer.top_call_gamma_strikes?.[0]?.strike ?? null;
   const putWall = diagnostics.put_wall ?? dealer.put_wall_candidate ?? dealer.top_put_gamma_strikes?.[0]?.strike ?? null;
   const zeroGamma = diagnostics.zero_gamma ?? dealer.zero_gamma_or_flip ?? dealer.gex_pivots?.[0]?.strike ?? null;

@@ -1188,6 +1188,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
       ...uwConclusionFinal,
       provider_mode: uwProvider.mode
     },
+    fmp_price_audit: fmpSnapshot.price?.audit || null,
     uw_provider: uwProvider,
     uw_raw: uwApi.uw_raw,
     uw_factors: uwApi.uw_factors,
@@ -1424,6 +1425,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   const finalOutput = {
     ...output,
     ...rawNoteV2,
+    fmp_price_audit: fmpSnapshot.price?.audit || null,
     scenario: scenarioMode ? output.scenario : null,
     fetch_mode: scenarioMode ? output.fetch_mode : 'live',
     is_mock: scenarioMode ? output.is_mock : false,
