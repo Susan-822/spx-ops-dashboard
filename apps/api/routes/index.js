@@ -23,6 +23,7 @@ import { writeThetaSnapshot } from '../storage/theta-snapshot.js';
 import { sendJson, readJsonBody, secureCompare } from './helpers.js';
 import { ingestUwSummary } from '../../../integrations/unusual-whales/ingest/uw-ingest.js';
 import { writeUwSnapshot } from '../state/uwSnapshotStore.js';
+import { refreshUwProvider } from '../state/uwProvider.js';
 
 function getBuildMetadata() {
   return {
@@ -166,6 +167,23 @@ export async function handleApiRoute(req, res) {
       ...signal,
       ...getBuildMetadata()
     });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/uw/refresh') {
+    try {
+      const snapshot = await refreshUwProvider();
+      return sendJson(res, 202, {
+        accepted: true,
+        uw_provider: snapshot.provider,
+        is_mock: false
+      });
+    } catch (error) {
+      return sendJson(res, 502, {
+        accepted: false,
+        message: error.message,
+        is_mock: false
+      });
+    }
   }
 
   if (req.method === 'POST' && url.pathname === '/ingest/theta') {

@@ -4,6 +4,9 @@ export function buildAlertMessage({ signal, body = {} }) {
   const base = buildTradePlanTelegramMessage({ signal, body });
   const projection = signal?.projection || {};
   const extras = [
+    signal?.command_center?.plain_chinese ? `状态：${signal.command_center.final_state}` : null,
+    signal?.command_center?.action ? `动作：${signal.command_center.action}` : null,
+    signal?.command_center?.main_reason ? `原因：${signal.command_center.main_reason}` : null,
     projection.s_level_summary ? `\n${projection.s_level_summary}` : null,
     projection.one_line_instruction ? `一句话：${projection.one_line_instruction}` : null,
     signal?.volume_pressure?.plain_chinese ? `量比：${signal.volume_pressure.plain_chinese}` : null,

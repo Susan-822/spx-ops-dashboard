@@ -349,6 +349,7 @@ function buildRealtimeAnalysis(signal = {}) {
   const snap = signal.market_snapshot || {};
   const dealer = signal.dealer_conclusion || {};
   const uwGreeks = signal.uw_dealer_greeks || {};
+  const reflection = signal.reflection || {};
   const action = signal.projection?.one_line_instruction || '禁做 / 等确认';
   const expectedMove = dealer.expected_move_lower != null && dealer.expected_move_upper != null
     ? `${fmt(dealer.expected_move_lower, 2)} - ${fmt(dealer.expected_move_upper, 2)}`
@@ -382,6 +383,8 @@ function buildRealtimeAnalysis(signal = {}) {
     `量比：${safeText(signal.volume_pressure?.plain_chinese, '量比不可用')}`,
     `通道：${safeText(signal.channel_shape?.plain_chinese, '通道形态不可用')}`,
     `波动状态：${safeText(signal.volatility_activation?.plain_chinese, '波动状态不可用')}`,
+    `Flow验证：${safeText(signal.flow_validation?.plain_chinese, 'Flow validation unavailable')}`,
+    `技术结构：${safeText(signal.technical_engine?.plain_chinese, 'Technical engine unavailable')}`,
     '',
     '【Dealer】',
     `ThetaData：${safeText(signal.theta?.status, 'unavailable')}，${safeText(dealer.plain_chinese, 'Dealer 地图不能执行，只能观察。')}`,
@@ -401,6 +404,13 @@ function buildRealtimeAnalysis(signal = {}) {
     `Charm：${safeText(uwGreeks.net_charm_bias, 'unavailable')}`,
     `Delta：${safeText(uwGreeks.net_delta_bias, 'unavailable')}`,
     `Dealer cross-check：${safeText(uwGreeks.dealer_crosscheck, 'unavailable')}`,
+    `允许：${safeText(signal.allowed_setups, '--')}`,
+    `阻断：${safeText(signal.blocked_setups_reason, '--')}`,
+    `UW Dealer Engine：${safeText(signal.dealer_engine?.plain_chinese, 'UW dealer engine unavailable')}`,
+    `Dark Pool Summary：${safeText(signal.darkpool_summary?.plain_chinese, 'Dark pool unavailable')}`,
+    `Reflection 支持：${safeText(reflection.supporting_evidence, '--')}`,
+    `Reflection 冲突：${safeText(reflection.conflicting_evidence, '--')}`,
+    `Reflection 缺失：${safeText(reflection.missing_inputs, '--')}`,
     '',
     '【TV哨兵】',
     `状态：${safeText(signal.tv_sentinel?.status, 'waiting')}`,
@@ -445,6 +455,16 @@ function deriveDataQuality(signal) {
 }
 
 function getAction(signal) {
+  if (signal?.command_center?.action) {
+    const key = signal.command_center.final_state === 'blocked' ? 'no_trade' : 'wait';
+    return {
+      ...ACTION_MAP[key],
+      title: signal.command_center.action,
+      summary: signal.command_center.plain_chinese || ACTION_MAP[key].summary,
+      permission: signal.command_center.action,
+      plan: signal.command_center.final_state || ACTION_MAP[key].plan
+    };
+  }
   if (signal?.recommended_action && ACTION_MAP[signal.recommended_action]) return ACTION_MAP[signal.recommended_action];
   if (signal?.conflict?.conflict_level === 'high' || signal?.stale_flags?.any_stale) return ACTION_MAP.no_trade;
   return ACTION_MAP.wait;
@@ -517,6 +537,7 @@ function strategyState(signal, type) {
 }
 
 function buildTrigger(signal) {
+  if (signal.trade_plan?.entry_zone?.text) return signal.trade_plan.entry_zone.text;
   if (deriveDataQuality(signal).executable !== true) return '--';
   const snap = signal.market_snapshot || {};
   if (signal.recommended_action === 'long_on_pullback') return `回踩 ${fmtInt(snap.flip_level)} 上方不破`;
@@ -527,6 +548,9 @@ function buildTrigger(signal) {
 }
 
 function buildTarget(signal) {
+  if (Array.isArray(signal.trade_plan?.targets) && signal.trade_plan.targets.length > 0) {
+    return signal.trade_plan.targets.map((target) => target.text || target.level || target.name).filter(Boolean).join(' / ') || '--';
+  }
   if (deriveDataQuality(signal).executable !== true) return '--';
   const snap = signal.market_snapshot || {};
   if (signal.recommended_action === 'long_on_pullback') return `${fmtInt(snap.call_wall)} / 上方流动性`;
@@ -536,6 +560,7 @@ function buildTarget(signal) {
 }
 
 function buildInvalidation(signal) {
+  if (signal.trade_plan?.invalidation?.text) return signal.trade_plan.invalidation.text;
   if (deriveDataQuality(signal).executable !== true) return '--';
   if (signal.plain_language?.invalidation) return signal.plain_language.invalidation;
   const snap = signal.market_snapshot || {};
@@ -544,6 +569,7 @@ function buildInvalidation(signal) {
 }
 
 function buildAvoid(signal) {
+  if (signal.position_sizing_engine?.plain_chinese) return signal.position_sizing_engine.plain_chinese;
   if (deriveDataQuality(signal).executable !== true) {
     return safeText(signal?.engines?.data_coherence?.reason, '数据冲突 / 演示场景 / 数据过期 / 缺少关键输入');
   }
@@ -737,7 +763,7 @@ function renderCommandHero(signal) {
   const invalidation = buildInvalidation(signal);
   const avoid = buildAvoid(signal);
   const summary = dataQuality.executable !== true
-    ? safeText(signal?.engines?.data_coherence?.reason, '数据冲突，禁止执行。')
+    ? safeText(signal.command_center?.plain_chinese, safeText(signal?.engines?.data_coherence?.reason, '数据冲突，禁止执行。'))
     : safeText(signal.plain_language?.user_action, action.summary);
   const title = dataQuality.executable !== true ? '数据守卫阻断｜禁止执行' : action.title;
   const planLabel = dataQuality.executable !== true
@@ -759,6 +785,12 @@ function renderCommandHero(signal) {
           <span class="tag ${chipClassByRisk(signal.event_context?.event_risk)}">${eventRiskLabel(signal.event_context?.event_risk)}</span>
           <span class="tag ${chipClassByRisk(signal.gamma_regime)}">${gammaLabel(signal.gamma_regime)}</span>
           <span class="tag violet">${dealerLabel(signal.uw_context?.dealer_bias || signal.signals?.dealer_behavior)}</span>
+        </div>
+        <div class="command-grid">
+          <div class="command-cell"><span class="card-label">Command Center</span><b>${escapeHtml(signal.command_center?.action || '等确认')}</b></div>
+          <div class="command-cell"><span class="card-label">机构</span><b>${escapeHtml(signal.institutional_alert?.plain_chinese || '机构信号不可用。')}</b></div>
+          <div class="command-cell"><span class="card-label">波动</span><b>${escapeHtml(signal.volatility_activation?.plain_chinese || '波动状态不可用。')}</b></div>
+          <div class="command-cell"><span class="card-label">反射</span><b>${escapeHtml(signal.reflection?.plain_chinese || '等待反射分析。')}</b></div>
         </div>
         <div class="command-grid">
           <div class="command-cell"><span class="card-label">触发</span><b>${escapeHtml(trigger)}</b></div>
@@ -856,11 +888,13 @@ function renderIntelMatrix(signal) {
     ['Theta', thetaDecisionText(signal), 'Gamma 主环境'],
     ['TradingView', signal.signals?.tv_signal || '等待结构确认', '价格确认'],
     ['UW Flow', uwSafeValue(signal, 'flow'), '主动流向'],
-    ['Dark Pool', uwSafeValue(signal, 'darkpool'), '资金区'],
-    ['Dealer', dealerDecisionText(signal), '做市商路径'],
+    ['Strategy', Object.entries(signal.strategy_permissions || {}).map(([key, value]) => `${key}:${value?.permission || 'wait'}`).join(' / '), '策略权限'],
+    ['Dark Pool', signal.darkpool_summary?.bias || uwSafeValue(signal, 'darkpool'), signal.darkpool_summary?.plain_chinese || '资金区'],
+    ['Dealer', signal.dealer_engine?.behavior || dealerDecisionText(signal), signal.dealer_engine?.plain_chinese || '做市商路径'],
     ['UW Greek', signal.uw_dealer_greeks?.status || 'unavailable', signal.uw_dealer_greeks?.plain_chinese || 'Greek Exposure'],
     ['量比', signal.volume_pressure?.level || 'unavailable', signal.volume_pressure?.plain_chinese || '推动强度'],
-    ['波动启动', signal.volatility_activation?.state || 'unavailable', signal.volatility_activation?.plain_chinese || '波动状态'],
+    ['波动启动', signal.volatility_activation?.strength || signal.volatility_activation?.state || 'unavailable', signal.volatility_activation?.plain_chinese || '波动状态'],
+    ['反射', signal.reflection?.confidence_score ?? 0, signal.reflection?.plain_chinese || '反射分析不可用'],
     ['FMP', signal.event_context?.event_note || eventRiskLabel(signal.event_context?.event_risk), '事件过滤']
   ];
   return `
@@ -942,15 +976,25 @@ function renderRadarSummary(signal) {
       <article class="radar-card">
         <div class="radar-title">
           <h2>Flow / UW Radar</h2>
-          <span class="tag violet">${escapeHtml(intel.dealer)}</span>
+          <span class="tag violet">${escapeHtml(signal.dealer_engine?.behavior || intel.dealer)}</span>
         </div>
-        <p class="radar-note">${escapeHtml(safeText(signal.radar_summary?.order_flow, 'UW 只作为辅助情报，不直接替代价格确认。'))}</p>
+        <p class="radar-note">${escapeHtml(safeText(signal.institutional_alert?.plain_chinese || signal.radar_summary?.order_flow, 'UW 只作为辅助情报，不直接替代价格确认。'))}</p>
         <div class="tag-row">
           <span class="tag blue">Flow ${escapeHtml(intel.uwFlow)}</span>
-          <span class="tag green">Dark Pool ${escapeHtml(intel.darkPool)}</span>
+          <span class="tag green">Dark Pool ${escapeHtml(signal.darkpool_summary?.bias || intel.darkPool)}</span>
           <span class="tag amber">Theta Weight ${fmtInt((signal.weights?.theta || 0) * 100)}%</span>
           <span class="tag violet">UW Weight ${fmtInt((signal.weights?.uw || 0) * 100)}%</span>
         </div>
+        <p class="radar-note">${escapeHtml([
+          `Coverage：${safeText(Object.keys(signal.uw_endpoint_coverage || {}).map((key) => `${key}:${(signal.uw_endpoint_coverage?.[key]?.ok || []).length}/${(signal.uw_endpoint_coverage?.[key]?.required || []).length}`), '--')}`,
+          `Factors：${safeText(signal.uw_factors?.flow_factors?.direction, 'none')} / ${safeText(signal.uw_factors?.volatility_factors?.iv_rank, '--')}`,
+          `Technical：${safeText(signal.technical_engine?.plain_chinese, '--')}`,
+          `Allowed：${safeText(signal.allowed_setups_reason, '--')}`,
+          `Blocked：${safeText(signal.blocked_setups_reason, '--')}`,
+          `支持：${safeText(signal.reflection?.supporting_evidence, '--')}`,
+          `冲突：${safeText(signal.reflection?.conflicting_evidence, '--')}`,
+          `缺口：${safeText(signal.reflection?.missing_inputs, '--')}`
+        ].join('\n'))}</p>
       </article>
 
       <article class="radar-card">
