@@ -471,6 +471,7 @@ function getAction(signal) {
 }
 
 function hasHardBlock(signal) {
+  if (signal?.command_center?.final_state === 'wait') return false;
   const dataQuality = deriveDataQuality(signal);
   return dataQuality.executable !== true
     || signal?.recommended_action === 'no_trade'
@@ -635,7 +636,9 @@ function renderTopbar(currentPath, currentScenario, signal) {
   const query = window.location.search || '';
   const dataQuality = deriveDataQuality(signal);
   const scenarioMode = Boolean(currentScenario);
-  const heartbeatLabel = scenarioMode
+  const heartbeatLabel = signal?.command_center?.final_state === 'wait'
+    ? 'WAIT · 等确认'
+    : scenarioMode
     ? '演示场景｜不可交易'
     : dataQuality.coherence === 'mixed' || dataQuality.coherence === 'conflict'
       ? `${String(dataQuality.coherence).toUpperCase()} · NO TRADE`
@@ -774,6 +777,40 @@ function renderRiskStack(signal) {
   `;
 }
 
+function strategyCardCopy(signal, type) {
+  const projectionText = signal.cross_asset_projection?.status === 'partial'
+    ? '暂参考 SPX 原始墙位；ES/SPY 等效价暂不可用。'
+    : signal.cross_asset_projection?.plain_chinese || '--';
+  if (type === '单腿') {
+    return {
+      status: '等待 / 禁止追单',
+      suitable: '波动未启动，TV 未确认，不能提前做。',
+      entry: '--',
+      target: '--',
+      invalidation: '--',
+      avoid: '仓位：0'
+    };
+  }
+  if (type === '垂直') {
+    return {
+      status: '等待候选',
+      suitable: 'UW Flow 偏空，但还需要 TV breakdown_confirmed 或 retest_failed。',
+      entry: '等 TV 空头结构确认后再生成。',
+      target: projectionText,
+      invalidation: 'TV 结构不成立，或 Flow 转向。',
+      avoid: '仓位：0'
+    };
+  }
+  return {
+    status: '禁止',
+    suitable: '机构流偏空并有轰炸，不是平静磨盘环境。',
+    entry: '--',
+    target: '--',
+    invalidation: '--',
+    avoid: '仓位：0'
+  };
+}
+
 function renderCommandHero(signal) {
   const dataQuality = deriveDataQuality(signal);
   const action = getAction(signal);
@@ -825,28 +862,17 @@ function renderCommandHero(signal) {
 }
 
 function renderStrategyCards(signal) {
-  const dataQuality = deriveDataQuality(signal);
   const strategyTypes = ['单腿', '垂直', '铁鹰'];
   return `
     <section class="grid-3">
       ${strategyTypes.map((type) => {
-        const card = getStrategyCard(signal, type);
+        const card = strategyCardCopy(signal, type);
         const state = strategyState(signal, type);
-        const target = dataQuality.executable !== true
-          ? '--'
-          : '--';
-        const entry = dataQuality.executable !== true
-          ? '--'
-          : '--';
-        const suitable = dataQuality.executable !== true
-          ? safeText(signal?.engines?.data_coherence?.reason, '数据冲突 / 演示场景 / 数据过期 / 缺少关键输入')
-          : card.suitable_when || '只在结构、Gamma、事件风险同时支持时考虑。';
-        const invalidation = dataQuality.executable !== true
-          ? '--'
-          : '--';
-        const avoid = dataQuality.executable !== true
-          ? safeText(signal?.engines?.data_coherence?.reason, '数据冲突 / 演示场景 / 数据过期 / 缺少关键输入')
-          : card.avoid_when || buildAvoid(signal);
+        const target = card.target;
+        const entry = card.entry;
+        const suitable = card.suitable;
+        const invalidation = card.invalidation;
+        const avoid = card.avoid;
 
         return `
           <article class="strategy-card ${state.cls}">
@@ -855,7 +881,7 @@ function renderStrategyCards(signal) {
                 <div class="section-label">Strategy</div>
                 <div class="strategy-name">${type}</div>
               </div>
-              <span class="strategy-status ${state.cls}">${state.text}</span>
+              <span class="strategy-status ${state.cls}">${escapeHtml(card.status || state.text)}</span>
             </div>
             <div class="strategy-kv">
               <div class="kv-row"><span>适合</span><b>${escapeHtml(suitable)}</b></div>
@@ -1030,24 +1056,45 @@ function renderRadarSummary(signal) {
   const intel = displayIntel(signal);
   const projection = signal.projection?.command_summary || {};
   const thetaStatus = signal?.theta?.status || signal?.dealer_conclusion?.status || 'unavailable';
-  const dealerStatus = signal?.dealer_conclusion?.status || 'unavailable';
-  const executionStatus = signal?.execution_constraints?.theta?.executable === true ? 'ready' : 'blocked / not ready';
+  const dealerStatus = signal?.dealer_engine?.status || signal?.dealer_conclusion?.status || 'unavailable';
+  const executionStatus = `${String(signal.command_center?.final_state || 'wait').toUpperCase()} / 0仓`;
   const spotSourceText = snap.spot_is_real === true ? `${safeText(snap.spot_source, 'fmp')} real` : safeText(snap.spot_source, 'unavailable');
+  const guard = buildDataQualityGuardText(signal, spotSourceText);
+  const conflict = buildSignalConflictText(signal, spotSourceText);
+  const radarSummary = [
+    '【Radar 总结】',
+    `当前状态：${String(signal.command_center?.final_state || 'wait').toUpperCase()} / ${signal.command_center?.action || '等确认'}`,
+    '主因：UW 已 live，但 TV 尚未确认结构。',
+    `资金：UW Flow ${signal.uw_conclusion?.flow_bias || 'unavailable'}，机构流偏空，不能单独追空。`,
+    `Dealer：UW ${signal.dealer_engine?.status || 'unavailable'}，墙位已接入，但 Vanna/Charm/Delta 不完整。`,
+    `波动：${signal.volatility_activation?.strength || 'unavailable'}，单腿不放行。`,
+    `暗池：${signal.darkpool_summary?.bias || 'unavailable'}，没有明确支撑/压力。`,
+    '结论：空头候选需要等 TV breakdown_confirmed 或 retest_failed。当前 0 仓。'
+  ].join('\n');
   return `
     <section class="radar-layout">
-      ${dataQuality.executable !== true ? `
+      <article class="radar-card">
+        <div class="radar-title">
+          <h2>Radar 总结</h2>
+          <span class="tag amber">${escapeHtml(signal.command_center?.action || '等确认')}</span>
+        </div>
+        <p class="radar-note">${escapeHtml(radarSummary)}</p>
+      </article>
+      ${dataQuality.executable !== true || signal.uw_provider?.status === 'live' ? `
         <article class="radar-card">
           <div class="radar-title">
             <h2>Data Quality Guard</h2>
-            <span class="tag amber">${escapeHtml(String(dataQuality.coherence).toUpperCase() || 'NO TRADE')}</span>
+            <span class="tag amber">${escapeHtml(guard.title)}</span>
           </div>
-          <p class="radar-note">${escapeHtml(safeText(signal?.engines?.data_coherence?.reason, '价格地图不一致，禁止执行。'))}</p>
+          <p class="radar-note">${escapeHtml(guard.title)}</p>
           <ul class="alert-list">
-            <li>FMP spot：${escapeHtml(spotSourceText)} ${escapeHtml(displaySpot(snap))}</li>
-            <li>ThetaData：${escapeHtml(thetaStatus)}</li>
-            <li>UW：${escapeHtml(signal?.uw_conclusion?.status || 'unavailable')}</li>
-            <li>Dealer：${escapeHtml(dealerStatus)}</li>
-            <li>执行状态：${escapeHtml(executionStatus)}</li>
+            ${(guard.items || [
+              `FMP spot：${spotSourceText} ${displaySpot(snap)}`,
+              `ThetaData：EM auxiliary ${thetaStatus}，不阻断 UW 主线`,
+              `UW：${signal?.uw_conclusion?.status || 'unavailable'}`,
+              `Dealer：${dealerStatus}`,
+              `执行状态：${executionStatus}`
+            ]).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
           </ul>
         </article>
       ` : ''}
@@ -1056,7 +1103,7 @@ function renderRadarSummary(signal) {
           <h2>Gamma / Dealer Radar</h2>
           <span class="tag ${chipClassByRisk(dealerLive ? signal.gamma_regime : 'partial')}">${dealerLive ? gammaLabel(signal.gamma_regime) : 'Gamma未知 / partial'}</span>
         </div>
-        <p class="radar-note">${escapeHtml(dataQuality.executable !== true ? safeText(signal?.dealer_conclusion?.plain_chinese, safeText(signal?.engines?.data_coherence?.reason, '价格地图不一致，禁止执行。')) : safeText(signal.radar_summary?.dealer, safeText(signal.plain_language?.dealer_behavior, '等待 dealer 行为确认。')))}</p>
+        <p class="radar-note">${escapeHtml(signal.dealer_engine?.plain_chinese || 'UW Dealer 等待确认。')}</p>
         <div class="matrix-list">
           <div class="matrix-item"><div class="matrix-name">现价位置</div><div class="matrix-value">${escapeHtml(dataQuality.executable !== true ? safeText(signal?.engines?.data_coherence?.reason, '价格地图不一致') : displaySpotContext(snap))}</div><div class="matrix-number">${displaySpot(snap)}</div></div>
           <div class="matrix-item"><div class="matrix-name">Flip</div><div class="matrix-value">${dealerLive ? fmt(snap.distance_to_flip, 1) + ' pt' : '--'}</div><div class="matrix-number">${escapeHtml(levels.flip)}</div></div>
@@ -1075,10 +1122,13 @@ function renderRadarSummary(signal) {
         <div class="tag-row">
           <span class="tag blue">Flow ${escapeHtml(intel.uwFlow)}</span>
           <span class="tag green">Dark Pool ${escapeHtml(signal.darkpool_summary?.bias || intel.darkPool)}</span>
-          <span class="tag amber">Theta Weight ${fmtInt((signal.weights?.theta || 0) * 100)}%</span>
-          <span class="tag violet">UW Weight ${fmtInt((signal.weights?.uw || 0) * 100)}%</span>
+          <span class="tag amber">FMP 硬门槛</span>
+          <span class="tag violet">UW 主环境</span>
+          <span class="tag blue">TV 执行确认</span>
+          <span class="tag green">Theta EM auxiliary</span>
         </div>
         <p class="radar-note">${escapeHtml([
+          buildUwRadarSummary(signal),
           `Coverage：${safeText(Object.keys(signal.uw_endpoint_coverage || {}).map((key) => `${key}:${(signal.uw_endpoint_coverage?.[key]?.ok || []).length}/${(signal.uw_endpoint_coverage?.[key]?.required || []).length}`), '--')}`,
           `Factors：${safeText(signal.uw_factors?.flow_factors?.direction, 'none')} / ${safeText(signal.uw_factors?.volatility_factors?.iv_rank, '--')}`,
           `Technical：${safeText(signal.technical_engine?.plain_chinese, '--')}`,
@@ -1108,16 +1158,9 @@ function renderRadarSummary(signal) {
           <h2>Signal Conflict</h2>
           <span class="quality-chip ${qualityClass(signal)}">${conflictLabel(signal.conflict?.conflict_level)}</span>
         </div>
-        <p class="radar-note">${escapeHtml(dataQuality.executable !== true ? safeText(signal?.engines?.data_coherence?.reason, 'FMP 现价真实，但 Gamma 地图仍为 mock，禁止执行。') : safeText(signal.radar_summary?.plan_alignment, safeText(signal.plain_language?.market_status, '暂无冲突说明。')))}</p>
+        <p class="radar-note">${escapeHtml(conflict.title)}</p>
         <ul class="alert-list">
-          ${((dataQuality.executable !== true
-            ? [
-                `Spot 来源：${spotSourceText} ${displaySpot(snap)}`,
-                `ThetaData：${thetaStatus}`,
-                `Dealer：${dealerStatus}`,
-                `执行状态：${executionStatus}`
-              ]
-            : (conflictPoints.length ? conflictPoints : ['没有强冲突，但仍必须等触发。']))).map((item) => `<li>${escapeHtml(safeText(item))}</li>`).join('')}
+          ${(conflict.items || (conflictPoints.length ? conflictPoints : ['没有强冲突，但仍必须等触发。'])).map((item) => `<li>${escapeHtml(safeText(item))}</li>`).join('')}
         </ul>
       </article>
     </section>
