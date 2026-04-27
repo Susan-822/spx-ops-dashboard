@@ -31,7 +31,14 @@ export function runReflectionEngine({
   addIf(supporting, Boolean(zeroGammaProjection), `SPX Zero Gamma ${zeroGammaProjection?.spx} 对应 ES ${zeroGammaProjection?.es_equiv}。`);
 
   addIf(conflicting, signal?.flow_validation?.conflict === true, signal?.flow_validation?.plain_chinese || 'Flow validation conflict.');
-  addIf(conflicting, signal?.conflict_resolver?.action === 'block' && !signal?.uw_price_map_active, signal?.conflict_resolver?.plain_chinese || 'Data conflict blocks execution.');
+  const legacyPriceMapConflict = /price_map_conflict|价格地图冲突|mock/i.test(
+    `${signal?.conflict_resolver?.plain_chinese || ''} ${(signal?.conflict_resolver?.conflicts || []).join(' ')}`
+  );
+  addIf(
+    conflicting,
+    signal?.conflict_resolver?.action === 'block' && !(signal?.uw_price_map_active && legacyPriceMapConflict),
+    signal?.conflict_resolver?.plain_chinese || 'Data conflict blocks execution.'
+  );
   addIf(conflicting, institutionalAlert.direction === 'bullish' && signal?.tv_sentinel?.direction === 'bearish', 'Flow bullish 但 TV bearish。');
   addIf(conflicting, institutionalAlert.direction === 'bearish' && signal?.tv_sentinel?.direction === 'bullish', 'Flow bearish 但 TV bullish。');
   addIf(conflicting, Boolean(callWallProjection), `SPX Call Wall ${callWallProjection?.spx} 对应 ES ${callWallProjection?.es_equiv}，上方空间需降权。`);

@@ -675,6 +675,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     plan_alignment: 'blocked / not ready'
   };
   const keyLevels = buildKeyLevels({ dealerEngine, uwApi, signal });
+  const uwPriceMapActive = keyLevels.source === 'uw' && ['live', 'partial'].includes(dealerEngine.status);
 
   const uwLastUpdate = uwProvider.last_update || uwSourceStatus.last_update || signal.received_at || new Date().toISOString();
   const sourceStatus = Array.isArray(signal.source_status)
@@ -717,6 +718,28 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     uw_raw: uwApi.uw_raw,
     uw_factors: uwApi.uw_factors,
     dealer_engine: dealerEngine,
+    uw_dealer_greeks: uwPriceMapActive
+      ? {
+          status: dealerEngine.status,
+          call_gamma: uwApi.uw_factors?.dealer_factors?.top_call_gamma_strikes?.[0]?.value ?? null,
+          put_gamma: uwApi.uw_factors?.dealer_factors?.top_put_gamma_strikes?.[0]?.value ?? null,
+          call_vanna: null,
+          put_vanna: null,
+          call_charm: null,
+          put_charm: null,
+          call_delta: null,
+          put_delta: null,
+          net_gamma_bias: dealerEngine.regime === 'positive_gamma' ? 'positive' : dealerEngine.regime === 'negative_gamma' ? 'negative' : 'mixed',
+          net_vanna_bias: uwApi.uw_factors?.dealer_factors?.vanna_bias || 'unknown',
+          net_charm_bias: uwApi.uw_factors?.dealer_factors?.charm_bias || 'unknown',
+          net_delta_bias: uwApi.uw_factors?.dealer_factors?.delta_bias || 'unknown',
+          dealer_crosscheck: dealerEngine.status === 'live' ? 'confirm' : 'partial',
+          plain_chinese: dealerEngine.status === 'live'
+            ? 'UW Greek Exposure live，使用 UW Gamma/Wall 主线。'
+            : 'UW Greek Exposure partial，墙位可用，vanna/charm/delta 部分缺失。'
+        }
+      : signal.uw_dealer_greeks,
+    uw_price_map_active: uwPriceMapActive,
     uw_context: safeUwContext,
     radar_summary: safeRadarSummary,
     signals: {
@@ -772,7 +795,34 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   };
 
   const projectedTradePlan = enrichTradePlanWithProjection(enrichedSignal.trade_plan, crossAssetProjection);
+  if (uwPriceMapActive) {
+    projectedTradePlan.status = projectedTradePlan.status === 'blocked' ? 'wait' : projectedTradePlan.status;
+    projectedTradePlan.trigger_status = projectedTradePlan.trigger_status === 'blocked' ? 'waiting' : projectedTradePlan.trigger_status;
+    projectedTradePlan.direction_label = projectedTradePlan.direction_label === '禁做' ? '等待' : projectedTradePlan.direction_label;
+    projectedTradePlan.conflicts = (projectedTradePlan.conflicts || []).filter((item) => !/ThetaData unavailable|价格地图冲突|price_map_conflict/i.test(String(item)));
+    projectedTradePlan.plain_chinese = 'UW Dealer / Wall 数据已接管价格地图；TV 尚未确认结构，0仓等待。';
+  }
   enrichedSignal.trade_plan = projectedTradePlan;
+  const effectiveDataHealth = uwPriceMapActive
+    ? {
+        ...(enrichedSignal.data_health || {}),
+        executable: true,
+        summary: {
+          ...(enrichedSignal.data_health?.summary || {}),
+          health: 'yellow',
+          label: 'WAIT',
+          plain_chinese: 'UW wall data live/partial，等待 TV 结构确认。'
+        }
+      }
+    : enrichedSignal.data_health;
+  const effectiveConflictResolver = uwPriceMapActive
+    ? {
+        ...(enrichedSignal.conflict_resolver || {}),
+        action: enrichedSignal.tv_sentinel?.status === 'waiting' ? 'wait' : enrichedSignal.conflict_resolver?.action || 'wait',
+        conflicts: (enrichedSignal.conflict_resolver?.conflicts || []).filter((item) => !/price_map_conflict/i.test(String(item))),
+        plain_chinese: 'UW wall data 已接管旧价格地图，等待 TV 确认。'
+      }
+    : enrichedSignal.conflict_resolver;
 
   const commandCenter = runCommandCenterEngine({
     uwProvider,
@@ -781,12 +831,12 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     volatilityActivation,
     marketSentiment,
     darkpoolSummary,
-    dataHealth: enrichedSignal.data_health,
+    dataHealth: effectiveDataHealth,
     tvSentinel: enrichedSignal.tv_sentinel,
     theta: enrichedSignal.theta,
     tradePlan: enrichedSignal.trade_plan,
     flowPriceDivergence: enrichedSignal.flow_price_divergence,
-    conflictResolver: enrichedSignal.conflict_resolver,
+    conflictResolver: effectiveConflictResolver,
     crossAssetProjection
   });
   const strategyPermissions = buildStrategyPermissions({
