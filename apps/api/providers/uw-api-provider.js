@@ -182,13 +182,16 @@ function buildEndpointCoverage(okNames = [], failedItems = []) {
     const ok = [];
     const failed = [];
     const missing = [];
-    for (const name of required) {
-      const definition = UW_API_ENDPOINTS[name];
-      const endpoint = definition?.requestedPath || definition?.path || name;
-      if (okSet.has(name)) {
+    for (const endpoint of required) {
+      const endpointNames = Object.entries(UW_API_ENDPOINTS)
+        .filter(([, definition]) => definition.category === group && definition.requestedPath === endpoint)
+        .map(([name]) => name);
+      const okName = endpointNames.find((name) => okSet.has(name));
+      const failedName = endpointNames.find((name) => failedByName.has(name));
+      if (okName) {
         ok.push(endpoint);
-      } else if (failedByName.has(name)) {
-        const failedItem = failedByName.get(name);
+      } else if (failedName) {
+        const failedItem = failedByName.get(failedName);
         failed.push({
           endpoint,
           status: endpointResultStatus(failedItem),
@@ -199,7 +202,7 @@ function buildEndpointCoverage(okNames = [], failedItems = []) {
       }
     }
     acc[group] = {
-      required: required.map((name) => UW_API_ENDPOINTS[name]?.requestedPath || UW_API_ENDPOINTS[name]?.path || name),
+      required,
       ok,
       failed,
       missing
