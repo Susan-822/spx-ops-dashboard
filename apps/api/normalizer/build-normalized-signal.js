@@ -519,7 +519,7 @@ export function normalizeMockScenario(rawScenario) {
   }
 
   return {
-    scenario: rawScenario.scenario,
+    scenario: rawScenario.scenario_mode === true ? rawScenario.scenario : null,
     timestamp: rawScenario.timestamp,
     data_timestamp: rawScenario.timestamp,
     received_at: receivedAt,
@@ -530,7 +530,9 @@ export function normalizeMockScenario(rawScenario) {
     scenario_mode: rawScenario.scenario_mode ?? true,
     symbol: rawScenario.symbol,
     timeframe: rawScenario.timeframe,
-    plain_thesis: `Scenario ${rawScenario.scenario} drives the intraday command-center mock loop.`,
+    plain_thesis: rawScenario.scenario_mode === true
+      ? `Scenario ${rawScenario.scenario} drives the intraday command-center mock loop.`
+      : 'Live /signals/current mode; no mock scenario is active.',
     last_updated: rawScenario.last_updated,
     stale_flags,
     source_status,

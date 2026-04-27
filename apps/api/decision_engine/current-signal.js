@@ -1394,7 +1394,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   });
   const rawNoteV2 = runRawNoteV2({
     fmp_conclusion: buildFmpConclusionV2(output),
-    uw_conclusion: uwConclusionV2,
+    uw_conclusion: uwConclusionV2.uw_conclusion,
     theta_conclusion: buildThetaConclusion({
       status: output.theta?.status,
       atm_call_mid: output.theta?.atm_call_mid,
@@ -1424,6 +1424,9 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   const finalOutput = {
     ...output,
     ...rawNoteV2,
+    scenario: scenarioMode ? output.scenario : null,
+    fetch_mode: scenarioMode ? output.fetch_mode : 'live',
+    is_mock: scenarioMode ? output.is_mock : false,
     command_center: {
       ...output.command_center,
       final_state: rawNoteV2.final_decision.state,
