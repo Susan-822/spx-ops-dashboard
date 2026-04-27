@@ -319,6 +319,114 @@ function buildIntradayDecisionCard({ signal = {}, reflection = {} } = {}) {
   };
 }
 
+function buildDataQualityGuard({ signal = {}, dealerEngine = {}, crossAssetProjection = {} } = {}) {
+  const uwLive = signal.uw_provider?.status === 'live';
+  const uwKeyLevels = signal.key_levels?.source === 'uw';
+  if (uwLive && uwKeyLevels) {
+    return {
+      state: 'WAIT',
+      title: '数据质量：可观察，等待结构确认。',
+      items: [
+        'FMP：real',
+        'UW：live',
+        `Dealer：${dealerEngine.status || 'unavailable'}`,
+        `TV：${signal.tv_sentinel?.status || 'waiting'}`,
+        'ThetaData：EM auxiliary unavailable，不阻断 UW 主线',
+        `Projection：${crossAssetProjection.status || 'unavailable'}，ES/SPY 等效价${crossAssetProjection.status === 'partial' ? '缺失' : '可参考'}`,
+        '执行状态：WAIT / 0仓'
+      ],
+      plain_chinese: 'FMP 现价真实，UW 墙位已接入。当前不是数据崩溃，而是等待 TV 结构确认。'
+    };
+  }
+  return {
+    state: 'BLOCKED',
+    title: '数据质量：关键源不可用。',
+    items: ['FMP / UW / TV 至少一个核心源不可用。'],
+    plain_chinese: '关键源不可用，不能执行。'
+  };
+}
+
+function buildSignalConflictSummary({ signal = {}, dealerEngine = {}, crossAssetProjection = {} } = {}) {
+  if (signal.uw_provider?.status === 'live' && signal.key_levels?.source === 'uw') {
+    return {
+      state: 'minor_conflict',
+      title: 'Signal Conflict｜轻微冲突',
+      items: [
+        'FMP 现价真实，UW 墙位已接入，不再使用 mock Gamma 地图。',
+        '当前主要问题不是数据崩溃，而是交易条件未满足。',
+        'TV 还没有结构确认。',
+        `Dealer ${dealerEngine.status || 'unavailable'}，Vanna/Charm/Delta 不完整。`,
+        `ES/SPY 等效价${crossAssetProjection.status === 'partial' ? '缺失' : '可参考'}，墙位先参考 SPX 原始点位。`,
+        '没有 entry / stop / target / invalidation，所以不能执行。',
+        '执行状态：WAIT / 等确认 / 0仓'
+      ],
+      plain_chinese: '轻微冲突：UW 墙位和 Flow 已接入，但 TV 未确认，交易计划未完整，只能 0仓等待。'
+    };
+  }
+  return {
+    state: 'blocked',
+    title: 'Signal Conflict｜阻断',
+    items: ['核心数据不可用或过期。'],
+    plain_chinese: '核心数据不可用，禁止执行。'
+  };
+}
+
+function buildUwFlowSummary({ signal = {}, dealerEngine = {}, institutionalAlert = {}, darkpoolSummary = {}, volatilityActivation = {} } = {}) {
+  const flowText = institutionalAlert.direction === 'bearish' ? '偏空' : institutionalAlert.direction === 'bullish' ? '偏多' : '不明确';
+  const bombingText = institutionalAlert.state === 'bombing' ? '，连续轰炸' : '';
+  const darkText = darkpoolSummary.bias === 'neutral' ? '中性，没有明显支撑/压力' : darkpoolSummary.bias || '不可用';
+  const dealerText = dealerEngine.status === 'partial'
+    ? '部分可读，墙位已接入，但 Vanna/Charm/Delta 不完整'
+    : dealerEngine.plain_chinese || '不可用';
+  const volText = volatilityActivation.strength === 'off' ? '未启动，单腿不放行' : volatilityActivation.plain_chinese || '不可用';
+  return {
+    title: 'UW 资金解读',
+    institutional_flow: `机构流：${flowText}${bombingText}`,
+    darkpool: `暗池：${darkText}`,
+    dealer: `Dealer：${dealerText}`,
+    volatility: `波动：${volText}`,
+    conclusion: institutionalAlert.direction === 'bearish'
+      ? '空头资金有动作，但不能直接追空。等 TV breakdown_confirmed 或 retest_failed。'
+      : '资金有动作，但必须等 TV 结构确认。',
+    plain_chinese: `机构流${flowText}${bombingText}；暗池${darkText}；Dealer ${dealerText}；${institutionalAlert.direction === 'bearish' ? '空头资金有动作，但不能直接追空。' : '必须等 TV 结构确认。'}`
+  };
+}
+
+function buildStrategyCardsDisplay({ signal = {}, strategyPermissions = {}, volatilityActivation = {}, institutionalAlert = {} } = {}) {
+  return [
+    {
+      strategy_name: '单腿',
+      status_text: '等待 / 禁止追单',
+      suitable_when: '波动未启动，TV 未确认，不能提前做。',
+      entry_condition: '--',
+      target_zone: '--',
+      invalidation: '--',
+      position: '0',
+      permission: strategyPermissions.single_leg?.permission || 'wait'
+    },
+    {
+      strategy_name: '垂直',
+      status_text: '等待候选',
+      suitable_when: `${signal.uw_conclusion?.flow_bias === 'bearish' ? 'UW Flow 偏空' : 'UW Flow 方向待确认'}，但还需要 TV breakdown_confirmed 或 retest_failed。`,
+      entry_condition: '等 TV 空头结构确认后再生成。',
+      target_zone: '暂参考 SPX 原始墙位；ES/SPY 等效价暂不可用。',
+      invalidation: 'TV 结构不成立，或 Flow 转向。',
+      position: '0',
+      permission: strategyPermissions.vertical?.permission || 'wait'
+    },
+    {
+      strategy_name: '铁鹰',
+      status_text: '禁止',
+      suitable_when: `${institutionalAlert.state === 'bombing' ? '机构流偏空并有轰炸' : '当前不是平静磨盘环境'}，不是平静磨盘环境。`,
+      entry_condition: '--',
+      target_zone: '--',
+      invalidation: '--',
+      position: '0',
+      permission: strategyPermissions.iron_condor?.permission || 'block'
+    }
+  ];
+}
+
 function isFmpRiskDegraded(snapshot) {
   if (!snapshot) {
     return false;
@@ -791,17 +899,72 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
         ? institutionalAlert.plain_chinese
         : `${uwConclusionFinal.status} / 仅参考，不可执行`,
     dealer:
-      signal.dealer_conclusion?.status === 'live'
-        ? signal.radar_summary?.dealer
-        : `${signal.dealer_conclusion?.status || 'unavailable'} / Gamma 不完整，不可执行`,
+      ['live', 'partial'].includes(dealerEngine.status)
+        ? dealerEngine.plain_chinese
+        : `${dealerEngine.status || 'unavailable'} / Dealer 不可用`,
     dark_pool:
       uwConclusionFinal.status === 'live'
-        ? signal.radar_summary?.dark_pool
+        ? darkpoolSummary.plain_chinese
         : `${uwConclusionFinal.status} / unavailable`,
-    plan_alignment: 'blocked / not ready'
+    plan_alignment: 'WAIT / 等确认 / 0仓'
   };
   const keyLevels = buildKeyLevels({ dealerEngine, uwApi, signal });
   const uwPriceMapActive = keyLevels.source === 'uw' && ['live', 'partial'].includes(dealerEngine.status);
+  const dataQualityGuard = uwPriceMapActive
+    ? {
+        title: '数据质量：可观察，等待结构确认。',
+        fmp: 'real',
+        uw: uwProvider.status || 'unavailable',
+        dealer: dealerEngine.status || 'unavailable',
+        tv: signal.tv_sentinel?.status || 'waiting',
+        theta: 'EM auxiliary unavailable，不阻断 UW 主线',
+        projection: crossAssetProjection.status,
+        execution_state: 'WAIT / 0仓',
+        plain_chinese: 'FMP 现价真实，UW 墙位已接入；当前不是数据崩溃，而是 TV 尚未确认结构。'
+      }
+    : {
+        title: '数据质量不足。',
+        fmp: signal.command_inputs?.external_spot?.status || 'unavailable',
+        uw: uwProvider.status || 'unavailable',
+        dealer: dealerEngine.status || 'unavailable',
+        tv: signal.tv_sentinel?.status || 'waiting',
+        theta: signal.theta?.status || 'unavailable',
+        projection: crossAssetProjection.status,
+        execution_state: 'WAIT / 0仓',
+        plain_chinese: '等待核心数据恢复或结构确认。'
+      };
+  const signalConflict = uwPriceMapActive
+    ? {
+        title: 'Signal Conflict｜轻微冲突',
+        severity: 'low',
+        items: [
+          'FMP 现价真实，UW 墙位已接入，不再使用 mock Gamma 地图。',
+          'TV 还没有结构确认。',
+          'Dealer 只有 partial，Vanna/Charm/Delta 不完整。',
+          'ES/SPY 等效价缺失，墙位只能参考 SPX 原始点位。',
+          '没有 entry / stop / target / invalidation，所以不能执行。'
+        ],
+        execution_state: 'WAIT / 等确认 / 0仓',
+        plain_chinese: '当前主要问题不是数据崩溃，而是交易条件未满足。'
+      }
+    : {
+        title: 'Signal Conflict',
+        severity: 'medium',
+        items: ['等待数据恢复。'],
+        execution_state: 'WAIT / 0仓',
+        plain_chinese: '核心数据未完全可用。'
+      };
+  const uwFlowSummary = {
+    title: 'UW 资金解读',
+    institutional_flow: institutionalAlert.direction === 'bearish' ? '偏空，连续轰炸。' : institutionalAlert.direction === 'bullish' ? '偏多。' : '不明确。',
+    dark_pool: darkpoolSummary.bias === 'neutral' ? '中性，没有明显支撑/压力。' : darkpoolSummary.plain_chinese || '不可用。',
+    dealer: dealerEngine.status === 'partial' ? '部分可读，墙位已接入，但 Vanna/Charm/Delta 不完整。' : dealerEngine.plain_chinese,
+    volatility: volatilityActivation.strength === 'off' ? '未启动，单腿不放行。' : volatilityActivation.plain_chinese,
+    conclusion: institutionalAlert.direction === 'bearish'
+      ? '空头资金有动作，但不能直接追空。等 TV breakdown_confirmed 或 retest_failed。'
+      : '资金有动作，但必须等 TV 结构确认。',
+    plain_chinese: 'UW 已 live；资金线索只能作为候选，执行仍等 TV。'
+  };
 
   const uwLastUpdate = uwProvider.last_update || uwSourceStatus.last_update || signal.received_at || new Date().toISOString();
   const sourceStatus = Array.isArray(signal.source_status)
@@ -879,6 +1042,9 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
         }
       : signal.uw_dealer_greeks,
     uw_price_map_active: uwPriceMapActive,
+    data_quality_guard: dataQualityGuard,
+    signal_conflict: signalConflict,
+    uw_flow_summary: uwFlowSummary,
     uw_context: safeUwContext,
     radar_summary: safeRadarSummary,
     signals: {

@@ -1014,16 +1014,10 @@ function renderHome(signal) {
 }
 
 function buildDataQualityGuardText(signal, spotSourceText) {
-  if (signal.uw_provider?.status === 'live' && signal.key_levels?.source === 'uw') {
+  if (signal.data_quality_guard?.plain_chinese) {
     return {
-      title: '数据质量：可观察，等待结构确认。',
-      items: [
-        `FMP：${spotSourceText}`,
-        `UW：${safeText(signal.uw_provider?.status, 'unavailable')}`,
-        `Dealer：${safeText(signal.dealer_engine?.status, 'unavailable')}`,
-        `TV：${safeText(signal.tv_sentinel?.status, 'waiting')}`,
-        `执行状态：${safeText(signal.command_center?.final_state, 'wait').toUpperCase()} / 0仓`
-      ]
+      title: signal.data_quality_guard.title || '数据质量：可观察，等待结构确认。',
+      items: signal.data_quality_guard.items || [signal.data_quality_guard.plain_chinese]
     };
   }
   return {
@@ -1033,6 +1027,9 @@ function buildDataQualityGuardText(signal, spotSourceText) {
 }
 
 function buildUwRadarSummary(signal) {
+  if (signal.uw_flow_summary?.plain_chinese) {
+    return signal.uw_flow_summary.plain_chinese;
+  }
   const human = signal.intraday_decision_card || {};
   if (human.market_read || human.why_now) {
     return [
@@ -1060,15 +1057,10 @@ function buildUwRadarSummary(signal) {
 }
 
 function buildSignalConflictText(signal, spotSourceText) {
-  if (signal.uw_provider?.status === 'live' && signal.key_levels?.source === 'uw') {
+  if (signal.signal_conflict?.plain_chinese) {
     return {
-      title: '【轻微冲突】',
-      items: [
-        'FMP 现价真实，UW 墙位已接入。',
-        `Dealer：${signal.dealer_engine?.status || 'unavailable'}；TV：${signal.tv_sentinel?.status || 'waiting'}。`,
-        '这不是数据崩溃，是交易条件未满足。',
-        `执行状态：${(signal.command_center?.final_state || 'wait').toUpperCase()} / ${signal.command_center?.action || '等确认'} / 0仓`
-      ]
+      title: signal.signal_conflict.title || '【轻微冲突】',
+      items: signal.signal_conflict.items || [signal.signal_conflict.plain_chinese]
     };
   }
   return {
@@ -1151,7 +1143,7 @@ function renderRadarSummary(signal) {
           <h2>Flow / UW Radar</h2>
           <span class="tag violet">${escapeHtml(signal.dealer_engine?.behavior || intel.dealer)}</span>
         </div>
-        <p class="radar-note">${escapeHtml(safeText(signal.institutional_alert?.plain_chinese || signal.radar_summary?.order_flow, 'UW 只作为辅助情报，不直接替代价格确认。'))}</p>
+        <p class="radar-note">${escapeHtml(buildUwRadarSummary(signal))}</p>
         <div class="tag-row">
           <span class="tag blue">Flow ${escapeHtml(intel.uwFlow)}</span>
           <span class="tag green">Dark Pool ${escapeHtml(signal.darkpool_summary?.bias || intel.darkPool)}</span>
