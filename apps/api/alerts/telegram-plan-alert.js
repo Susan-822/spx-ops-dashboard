@@ -116,6 +116,8 @@ export function buildTradePlanTelegramMessage({ signal }) {
   const tvSentinel = signal?.engines?.tv_sentinel || {};
   const tradePlan = signal?.engines?.trade_plan || {};
   const dataQuality = signal?.engines?.data_health || {};
+  const projection = signal?.projection || {};
+  const sLevelSummary = projection.s_level_summary || projection.command_summary?.s_level_summary || '';
 
   return [
     `【SPX 指挥台｜${setupTitle(tradePlan, tvSentinel)}】`,
@@ -132,6 +134,8 @@ export function buildTradePlanTelegramMessage({ signal }) {
     '',
     `策略：${buildStrategyLine(tradePlan.strategy_permission || {})}`,
     `数据：${buildDataLine(signal, commandEnvironment, tvSentinel)}`,
-    `禁做：${Array.isArray(tradePlan.forbidden_actions) && tradePlan.forbidden_actions.length > 0 ? tradePlan.forbidden_actions.join('，') : '不追高'}`
+    `禁做：${Array.isArray(tradePlan.forbidden_actions) && tradePlan.forbidden_actions.length > 0 ? tradePlan.forbidden_actions.join('，') : '不追高'}`,
+    '',
+    sLevelSummary ? `S级结论：\n${sLevelSummary}` : 'S级结论：等待 conclusion。'
   ].join('\n');
 }

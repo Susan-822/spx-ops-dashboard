@@ -1268,6 +1268,17 @@ test('live fallback with theta partial and uw unavailable hides mock projections
   assert.equal(signal.uw_context.flow_bias, 'unavailable');
   assert.equal(signal.uw_context.dark_pool_bias, 'unavailable');
   assert.equal(signal.uw_context.dealer_bias, 'unavailable');
+  assert.equal(signal.volume_pressure.status, 'unavailable');
+  assert.equal(signal.channel_shape.status, 'unavailable');
+  assert.equal(signal.volatility_activation.state, 'inactive');
+  assert.equal(signal.market_sentiment.state, 'mixed');
+  assert.equal(signal.institutional_entry_alert.status, 'unavailable');
+  assert.equal(signal.uw_dealer_greeks.status, 'unavailable');
+  assert.equal(signal.dealer_path.status, 'partial');
+  assert.equal(signal.dealer_path.path, 'unknown');
+  assert.equal(signal.projection.one_line_instruction, '禁做 / 等确认');
+  assert.match(signal.projection.s_level_summary, /【总判断】/);
+  assert.match(signal.projection.s_level_summary, /【UW】/);
   assert.equal(signal.trade_plan.stop_loss.text, '--');
   assert.equal(JSON.stringify(signal).includes('flip 5285'), false);
   assert.equal(JSON.stringify(signal.market_snapshot).includes('5320'), false);

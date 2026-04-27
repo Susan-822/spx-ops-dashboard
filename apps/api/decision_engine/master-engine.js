@@ -21,6 +21,20 @@ import { runFmpConclusionEngine } from './fmp-conclusion-engine.js';
 import { runConflictResolver } from './conflict-resolver.js';
 import { buildProjectionEngine } from './projection-engine.js';
 import { runCommandInputAggregator } from './command-input-aggregator.js';
+import {
+  buildChannelShape,
+  buildDealerPath,
+  buildInstitutionalEntryAlert,
+  buildCommandProjection,
+  buildConfidenceScore,
+  buildMarketSentimentV1,
+  applySetupPermissionRules,
+  buildUwDealerGreeks,
+  buildVolatilityActivation,
+  buildVolumePressure,
+  evaluateReadyGate,
+  normalizeExternalSpot
+} from './rules/index.js';
 
 function buildDisplaySpotSnapshot(normalized, gammaWall) {
   const hasDisplaySpot =
@@ -304,7 +318,9 @@ export function runMasterEngine(normalized) {
     theta_signal: normalized.theta_signal,
     fmp_signal: normalized.fmp_signal,
     event_risk: normalized.event_risk,
-    price_signal: priceStructure.price_signal
+    price_signal: priceStructure.price_signal,
+    fmpConclusion,
+    uwConclusion
   });
   const conflict = runConflictEngine({
     theta_signal: normalized.theta_signal,
@@ -332,7 +348,8 @@ export function runMasterEngine(normalized) {
     marketRegime,
     eventRisk,
     volatility,
-    normalized
+    normalized,
+    volatilityActivation: null
   });
   const tvSentinel = runTvSentinelEngine({
     priceStructure,
@@ -340,27 +357,74 @@ export function runMasterEngine(normalized) {
     snapshotFresh: normalized.stale_flags.tradingview !== true,
     snapshot: normalized.tradingview_snapshot
   });
-  const tradePlan = runTradePlanBuilder({
+  const baseRuleInputs = {
     normalized,
+    fmpConclusion,
+    dealerConclusion: normalized.theta_dealer_conclusion,
+    uwConclusion,
+    tvSentinel,
+    dataHealth,
+    dataCoherence,
     commandEnvironment,
     allowedSetups,
-    tradingviewSentinel: tvSentinel
-  });
-  const externalSpotInput = {
+    marketSentiment,
+    eventRisk,
+    priceStructure
+  };
+  const externalSpot = normalizeExternalSpot({
     source:
       (normalized.external_spot_source && normalized.external_spot_source !== 'unavailable'
         ? normalized.external_spot_source
         : normalized.spot_source && normalized.spot != null
           ? normalized.spot_source
           : 'unavailable'),
-    price: normalized.external_spot ?? normalized.spot ?? null,
+    spot: normalized.external_spot ?? normalized.spot ?? null,
     last_updated: normalized.external_spot_last_updated || normalized.spot_last_updated || null,
     is_real:
       (normalized.spot_source === 'fmp' && normalized.spot != null)
       || (normalized.spot != null && normalized.spot_is_real === true)
       || (normalized.external_spot_source === 'fmp' && normalized.external_spot != null)
       || (normalized.external_spot_is_real === true)
-  };
+  });
+  const volumePressure = buildVolumePressure(baseRuleInputs);
+  const channelShape = buildChannelShape({
+    ...baseRuleInputs,
+    volumePressure
+  });
+  const uwDealerGreeks = buildUwDealerGreeks(baseRuleInputs);
+  const dealerPath = buildDealerPath({
+    ...baseRuleInputs,
+    uwDealerGreeks
+  });
+  const volatilityActivation = buildVolatilityActivation({
+    ...baseRuleInputs,
+    volumePressure,
+    channelShape,
+    dealerPath
+  });
+  const commandMarketSentiment = buildMarketSentimentV1(baseRuleInputs);
+  const institutionalEntryAlert = buildInstitutionalEntryAlert({
+    ...baseRuleInputs,
+    volumePressure,
+    volatilityActivation
+  });
+  const setupPermissionPreview = applySetupPermissionRules({
+    ...baseRuleInputs,
+    volumePressure,
+    channelShape,
+    volatilityActivation,
+    dealerPath,
+    commandMarketSentiment,
+    uwDealerGreeks
+  });
+
+  const tradePlan = runTradePlanBuilder({
+    normalized,
+    commandEnvironment,
+    allowedSetups,
+    tradingviewSentinel: tvSentinel
+  });
+  const externalSpotInput = externalSpot;
   const commandInputs = runCommandInputAggregator({
     fmpConclusion,
     dealerConclusion: normalized.theta_dealer_conclusion,
@@ -371,7 +435,13 @@ export function runMasterEngine(normalized) {
       coherence: dataCoherence.data_mode,
       data_mode: dataCoherence.data_mode
     },
-    externalSpot: externalSpotInput
+    externalSpot: {
+      price: externalSpotInput.spot,
+      source: externalSpotInput.source,
+      is_real: externalSpotInput.is_real,
+      status: externalSpotInput.status,
+      last_updated: externalSpotInput.last_updated
+    }
   });
   const conflictResolver = runConflictResolver({
     fmp_conclusion: fmpConclusion,
@@ -385,6 +455,47 @@ export function runMasterEngine(normalized) {
     },
     command_environment: commandEnvironment,
     allowed_setups: allowedSetups
+  });
+  const readyGate = evaluateReadyGate({
+    commandEnvironment,
+    dataHealth,
+    conflictResolver,
+    tvSentinel,
+    tradePlan
+  });
+  const setupPermission = {
+    ...setupPermissionPreview,
+    ready_gate: readyGate
+  };
+  const confidenceScore = buildConfidenceScore({
+    ...baseRuleInputs,
+    externalSpot,
+    conflictResolver,
+    tradePlan,
+    volumePressure,
+    channelShape,
+    volatilityActivation,
+    marketSentiment: commandMarketSentiment,
+    institutionalEntryAlert,
+    dealerPath,
+    uwDealerGreeks
+  });
+  const commandProjection = buildCommandProjection({
+    fmpConclusion,
+    externalSpot,
+    dealerConclusion: normalized.theta_dealer_conclusion,
+    uwConclusion,
+    uwDealerGreeks,
+    dealerPath,
+    volumePressure,
+    channelShape,
+    volatilityActivation,
+    marketSentiment: commandMarketSentiment,
+    institutionalEntryAlert,
+    tvSentinel,
+    conflictResolver,
+    commandEnvironment,
+    tradePlan
   });
   const projection = buildProjectionEngine({
     fmpConclusion,
@@ -400,6 +511,12 @@ export function runMasterEngine(normalized) {
     },
     conflictResolver
   });
+  const finalProjection = {
+    ...projection,
+    command_summary: commandProjection,
+    s_level_summary: commandProjection.s_level_summary,
+    one_line_instruction: commandProjection.one_line_instruction
+  };
   const action = runActionEngine({
     normalized,
     marketRegime,
@@ -541,7 +658,15 @@ export function runMasterEngine(normalized) {
     recommended_action: action.recommended_action,
     avoid_actions: action.avoid_actions,
     invalidation_level: action.invalidation_level,
-    confidence_score: action.confidence_score,
+    confidence_score: confidenceScore.score,
+    confidence_detail: confidenceScore,
+    volume_pressure: volumePressure,
+    channel_shape: channelShape,
+    volatility_activation: volatilityActivation,
+    market_sentiment: commandMarketSentiment,
+    institutional_entry_alert: institutionalEntryAlert,
+    uw_dealer_greeks: uwDealerGreeks,
+    dealer_path: dealerPath,
     data_mode: dataCoherence.data_mode,
     trade_permission: dataCoherence.trade_permission,
     execution_constraints: {
@@ -565,7 +690,7 @@ export function runMasterEngine(normalized) {
     command_environment: commandEnvironment,
     allowed_setups: allowedSetups,
     tv_sentinel: tvSentinel,
-    projection,
+    projection: finalProjection,
     strategy_cards: buildStrategyCards({
       normalized,
       action,
@@ -587,7 +712,16 @@ export function runMasterEngine(normalized) {
       volatility,
       price_structure: priceStructure,
       uw_dealer_flow: uwFlow,
-      market_sentiment: marketSentiment,
+      market_sentiment: commandMarketSentiment,
+      legacy_market_sentiment: marketSentiment,
+      volume_pressure: volumePressure,
+      channel_shape: channelShape,
+      volatility_activation: volatilityActivation,
+      institutional_entry_alert: institutionalEntryAlert,
+      uw_dealer_greeks: uwDealerGreeks,
+      dealer_path: dealerPath,
+      confidence_score: confidenceScore,
+      setup_permission: setupPermission,
       command_environment: commandEnvironment,
       allowed_setups: allowedSetups,
       tv_sentinel: tvSentinel,
