@@ -271,7 +271,12 @@ function humanizeReflection(reflection = {}, signal = {}) {
   };
 }
 
+function ensureHumanizedReflection(reflection = {}, signal = {}) {
+  return reflection.missing_inputs_humanized ? reflection : humanizeReflection(reflection, signal);
+}
+
 function buildIntradayDecisionCard({ signal = {}, reflection = {} } = {}) {
+  const safeReflection = ensureHumanizedReflection(reflection, signal);
   const keyLevels = signal.key_levels || {};
   const projection = signal.cross_asset_projection || {};
   const flow = signal.uw_conclusion?.flow_bias || 'unavailable';
@@ -305,7 +310,7 @@ function buildIntradayDecisionCard({ signal = {}, reflection = {} } = {}) {
     key_levels_summary: keySummary,
     position: '0 仓。',
     plain_chinese: `当前：${currentAction}\n\n盘面判断：${flow === 'bearish' ? '空头资金有动作' : '资金方向仍需确认'}，但 TV 尚未确认。\n\n等什么：${waitFor}\n\n关键位：${keySummary}\n\n仓位：0 仓。`,
-    reflection_summary: reflection.plain_chinese_humanized || reflection.plain_chinese || ''
+    reflection_summary: safeReflection.plain_chinese_humanized || safeReflection.plain_chinese || ''
   };
 }
 
@@ -980,7 +985,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     commandCenter,
     volatilityActivation
   });
-  const reflection = runReflectionEngine({
+  const rawReflection = runReflectionEngine({
     commandCenter,
     uwProvider,
     dealerEngine,
@@ -995,15 +1000,17 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     },
     crossAssetProjection
   });
+  const reflectionSignal = {
+    ...enrichedSignal,
+    trade_plan: projectedTradePlan,
+    command_center: commandCenter
+  };
+  const reflection = humanizeReflection(rawReflection, reflectionSignal);
   const intradayDecisionCard = buildIntradayDecisionCard({
-    commandCenter,
-    institutionalAlert,
-    dealerEngine,
-    darkpoolSummary,
-    volatilityActivation,
-    keyLevels,
-    crossAssetProjection,
-    tradePlan: projectedTradePlan,
+    signal: {
+      ...reflectionSignal,
+      reflection
+    },
     reflection
   });
 

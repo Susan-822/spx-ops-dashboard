@@ -974,6 +974,14 @@ function buildDataQualityGuardText(signal, spotSourceText) {
 }
 
 function buildUwRadarSummary(signal) {
+  const human = signal.intraday_decision_card || {};
+  if (human.market_read || human.why_now) {
+    return [
+      '【UW 资金解读】',
+      human.market_read || '',
+      `结论：${human.why_now || '等待 TV 结构确认。'}`
+    ].filter(Boolean).join('\n');
+  }
   const flow = signal.uw_conclusion?.flow_bias === 'bearish' ? '偏空' : signal.uw_conclusion?.flow_bias === 'bullish' ? '偏多' : '中性/不明';
   const inst = signal.institutional_alert?.state === 'bombing' ? '连续轰炸' : signal.institutional_alert?.state || '未形成';
   const dark = signal.darkpool_summary?.bias === 'neutral' ? '中性，没有明显支撑/压力' : safeText(signal.darkpool_summary?.bias, '不可用');
