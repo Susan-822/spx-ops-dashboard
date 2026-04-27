@@ -221,8 +221,8 @@ test('POST /ingest/theta accepts curated summary and reflects it in current sign
     assert.equal(signal.dealer_conclusion.status, 'live');
     assert.equal(signal.execution_constraints.theta.executable, true);
     assert.equal(signal.command_inputs.dealer.dealer_conclusion.call_wall, 5340);
-    assert.equal(signal.command_inputs.external_spot.source, 'fmp');
-    assert.equal(signal.command_inputs.external_spot.spot, 5310);
+    assert.equal(signal.command_inputs.external_spot.source, 'unavailable');
+    assert.equal(signal.command_inputs.external_spot.spot, null);
   } finally {
     server.close();
   }
@@ -1257,8 +1257,8 @@ test('live fallback with theta partial and uw unavailable hides mock projections
   assert.equal(signal.dealer_conclusion.status, 'partial');
   assert.equal(signal.dealer_conclusion.zero_gamma, null);
   assert.equal(signal.execution_constraints.theta.executable, false);
-  assert.equal(signal.command_inputs.external_spot.source, 'manual_test');
-  assert.equal(signal.command_inputs.external_spot.status, 'mock');
+  assert.equal(signal.command_inputs.external_spot.source, 'fmp');
+  assert.equal(signal.command_inputs.external_spot.status, 'real');
   assert.equal(signal.command_inputs.external_spot.spot, 7165.08);
   assert.equal(signal.market_snapshot.flip_level, null);
   assert.equal(signal.market_snapshot.call_wall, null);

@@ -204,6 +204,7 @@ function applyThetaSnapshot(baseScenario, snapshot) {
   const shouldAdoptThetaSpot =
     baseScenario.scenario_mode !== true
     && hasFiniteNumber(snapshot.spot)
+    && snapshot.spot_source !== 'manual_test'
     && (
       !hasFiniteNumber(baseScenario.spot)
       || baseScenario.spot_is_real !== true
@@ -228,10 +229,10 @@ function applyThetaSnapshot(baseScenario, snapshot) {
     spot_source: nextSpotSource,
     spot_last_updated: shouldAdoptThetaSpot ? lastUpdate : baseScenario.spot_last_updated,
     spot_is_real: nextSpotIsReal,
-    external_spot: baseScenario.external_spot ?? (hasFiniteNumber(snapshot.spot) ? Number(snapshot.spot) : null),
-    external_spot_source: baseScenario.external_spot_source ?? snapshot.spot_source ?? null,
-    external_spot_last_updated: baseScenario.external_spot_last_updated ?? lastUpdate,
-    external_spot_is_real: baseScenario.external_spot_is_real ?? hasFiniteNumber(snapshot.spot),
+    external_spot: baseScenario.external_spot ?? (shouldAdoptThetaSpot ? Number(snapshot.spot) : null),
+    external_spot_source: baseScenario.external_spot_source ?? (shouldAdoptThetaSpot ? snapshot.spot_source ?? null : null),
+    external_spot_last_updated: baseScenario.external_spot_last_updated ?? (shouldAdoptThetaSpot ? lastUpdate : null),
+    external_spot_is_real: baseScenario.external_spot_is_real ?? (shouldAdoptThetaSpot && hasFiniteNumber(snapshot.spot)),
     flip_level: nextFlipLevel,
     call_wall: callWall,
     put_wall: putWall,
