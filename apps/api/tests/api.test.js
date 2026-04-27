@@ -1202,6 +1202,80 @@ test('coherent live theta data can remain executable', async () => {
   assert.equal(signal.engines.data_coherence.executable, true);
 });
 
+
+
+test('live fallback with theta partial and uw unavailable hides mock projections', async () => {
+  await resetThetaStateEnv();
+  await resetTvStateEnv();
+  process.env.FMP_API_KEY = 'test-key';
+  await writeThetaSnapshot(sampleThetaPayload({
+    secret: undefined,
+    source: 'thetadata_python',
+    status: 'partial',
+    spot_source: 'manual_test',
+    spot: 7165.08,
+    dealer: {
+      net_gex: null,
+      gamma_regime: 'unknown',
+      dealer_behavior: 'unknown',
+      least_resistance_path: 'unknown',
+      call_wall: 7250,
+      put_wall: 5650,
+      max_pain: 7025,
+      zero_gamma: null,
+      expected_move_upper: 7204.13,
+      expected_move_lower: 7126.03
+    },
+    quality: {
+      data_quality: 'partial',
+      missing_fields: ['gamma', 'net_gex', 'zero_gamma'],
+      warnings: ['walls_from_oi_fallback'],
+      calculation_scope: 'single_expiry_test',
+      raw_rows_sent: false
+    }
+  }));
+
+  const signal = await getCurrentSignal(undefined, {
+    fmp: {
+      event: {
+        fetchImpl: async () => ({ ok: true, async json() { return []; } })
+      },
+      price: {
+        quoteShortFetchImpl: async () => ({
+          ok: true,
+          async json() {
+            return [{ symbol: '^GSPC', price: 7165.08 }];
+          }
+        }),
+        quoteFetchImpl: async () => ({ ok: true, async json() { return []; } }),
+        historicalFetchImpl: async () => ({ ok: true, async json() { return []; } })
+      }
+    }
+  });
+
+  assert.equal(signal.theta.status, 'partial');
+  assert.equal(signal.dealer_conclusion.status, 'partial');
+  assert.equal(signal.dealer_conclusion.zero_gamma, null);
+  assert.equal(signal.execution_constraints.theta.executable, false);
+  assert.equal(signal.command_inputs.external_spot.source, 'manual_test');
+  assert.equal(signal.command_inputs.external_spot.status, 'mock');
+  assert.equal(signal.command_inputs.external_spot.spot, 7165.08);
+  assert.equal(signal.market_snapshot.flip_level, null);
+  assert.equal(signal.market_snapshot.call_wall, null);
+  assert.equal(signal.market_snapshot.put_wall, null);
+  assert.equal(signal.market_snapshot.max_pain, null);
+  assert.equal(signal.uw_conclusion.status, 'unavailable');
+  assert.equal(signal.uw_context.flow_bias, 'unavailable');
+  assert.equal(signal.uw_context.dark_pool_bias, 'unavailable');
+  assert.equal(signal.uw_context.dealer_bias, 'unavailable');
+  assert.equal(signal.trade_plan.stop_loss.text, '--');
+  assert.equal(JSON.stringify(signal).includes('flip 5285'), false);
+  assert.equal(JSON.stringify(signal.market_snapshot).includes('5320'), false);
+  assert.equal(JSON.stringify(signal.market_snapshot).includes('5225'), false);
+  assert.equal(JSON.stringify(signal.market_snapshot).includes('5275'), false);
+  delete process.env.FMP_API_KEY;
+});
+
 test('local env loader prefers Downloads bridge env over script env', async () => {
   const tmpDir = path.join(os.tmpdir(), `local-env-${Date.now()}`);
   const downloadsBridgeDir = path.join(tmpDir, 'Downloads', 'bridge');
