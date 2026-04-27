@@ -52,6 +52,19 @@ export function buildProjectionEngine({
   ].join(' ');
 
   return {
+    dealer_summary: {
+      status: safeText(dealerConclusion?.status, 'unavailable'),
+      text: safeText(dealerConclusion?.plain_chinese, 'Theta dealer unavailable.'),
+      gamma_regime: dealerConclusion?.gamma_regime ?? 'unknown',
+      dealer_behavior: dealerConclusion?.dealer_behavior ?? 'unknown',
+      least_resistance_path: dealerConclusion?.least_resistance_path ?? 'unknown',
+      call_wall: dealerConclusion?.call_wall ?? null,
+      put_wall: dealerConclusion?.put_wall ?? null,
+      max_pain: dealerConclusion?.max_pain ?? null,
+      zero_gamma: dealerConclusion?.zero_gamma ?? null,
+      expected_move_upper: dealerConclusion?.expected_move_upper ?? null,
+      expected_move_lower: dealerConclusion?.expected_move_lower ?? null
+    },
     premarket_summary: premarket,
     intraday_summary: intraday,
     breaking_summary: breaking,

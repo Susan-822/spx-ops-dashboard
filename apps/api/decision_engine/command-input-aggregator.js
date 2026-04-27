@@ -6,6 +6,14 @@ export function runCommandInputAggregator({
   dataHealth,
   externalSpot = {}
 }) {
+  const parseSpot = (value) => {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
   const missing_inputs = [];
   const conflicts = [];
 
@@ -50,6 +58,20 @@ export function runCommandInputAggregator({
     conflicts.push('真实 Spot 与 Gamma / Wall 地图严重冲突');
   }
 
+  const normalizedExternalSpot = {
+    spot: parseSpot(externalSpot?.price),
+    source: externalSpot?.source ?? 'unavailable',
+    is_real: externalSpot?.is_real === true,
+    status:
+      externalSpot?.is_real === true
+        ? 'real'
+        : parseSpot(externalSpot?.price) == null
+          ? 'unavailable'
+          : externalSpot?.status ?? 'mock',
+    last_updated: externalSpot?.last_updated ?? null,
+    coherent: dataHealth?.coherence === 'live'
+  };
+
   return {
     market: {
       fmp_conclusion: fmpConclusion
@@ -73,12 +95,8 @@ export function runCommandInputAggregator({
     price_sentinel: {
       tv_sentinel: tvSentinel
     },
-    externalSpot: {
-      source: externalSpot?.source ?? 'unavailable',
-      price: Number.isFinite(Number(externalSpot?.price)) ? Number(externalSpot.price) : null,
-      last_updated: externalSpot?.last_updated ?? null,
-      coherent: dataHealth?.coherence === 'live'
-    },
+    external_spot: normalizedExternalSpot,
+    externalSpot: normalizedExternalSpot,
     data_health: {
       data_health: dataHealth
     },

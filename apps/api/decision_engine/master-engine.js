@@ -17,6 +17,9 @@ import { runTvSentinelEngine } from './tv-sentinel-engine.js';
 import { runTradePlanBuilder } from './trade-plan-builder.js';
 import { deriveThetaExecutionConstraint } from './dealer-conclusion-engine.js';
 import { runUwConclusionEngine } from './uw-conclusion-engine.js';
+import { runFmpConclusionEngine } from './fmp-conclusion-engine.js';
+import { runConflictResolver } from './conflict-resolver.js';
+import { buildProjectionEngine } from './projection-engine.js';
 import { runCommandInputAggregator } from './command-input-aggregator.js';
 
 function buildDisplaySpotSnapshot(normalized, gammaWall) {
@@ -270,6 +273,7 @@ export function runMasterEngine(normalized) {
   const priceStructure = runPriceStructureEngine(normalized);
   const uwFlow = runUwDealerFlowEngine(normalized);
   const eventRisk = runEventRiskEngine(normalized);
+  const fmpConclusion = runFmpConclusionEngine({ normalized, eventRisk });
   const uwConclusion = runUwConclusionEngine({ normalized });
   const marketSentiment = runMarketSentimentEngine({
     gamma_regime: normalized.gamma_regime,
@@ -285,21 +289,6 @@ export function runMasterEngine(normalized) {
     fmp_signal: normalized.fmp_signal,
     stale_flags: normalized.stale_flags,
     tv_confirmation: priceStructure.confirmation_status
-  });
-  const commandInputs = runCommandInputAggregator({
-    fmpConclusion: {
-      status: 'unavailable',
-      market_bias: 'unavailable',
-      event_risk: 'unavailable',
-      price_status: 'unavailable'
-    },
-    dealerConclusion: normalized.theta_dealer_conclusion,
-    uwConclusion,
-    tvSentinel: {
-      status: normalized.stale_flags.tradingview ? 'stale' : 'fresh',
-      event_type: normalized.tv_event_type || 'none'
-    },
-    dataHealth
   });
   const commandEnvironment = runCommandEnvironmentEngine({
     normalized,
@@ -332,6 +321,60 @@ export function runMasterEngine(normalized) {
     commandEnvironment,
     allowedSetups,
     tradingviewSentinel: tvSentinel
+  });
+  const externalSpotInput = {
+    source:
+      (normalized.spot_source && normalized.spot != null
+        ? normalized.spot_source
+        : normalized.external_spot_source && normalized.external_spot_source !== 'unavailable'
+          ? normalized.external_spot_source
+          : 'unavailable'),
+    price: normalized.external_spot ?? normalized.spot ?? null,
+    last_updated: normalized.external_spot_last_updated || normalized.spot_last_updated || null,
+    is_real:
+      (normalized.spot_source === 'fmp' && normalized.spot != null)
+      || (normalized.spot != null && normalized.spot_is_real === true)
+      || (normalized.external_spot_source === 'fmp' && normalized.external_spot != null)
+      || (normalized.external_spot_is_real === true)
+  };
+  const commandInputs = runCommandInputAggregator({
+    fmpConclusion,
+    dealerConclusion: normalized.theta_dealer_conclusion,
+    uwConclusion,
+    tvSentinel,
+    dataHealth: {
+      ...dataHealth,
+      coherence: dataCoherence.data_mode,
+      data_mode: dataCoherence.data_mode
+    },
+    externalSpot: externalSpotInput
+  });
+  const conflictResolver = runConflictResolver({
+    fmp_conclusion: fmpConclusion,
+    dealer_conclusion: normalized.theta_dealer_conclusion,
+    uw_conclusion: uwConclusion,
+    tv_sentinel: tvSentinel,
+    data_health: {
+      ...dataHealth,
+      coherence: dataCoherence.data_mode,
+      data_mode: dataCoherence.data_mode
+    },
+    command_environment: commandEnvironment,
+    allowed_setups: allowedSetups
+  });
+  const projection = buildProjectionEngine({
+    fmpConclusion,
+    dealerConclusion: normalized.theta_dealer_conclusion,
+    uwConclusion,
+    commandEnvironment,
+    tvSentinel,
+    tradePlan,
+    dataHealth: {
+      ...dataHealth,
+      coherence: dataCoherence.data_mode,
+      data_mode: dataCoherence.data_mode
+    },
+    conflictResolver
   });
   const action = runActionEngine({
     normalized,
@@ -381,36 +424,6 @@ export function runMasterEngine(normalized) {
   const thetaExecutionConstraint =
     normalized.theta_execution_constraint
     || deriveThetaExecutionConstraint(normalized.theta_dealer_conclusion);
-  const uwExecutionConstraint = {
-    available: uwConclusion.status !== 'unavailable' && uwConclusion.status !== 'error',
-    executable: false,
-    reason:
-      uwConclusion.status === 'partial'
-        ? 'UW partial'
-        : uwConclusion.status === 'stale'
-          ? 'UW stale'
-          : uwConclusion.status === 'error'
-            ? 'UW error'
-            : uwConclusion.status === 'unavailable'
-              ? 'UW unavailable'
-              : ''
-  };
-  const projection = {
-    dealer_summary: {
-      status: normalized.theta_dealer_conclusion?.status || 'unavailable',
-      text: normalized.theta_dealer_conclusion?.plain_chinese || 'Theta dealer unavailable.',
-      gamma_regime: normalized.theta_dealer_conclusion?.gamma_regime || 'unknown',
-      dealer_behavior: normalized.theta_dealer_conclusion?.dealer_behavior || 'unknown',
-      least_resistance_path: normalized.theta_dealer_conclusion?.least_resistance_path || 'unknown',
-      call_wall: normalized.theta_dealer_conclusion?.call_wall ?? null,
-      put_wall: normalized.theta_dealer_conclusion?.put_wall ?? null,
-      max_pain: normalized.theta_dealer_conclusion?.max_pain ?? null,
-      zero_gamma: normalized.theta_dealer_conclusion?.zero_gamma ?? null,
-      expected_move_upper: normalized.theta_dealer_conclusion?.expected_move_upper ?? null,
-      expected_move_lower: normalized.theta_dealer_conclusion?.expected_move_lower ?? null
-    }
-  };
-
   return createNormalizedSignal({
     timestamp: normalized.timestamp,
     data_timestamp: normalized.data_timestamp,
@@ -458,6 +471,14 @@ export function runMasterEngine(normalized) {
     },
     theta: normalized.theta,
     dealer_conclusion: normalized.theta_dealer_conclusion,
+    uw: normalized.uw || {},
+    uw_conclusion: uwConclusion,
+    fmp_conclusion: fmpConclusion,
+    data_health: {
+      ...dataHealth,
+      data_mode: dataCoherence.data_mode
+    },
+    conflict_resolver: conflictResolver,
     radar_summary,
     tv_structure_event: normalized.tv_structure_event,
     signals: {
@@ -487,9 +508,25 @@ export function runMasterEngine(normalized) {
     trade_permission: dataCoherence.trade_permission,
     execution_constraints: {
       theta: thetaExecutionConstraint,
-      uw: uwExecutionConstraint
+      uw: {
+        available: ['live', 'partial', 'stale'].includes(uwConclusion.status),
+        executable: uwConclusion.status === 'live',
+        reason:
+          uwConclusion.status === 'live'
+            ? ''
+            : uwConclusion.status === 'partial'
+              ? 'UW partial'
+              : uwConclusion.status === 'stale'
+                ? 'UW stale'
+                : uwConclusion.status === 'error'
+                  ? 'UW error'
+                  : 'UW unavailable'
+      }
     },
     command_inputs: commandInputs,
+    command_environment: commandEnvironment,
+    allowed_setups: allowedSetups,
+    tv_sentinel: tvSentinel,
     projection,
     strategy_cards: buildStrategyCards({
       normalized,
@@ -499,15 +536,12 @@ export function runMasterEngine(normalized) {
       commandEnvironment,
       thetaExecutionConstraint
     }),
-    uw_conclusion: uwConclusion,
-    uw: normalized.uw,
-    trade_plan: {
-      ...tradePlan,
-      uw_ready: false
-    },
+    trade_plan: tradePlan,
     engines: {
+      fmp_conclusion: fmpConclusion,
       uw_conclusion: uwConclusion,
       command_inputs: commandInputs,
+      conflict_resolver: conflictResolver,
       market_regime: marketRegime,
       gamma_wall: gammaWall,
       data_coherence: dataCoherence,
@@ -519,10 +553,7 @@ export function runMasterEngine(normalized) {
       command_environment: commandEnvironment,
       allowed_setups: allowedSetups,
       tv_sentinel: tvSentinel,
-      trade_plan: {
-        ...tradePlan,
-        uw_ready: false
-      },
+      trade_plan: tradePlan,
       event_risk: eventRisk,
       conflict,
       action,

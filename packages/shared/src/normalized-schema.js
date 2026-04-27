@@ -165,9 +165,30 @@ export function createNormalizedSignal(partial = {}) {
         available: false,
         executable: false,
         reason: 'ThetaData dealer unavailable.'
+      },
+      uw: {
+        available: false,
+        executable: false,
+        reason: 'UW unavailable.'
       }
     },
     command_inputs: partial.command_inputs ?? {
+      external_spot: {
+        spot: null,
+        source: 'unavailable',
+        is_real: false,
+        status: 'unavailable',
+        last_updated: null,
+        coherent: false
+      },
+      externalSpot: {
+        spot: null,
+        source: 'unavailable',
+        is_real: false,
+        status: 'unavailable',
+        last_updated: null,
+        coherent: false
+      },
       dealer: {
         dealer_conclusion: {
           status: 'unavailable',
@@ -187,7 +208,11 @@ export function createNormalizedSignal(partial = {}) {
       dealer_summary: {
         status: 'unavailable',
         text: 'Theta dealer unavailable.'
-      }
+      },
+      premarket_summary: '',
+      intraday_summary: '',
+      breaking_summary: '',
+      trade_plan_summary: ''
     },
     strategy_cards: partial.strategy_cards ?? [],
     fmp_conclusion: partial.fmp_conclusion ?? {},
@@ -196,19 +221,11 @@ export function createNormalizedSignal(partial = {}) {
     uw: partial.uw ?? {},
     data_health: partial.data_health ?? {},
     conflict_resolver: partial.conflict_resolver ?? {},
-    command_inputs: partial.command_inputs ?? {},
     command_environment: partial.command_environment ?? {},
-    execution_constraints: partial.execution_constraints ?? {},
     allowed_setups: partial.allowed_setups ?? {},
     tv_sentinel: partial.tv_sentinel ?? {},
     trade_plan: partial.trade_plan ?? {},
     report_state: partial.report_state ?? {},
-    projection: partial.projection ?? {
-      premarket_summary: '',
-      intraday_summary: '',
-      breaking_summary: '',
-      trade_plan_summary: ''
-    },
     engines: partial.engines ?? {},
     notes: partial.notes ?? []
   };

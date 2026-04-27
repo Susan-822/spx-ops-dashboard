@@ -3,14 +3,16 @@ import { normalizeMockScenario } from '../normalizer/build-normalized-signal.js'
 import { runMasterEngine } from './master-engine.js';
 import { getTradingViewSnapshot } from '../storage/tradingview-snapshot.js';
 import { getThetaSnapshot } from '../storage/theta-snapshot.js';
-import { readUwSnapshot } from '../state/uwSnapshotStore.js';
+import { getUwSourceStatus, readUwSnapshot } from '../state/uwSnapshotStore.js';
 import { getFmpSnapshot } from '../adapters/fmp/index.js';
+import { normalizeUwSummary } from '../../../integrations/unusual-whales/normalizer/uw-summary-normalizer.js';
 import {
   buildDealerConclusionEngine,
   deriveThetaExecutionConstraint,
   deriveThetaSignalFromSnapshot,
   mapThetaSnapshotToSourceStatus
 } from './dealer-conclusion-engine.js';
+import { runUwConclusionEngine } from './uw-conclusion-engine.js';
 
 function hasFiniteNumber(value) {
   return Number.isFinite(Number(value));
@@ -254,8 +256,8 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   };
   const snapshot = await getTradingViewSnapshot();
   const thetaSnapshot = await getThetaSnapshot();
+  const uwSnapshot = await readUwSnapshot();
   const fmpSnapshot = await getFmpSnapshot(options.fmp);
-  const uwSnapshot = options.uw?.snapshot ?? await readUwSnapshot({ now: options.now });
   const enrichedScenario = applyTradingViewPriceFallback(
     applyFmpPriceSnapshot(
       applyFmpEventSnapshot(
@@ -267,12 +269,72 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     snapshot
   );
   const finalScenario = applyThetaSnapshot(
-    {
-      ...enrichedScenario,
-      uw_snapshot: uwSnapshot
-    },
+    enrichedScenario,
     thetaSnapshot
   );
   const normalized = normalizeMockScenario(finalScenario);
-  return runMasterEngine(normalized);
+  const signal = runMasterEngine(normalized);
+
+  const normalizedUw = normalizeUwSummary(uwSnapshot).uw;
+  const uwSourceStatus = getUwSourceStatus(uwSnapshot);
+  const uwConclusion = runUwConclusionEngine({
+    normalized: {
+      uw: normalizedUw
+    }
+  });
+  const uwExecutionConstraint = {
+    available: !['unavailable', 'error'].includes(uwConclusion.status),
+    executable: uwConclusion.status === 'live',
+    reason:
+      uwConclusion.status === 'live'
+        ? ''
+        : uwConclusion.status === 'partial'
+          ? 'UW partial'
+          : uwConclusion.status === 'stale'
+            ? 'UW stale'
+            : uwConclusion.status === 'error'
+              ? 'UW error'
+              : 'UW unavailable'
+  };
+
+  const uwLastUpdate = uwSourceStatus.last_update || signal.received_at || new Date().toISOString();
+  const sourceStatus = Array.isArray(signal.source_status)
+    ? [
+        ...signal.source_status.filter((item) => item.source !== 'uw'),
+        {
+          source: 'uw',
+          configured: uwSnapshot != null,
+          available: uwExecutionConstraint.available,
+          is_mock: uwConclusion.status === 'unavailable',
+          fetch_mode: 'ingest_push',
+          stale: uwSourceStatus.stale === true,
+          state: uwSourceStatus.state || 'unavailable',
+          message: uwSourceStatus.message || uwExecutionConstraint.reason,
+          last_updated: uwLastUpdate,
+          data_timestamp: uwLastUpdate,
+          received_at: signal.received_at,
+          latency_ms: 0,
+          stale_reason: '',
+          refresh_interval_ms: null,
+          stale_threshold_ms: null,
+          down_threshold_ms: null,
+          event_triggers: []
+        }
+      ]
+    : signal.source_status;
+
+  return {
+    ...signal,
+    source_status: sourceStatus,
+    uw: normalizedUw,
+    uw_conclusion: uwConclusion,
+    execution_constraints: {
+      ...(signal.execution_constraints || {}),
+      uw: uwExecutionConstraint
+    },
+    trade_plan: {
+      ...(signal.trade_plan || {}),
+      uw_ready: uwExecutionConstraint.executable
+    }
+  };
 }
