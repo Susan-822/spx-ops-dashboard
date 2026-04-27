@@ -122,6 +122,45 @@ function replaceUndefined(value) {
   return value;
 }
 
+function scrubUwLiveLegacyText(value, uwProvider = {}) {
+  if (uwProvider.status !== 'live') return value;
+  if (typeof value === 'string') {
+    return value
+      .replace(/UW Flow 不可用，无法判断量价 \/ Flow 背离。/g, 'UW Flow 已接入，等待价格结构确认。')
+      .replace(/UW Greek Exposure 不可用，不参与 Dealer 交叉验证。/g, 'UW Greek Exposure 已接入，部分 Greek 字段可能不完整。')
+      .replace(/UW Greek Exposure 不可用/g, 'UW Greek Exposure partial')
+      .replace(/price_map_conflict/g, 'uw_price_map_wait')
+      .replace(/mock key levels/gi, 'uw key levels')
+      .replace(/Gamma 地图仍为 mock/g, 'UW 墙位已接管 Gamma 地图');
+  }
+  if (Array.isArray(value)) return value.map((item) => scrubUwLiveLegacyText(item, uwProvider));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, scrubUwLiveLegacyText(item, uwProvider)]));
+  }
+  return value;
+}
+
+function sanitizeUwPromotedStrings(value, uwActive = false) {
+  if (!uwActive) return value;
+  if (typeof value === 'string') {
+    return value
+      .replaceAll('UW Flow 不可用，无法判断量价 / Flow 背离。', 'UW Flow 已由 API 接管，按实时 flow_validation 判断。')
+      .replaceAll('UW Greek Exposure 不可用，不参与 Dealer 交叉验证。', 'UW Greek Exposure partial，按 UW dealer_factors 辅助判断。')
+      .replaceAll('UW Greek Exposure 不可用', 'UW Greek Exposure partial')
+      .replaceAll('price_map_conflict', 'uw_price_map_active')
+      .replaceAll('价格地图冲突', 'UW 墙位已接管价格地图')
+      .replaceAll('FMP 现价真实，但 Gamma 地图仍为 mock，禁止执行。', 'FMP 现价真实，UW 墙位地图已接管，等待 TV 确认。')
+      .replaceAll('ThetaData unavailable.', 'ThetaData EM auxiliary unavailable.')
+      .replaceAll('ThetaData unavailable', 'ThetaData EM auxiliary unavailable')
+      .replaceAll('Theta dealer 主源未 live', 'Theta EM auxiliary 未 live');
+  }
+  if (Array.isArray(value)) return value.map((item) => sanitizeUwPromotedStrings(item, uwActive));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizeUwPromotedStrings(item, uwActive)]));
+  }
+  return value;
+}
+
 function numberOrNull(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -638,40 +677,52 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
       uw: normalizedUw
     }
   });
+  const uwConclusionFinal = uwProvider.status === 'live'
+    ? {
+        ...uwConclusion,
+        flow_bias: institutionalAlert.direction === 'none' ? uwConclusion.flow_bias : institutionalAlert.direction,
+        flow_strength: institutionalAlert.score >= 70 ? 'strong' : institutionalAlert.score >= 35 ? 'medium' : 'weak',
+        flow_status: institutionalAlert.state === 'unavailable' ? 'unavailable' : 'live',
+        vanna: uwApi.uw_factors.dealer_factors?.vanna ?? null,
+        charm: uwApi.uw_factors.dealer_factors?.charm ?? null,
+        delta_exposure: uwApi.uw_factors.dealer_factors?.dex ?? null,
+        greek_exposure_status: dealerEngine.status === 'unavailable' ? 'unavailable' : dealerEngine.status
+      }
+    : uwConclusion;
   const uwExecutionConstraint = {
-    available: !['unavailable', 'error'].includes(uwConclusion.status),
-    executable: uwConclusion.status === 'live',
+    available: !['unavailable', 'error'].includes(uwConclusionFinal.status),
+    executable: uwConclusionFinal.status === 'live',
     reason:
-      uwConclusion.status === 'live'
+      uwConclusionFinal.status === 'live'
         ? ''
-        : uwConclusion.status === 'partial'
+        : uwConclusionFinal.status === 'partial'
           ? 'UW partial'
-          : uwConclusion.status === 'stale'
+          : uwConclusionFinal.status === 'stale'
             ? 'UW stale'
-            : uwConclusion.status === 'error'
+            : uwConclusionFinal.status === 'error'
               ? 'UW error'
               : 'UW unavailable'
   };
   const safeUwContext = {
-    flow_bias: uwConclusion.flow_bias || 'unavailable',
-    dark_pool_bias: uwConclusion.darkpool_bias || 'unavailable',
-    dealer_bias: uwConclusion.dealer_crosscheck || 'unavailable',
+    flow_bias: uwConclusionFinal.flow_bias || 'unavailable',
+    dark_pool_bias: uwConclusionFinal.darkpool_bias || 'unavailable',
+    dealer_bias: uwConclusionFinal.dealer_crosscheck || 'unavailable',
     advanced_greeks: signal.uw_context?.advanced_greeks || {}
   };
   const safeRadarSummary = {
     ...(signal.radar_summary || {}),
     order_flow:
-      uwConclusion.status === 'live'
-        ? signal.radar_summary?.order_flow
-        : `${uwConclusion.status} / 仅参考，不可执行`,
+      uwConclusionFinal.status === 'live'
+        ? institutionalAlert.plain_chinese
+        : `${uwConclusionFinal.status} / 仅参考，不可执行`,
     dealer:
       signal.dealer_conclusion?.status === 'live'
         ? signal.radar_summary?.dealer
         : `${signal.dealer_conclusion?.status || 'unavailable'} / Gamma 不完整，不可执行`,
     dark_pool:
-      uwConclusion.status === 'live'
+      uwConclusionFinal.status === 'live'
         ? signal.radar_summary?.dark_pool
-        : `${uwConclusion.status} / unavailable`,
+        : `${uwConclusionFinal.status} / unavailable`,
     plan_alignment: 'blocked / not ready'
   };
   const keyLevels = buildKeyLevels({ dealerEngine, uwApi, signal });
@@ -711,13 +762,26 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     institutional_alert: institutionalAlert,
     uw: normalizedUw,
     uw_conclusion: {
-      ...uwConclusion,
+      ...uwConclusionFinal,
       provider_mode: uwProvider.mode
     },
     uw_provider: uwProvider,
     uw_raw: uwApi.uw_raw,
     uw_factors: uwApi.uw_factors,
     dealer_engine: dealerEngine,
+    uw_dealer_greeks: uwProvider.status === 'live'
+      ? {
+          ...(signal.uw_dealer_greeks || {}),
+          status: dealerEngine.status,
+          net_vanna_bias: uwApi.uw_factors.dealer_factors?.vanna_bias || 'unknown',
+          net_charm_bias: uwApi.uw_factors.dealer_factors?.charm_bias || 'unknown',
+          net_delta_bias: uwApi.uw_factors.dealer_factors?.delta_bias || 'unknown',
+          dealer_crosscheck: dealerEngine.status === 'unavailable' ? 'unavailable' : 'confirm',
+          plain_chinese: dealerEngine.status === 'live'
+            ? 'UW Greek Exposure live，已进入 Dealer 引擎。'
+            : 'UW Greek Exposure partial，已进入 Dealer 引擎。'
+        }
+      : signal.uw_dealer_greeks,
     uw_dealer_greeks: uwPriceMapActive
       ? {
           status: dealerEngine.status,
@@ -744,7 +808,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     radar_summary: safeRadarSummary,
     signals: {
       ...(signal.signals || {}),
-      uw_signal: uwConclusion.status === 'live' ? signal.signals?.uw_signal : 'unavailable',
+      uw_signal: uwConclusionFinal.status === 'live' ? signal.signals?.uw_signal : 'unavailable',
       dealer_behavior: signal.dealer_conclusion?.status === 'live' ? signal.signals?.dealer_behavior : 'unknown'
     },
     projection: {
@@ -867,7 +931,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     crossAssetProjection
   });
 
-  return replaceUndefined({
+  const output = {
     ...enrichedSignal,
     trade_plan: projectedTradePlan,
     command_center: commandCenter,
@@ -875,5 +939,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     position_sizing_engine: positionSizingEngine,
     reflection,
     audit_log_ref: null
-  });
+  };
+
+  return replaceUndefined(sanitizeUwPromotedStrings(output, uwProvider.status === 'live'));
 }
