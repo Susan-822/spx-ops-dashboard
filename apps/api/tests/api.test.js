@@ -64,31 +64,87 @@ function hasUndefined(value) {
 function sampleUwRaw(overrides = {}) {
   return {
     greek_exposure: { data: [{ gex: 180000000, dex: 30000000, vanna: 9000000, charm: 5000000, zero_gamma: 5298 }] },
+    greek_exposure_strike: { data: [{ strike: 5340, call_gex: 120000000, gex: 120000000 }, { strike: 5280, put_gex: -90000000, gex: -90000000 }] },
+    greek_exposure_expiry: { data: [{ expiry: '2026-04-27', gex: 180000000 }] },
+    spot_gex_strike_expiry: { data: [{ strike: 5340, expiry: '2026-04-27', gex: 120000000 }] },
     spot_gex: { data: [{ strike: 5340, call_gex: 120000000, gex: 120000000 }, { strike: 5280, put_gex: -90000000, gex: -90000000 }] },
     options_flow: { data: [{ is_call: true, is_sweep: true, premium: 900000 }, { is_call: true, premium: 700000 }] },
+    flow_recent: { data: [{ is_call: true, premium: 500000 }] },
+    net_prem_ticks: { data: [{ call_premium: 1000000, put_premium: 200000 }] },
+    flow_per_expiry: { data: [{ expiry: '2026-04-27', net_premium: 800000 }] },
+    flow_per_strike: { data: [{ strike: 5340, net_premium: 800000 }] },
+    flow_per_strike_intraday: { data: [{ strike: 5340, net_premium: 400000 }] },
+    darkpool_recent: { data: [{ price: 525, premium: 50000000, side: 'support' }] },
     darkpool: { data: [{ price: 525, premium: 50000000, side: 'support', off_lit_ratio: 0.42 }] },
+    stock_price_levels: { data: [{ price: 525, premium: 50000000, side: 'support' }] },
     volatility: { data: [{ iv_rank: 98, iv_percentile: 94, iv_change_5m: 0.2, realized_volatility: 30, atm_iv: 0.22 }] },
+    interpolated_iv: { data: [{ atm_iv: 0.22 }] },
+    iv_rank: { data: [{ iv_rank: 98, iv_percentile: 94 }] },
+    realized_volatility: { data: [{ realized_volatility: 30 }] },
+    term_structure: { data: [{ expiry: '2026-04-27', iv: 0.22 }] },
     market_tide: { data: [{ call_flow: 1500000, put_flow: 300000, net_flow: 1200000 }] },
+    top_net_impact: { data: [{ net_flow: 1200000 }] },
+    net_flow_expiry: { data: [{ net_flow: 1200000 }] },
+    total_options_volume: { data: [{ call_flow: 1500000, put_flow: 300000 }] },
+    sector_tide: { data: [{ net_flow: 500000 }] },
+    etf_tide: { data: [{ net_flow: 700000 }] },
     volume_oi: { data: [{ expiry: '2026-04-27', call_volume: 100000, put_volume: 40000 }] },
     max_pain: { data: [{ max_pain: 5310 }] },
+    oi_by_expiry: { data: [{ expiry: '2026-04-27', open_interest: 400000 }] },
+    option_price_levels: { data: [{ strike: 5340, volume: 120000 }] },
     oi_by_strike: { data: [{ strike: 5310, open_interest: 400000 }] },
     options_volume: { data: [{ strike: 5340, option_type: 'call', volume: 120000 }, { strike: 5280, option_type: 'put', volume: 90000 }] },
+    ohlc: { data: [{ close: 5310, volume: 1500000 }] },
+    technical_vwap: { data: [{ value: 5300 }] },
+    technical_atr: { data: [{ value: 22 }] },
+    technical_ema: { data: [{ value: 5295 }] },
+    technical_bbands: { data: [{ bb_width: 0.02 }] },
+    technical_rsi: { data: [{ value: 61 }] },
+    technical_macd: { data: [{ value: 2 }] },
     ...overrides
   };
 }
 
 function uwApiResponseForUrl(url, raw = sampleUwRaw()) {
   const entries = [
+    ['greek-exposure/strike', raw.greek_exposure_strike],
+    ['greek-exposure/expiry', raw.greek_exposure_expiry],
     ['greek-exposure', raw.greek_exposure],
+    ['spot-exposures/strike-expiry', raw.spot_gex_strike_expiry],
     ['spot-exposures/strike', raw.spot_gex],
+    ['flow-recent', raw.flow_recent],
     ['flow-alerts', raw.options_flow],
+    ['net-prem-ticks', raw.net_prem_ticks],
+    ['flow-per-expiry', raw.flow_per_expiry],
+    ['flow-per-strike-intraday', raw.flow_per_strike_intraday],
+    ['flow-per-strike', raw.flow_per_strike],
+    ['darkpool/recent', raw.darkpool_recent],
     ['darkpool', raw.darkpool],
+    ['stock-volume-price-levels', raw.stock_price_levels],
     ['volatility/stats', raw.volatility],
+    ['interpolated-iv', raw.interpolated_iv],
+    ['iv-rank', raw.iv_rank],
+    ['volatility/realized', raw.realized_volatility],
+    ['volatility/term-structure', raw.term_structure],
     ['market-tide', raw.market_tide],
+    ['top-net-impact', raw.top_net_impact],
+    ['net-flow/expiry', raw.net_flow_expiry],
+    ['total-options-volume', raw.total_options_volume],
+    ['sector-tide', raw.sector_tide],
+    ['etf-tide', raw.etf_tide],
     ['volume-oi-expiry', raw.volume_oi],
     ['max-pain', raw.max_pain],
+    ['oi-per-expiry', raw.oi_by_expiry],
+    ['option/stock-price-levels', raw.option_price_levels],
     ['oi-per-strike', raw.oi_by_strike],
-    ['options-volume', raw.options_volume]
+    ['options-volume', raw.options_volume],
+    ['ohlc/1m', raw.ohlc],
+    ['technical-indicator/VWAP', raw.technical_vwap],
+    ['technical-indicator/ATR', raw.technical_atr],
+    ['technical-indicator/EMA', raw.technical_ema],
+    ['technical-indicator/BBANDS', raw.technical_bbands],
+    ['technical-indicator/RSI', raw.technical_rsi],
+    ['technical-indicator/MACD', raw.technical_macd]
   ];
   const match = entries.find(([needle]) => url.includes(needle));
   return {
@@ -1039,7 +1095,7 @@ test('buildAlertMessage renders Chinese intraday reminder from live current sign
   assert.match(message, /状态：/);
   assert.match(message, /动作：/);
   assert.match(message, /原因：/);
-  assert.match(message, /失效：/);
+  assert.match(message, /失效条件：/);
   assert.match(message, /策略：/);
   assert.match(message, /数据：/);
 });
@@ -1127,7 +1183,7 @@ test('UW API provider handles missing key 401 429 partial live and stale states'
     })
   });
   assert.equal(snapshot.provider.status, 'error');
-  assert.equal(snapshot.provider.endpoints_failed.every((item) => item.status === 401), true);
+  assert.equal(snapshot.provider.endpoints_failed.every((item) => item.status === 'unauthorized' && item.http_status === 401), true);
 
   await resetUwApiStateEnv({ UW_PROVIDER_MODE: 'api', UW_API_KEY: 'rate-limited' });
   snapshot = await fetchUwApiSnapshot({
@@ -1140,7 +1196,7 @@ test('UW API provider handles missing key 401 429 partial live and stale states'
     })
   });
   assert.equal(snapshot.provider.status, 'error');
-  assert.equal(snapshot.provider.endpoints_failed.every((item) => item.status === 429), true);
+  assert.equal(snapshot.provider.endpoints_failed.every((item) => item.http_status === 429), true);
   assert.equal(snapshot.provider.rate_limit.remaining, 0);
 
   await resetUwApiStateEnv({ UW_PROVIDER_MODE: 'api', UW_API_KEY: 'partial-key' });
@@ -1165,6 +1221,12 @@ test('UW API provider handles missing key 401 429 partial live and stale states'
   assert.equal(snapshot.provider.endpoints_ok.includes('greek_exposure'), true);
   assert.equal(snapshot.provider.endpoints_ok.includes('spot_gex'), true);
   assert.equal(snapshot.provider.endpoints_ok.includes('options_flow'), true);
+  assert.equal(snapshot.endpoint_coverage.dealer_gex.required.length > 0, true);
+  assert.equal(snapshot.endpoint_coverage.flow.required.length > 0, true);
+  assert.equal(snapshot.endpoint_coverage.darkpool.required.length > 0, true);
+  assert.equal(snapshot.endpoint_coverage.sentiment.required.length > 0, true);
+  assert.equal(snapshot.endpoint_coverage.volatility.required.length > 0, true);
+  assert.equal(snapshot.endpoint_coverage.technical.required.length > 0, true);
 
   await writeUwApiSnapshot({
     ...snapshot,
@@ -1187,6 +1249,15 @@ test('UW intelligence layer feeds command center permissions reflection and tele
 
   let signal = await getCurrentSignal(undefined);
   assert.equal(signal.uw_provider.status, 'live');
+  assert.equal(signal.uw_endpoint_coverage.dealer_gex.required.length > 0, true);
+  assert.equal(signal.uw_endpoint_coverage.flow.required.length > 0, true);
+  assert.equal(Boolean(signal.health_matrix.state), true);
+  assert.equal(Boolean(signal.flow_validation.action), true);
+  assert.equal(Boolean(signal.technical_engine.trend_bias), true);
+  assert.equal(Array.isArray(signal.allowed_setups), true);
+  assert.equal(Array.isArray(signal.allowed_setups_reason), true);
+  assert.equal(Array.isArray(signal.blocked_setups_reason), true);
+  assert.equal(Boolean(signal.position_sizing_engine.plain_chinese), true);
   assert.equal(signal.tv_sentinel.status, 'waiting');
   assert.equal(signal.command_center.final_state !== 'actionable', true);
   assert.equal(signal.strategy_permissions.iron_condor.permission, 'block');
@@ -1240,7 +1311,13 @@ test('UW intelligence layer feeds command center permissions reflection and tele
   assert.match(message, /状态：/);
   assert.match(message, /动作：/);
   assert.match(message, /策略：/);
+  assert.match(message, /入场：/);
+  assert.match(message, /止损：/);
+  assert.match(message, /目标：/);
+  assert.match(message, /作废：/);
+  assert.match(message, /仓位：/);
   assert.match(message, /数据：/);
+  assert.doesNotMatch(message, /mock|假 flip|假价格|验证 webhook|先看 \/signals\/current/i);
 });
 
 test('coherence guard marks distant real spot vs gamma map as conflict and blocks targets', async () => {

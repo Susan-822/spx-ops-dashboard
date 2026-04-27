@@ -14,6 +14,12 @@ import { runUwSentimentEngine } from '../engines/uw-sentiment-engine.js';
 import { runUwDarkpoolEngine } from '../engines/uw-darkpool-engine.js';
 import { runCommandCenterEngine } from '../engines/command-center-engine.js';
 import { runReflectionEngine } from '../engines/reflection-engine.js';
+import { runTechnicalEngine } from '../engines/technical-engine.js';
+import { runHealthMatrixEngine } from '../engines/health-matrix-engine.js';
+import { runFlowValidationEngine } from '../engines/flow-validation-engine.js';
+import { runSetupSynthesisEngine } from '../engines/setup-synthesis-engine.js';
+import { runPositionSizingEngine } from '../engines/position-sizing-engine.js';
+import { buildEndpointCoverageReport } from '../engines/endpoint-coverage-engine.js';
 import {
   buildDealerConclusionEngine,
   deriveThetaExecutionConstraint,
@@ -400,6 +406,36 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     provider: uwProvider,
     darkpoolFactors: uwApi.uw_factors.darkpool_factors
   });
+  const technicalEngine = runTechnicalEngine({
+    technicalFactors: uwApi.uw_factors.technical_factors
+  });
+  const flowValidation = runFlowValidationEngine({
+    institutionalAlert,
+    darkpoolSummary,
+    marketSentiment,
+    dealerEngine,
+    tvSentinel: signal.tv_sentinel,
+    technicalEngine
+  });
+  const healthMatrix = runHealthMatrixEngine({
+    signal,
+    uwProvider,
+    tvSentinel: signal.tv_sentinel,
+    theta: signal.theta,
+    dealerEngine
+  });
+  const setupSynthesis = runSetupSynthesisEngine({
+    volatilityActivation,
+    institutionalAlert,
+    darkpoolSummary,
+    marketSentiment,
+    dealerEngine,
+    technicalEngine
+  });
+  const uwEndpointCoverage = buildEndpointCoverageReport(uwProvider.endpoint_coverage || uwSnapshot?.endpoint_coverage || {});
+  const coverageInputs = Object.fromEntries(
+    Object.entries(uwEndpointCoverage).map(([group, report]) => [group, report.ok || []])
+  );
   const normalizedUw = uwProvider.mode === 'api'
     ? {
         source: 'unusual_whales_api',
@@ -499,6 +535,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   const enrichedSignal = {
     ...signal,
     source_status: sourceStatus,
+    uw_endpoint_coverage: uwEndpointCoverage,
     institutional_entry_alert: signal.institutional_entry_alert || {},
     institutional_alert: institutionalAlert,
     uw: normalizedUw,
@@ -545,6 +582,18 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     volatility_activation: volatilityActivation,
     market_sentiment: marketSentiment,
     darkpool_summary: darkpoolSummary,
+    health_matrix: healthMatrix,
+    flow_validation: flowValidation,
+    technical_engine: technicalEngine,
+    allowed_setups: setupSynthesis.allowed_setups,
+    allowed_setups_reason: setupSynthesis.allowed_setups_reason,
+    blocked_setups_reason: setupSynthesis.blocked_setups_reason,
+    tv_match_engine: {
+      event_type: signal.tv_sentinel?.event_type || null,
+      matched_allowed_setup: signal.tv_sentinel?.matched_allowed_setup === true,
+      status: signal.tv_sentinel?.status || 'waiting',
+      plain_chinese: signal.tv_sentinel?.plain_chinese || signal.tv_sentinel?.reason || '等待 TV 结构信号。'
+    },
     es_proxy: buildEsProxy(),
     session_engine: buildSessionEngine(),
     notes: cleanProductionNotes(signal.notes, signal.is_mock === true)
@@ -571,6 +620,11 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     dealerEngine,
     commandCenter
   });
+  const positionSizingEngine = runPositionSizingEngine({
+    healthMatrix,
+    commandCenter,
+    volatilityActivation
+  });
   const reflection = runReflectionEngine({
     commandCenter,
     uwProvider,
@@ -579,13 +633,16 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     volatilityActivation,
     marketSentiment,
     darkpoolSummary,
-    tradePlan: enrichedSignal.trade_plan
+    tradePlan: enrichedSignal.trade_plan,
+    signal: enrichedSignal
   });
 
   return replaceUndefined({
     ...enrichedSignal,
     command_center: commandCenter,
     strategy_permissions: strategyPermissions,
-    reflection
+    position_sizing_engine: positionSizingEngine,
+    reflection,
+    audit_log_ref: null
   });
 }

@@ -61,7 +61,8 @@ function normalizeDealer(raw = {}) {
   const greekRows = asArray(raw.greek_exposure);
   const strikeRows = asArray(raw.greek_exposure_strike);
   const expiryRows = asArray(raw.greek_exposure_expiry);
-  const combined = [...greekRows, ...strikeRows, ...expiryRows];
+  const strikeExpiryRows = asArray(raw.greek_exposure_strike_expiry);
+  const combined = [...greekRows, ...strikeRows, ...expiryRows, ...strikeExpiryRows];
   const first = combined[0] || {};
 
   return {
@@ -80,11 +81,12 @@ function normalizeDealer(raw = {}) {
 function normalizeSpotGex(raw = {}) {
   const strikeRows = asArray(raw.spot_gex_strike);
   const expiryRows = asArray(raw.spot_gex);
+  const strikeExpiryRows = asArray(raw.spot_gex_strike_expiry);
   const callWall = topByAbs(strikeRows, ['call_gex', 'call_gamma', 'gamma_exposure'], ['strike'])[0]?.strike ?? null;
   const putWall = topByAbs(strikeRows, ['put_gex', 'put_gamma', 'gamma_exposure'], ['strike'])[0]?.strike ?? null;
   return {
     spot_gex_by_strike: strikeRows.slice(0, 50),
-    spot_gex_by_expiry: expiryRows.slice(0, 50),
+    spot_gex_by_expiry: [...expiryRows, ...strikeExpiryRows].slice(0, 50),
     call_wall_candidate: callWall,
     put_wall_candidate: putWall,
     gex_pivots: topByAbs(strikeRows, ['gex', 'gamma_exposure', 'net_gex'], ['strike'], 8)
@@ -92,7 +94,13 @@ function normalizeSpotGex(raw = {}) {
 }
 
 function normalizeFlow(raw = {}) {
-  const alertRows = asArray(raw.options_flow);
+  const alertRows = [
+    ...asArray(raw.options_flow),
+    ...asArray(raw.flow_recent),
+    ...asArray(raw.flow_per_expiry),
+    ...asArray(raw.flow_per_strike),
+    ...asArray(raw.flow_per_strike_intraday)
+  ];
   const ticks = asArray(raw.net_prem_ticks);
   const callPremium = sumRows(alertRows.filter((row) => row.is_call === true || row.option_type === 'call'), ['premium', 'total_premium', 'ask_vol_premium'])
     ?? sumRows(ticks, ['call_premium', 'call_net_premium']);
@@ -111,7 +119,14 @@ function normalizeFlow(raw = {}) {
 }
 
 function normalizeDarkpool(raw = {}) {
-  const rows = [...asArray(raw.darkpool_spy), ...asArray(raw.darkpool_spx), ...asArray(raw.stock_price_levels)];
+  const rows = [
+    ...asArray(raw.darkpool_recent),
+    ...asArray(raw.darkpool_spy),
+    ...asArray(raw.darkpool_spx),
+    ...asArray(raw.darkpool_qqq),
+    ...asArray(raw.darkpool_iwm),
+    ...asArray(raw.stock_price_levels)
+  ];
   const levels = rows
     .map((row) => ({
       price: firstNumber(row, ['price', 'level']),
@@ -144,14 +159,21 @@ function normalizeVolatility(raw = {}) {
     atm_iv: firstNumber(ivRank, ['atm_iv', 'iv', 'implied_volatility']) ?? firstNumber(stats, ['atm_iv', 'iv']),
     iv_rank: firstNumber(ivRank, ['iv_rank', 'rank']),
     iv_percentile: firstNumber(ivRank, ['iv_percentile', 'percentile']),
-    term_structure: raw.term_structure || {},
+    term_structure: raw.term_structure || raw.iv_term_structure || {},
     realized_volatility: firstNumber(realized, ['realized_volatility', 'rv', 'volatility']),
     iv_change_5m: firstNumber(stats, ['iv_change_5m', 'iv_change'])
   };
 }
 
 function normalizeSentiment(raw = {}) {
-  const tideRows = asArray(raw.market_tide);
+  const tideRows = [
+    ...asArray(raw.market_tide),
+    ...asArray(raw.top_net_impact),
+    ...asArray(raw.net_flow_expiry),
+    ...asArray(raw.total_options_volume),
+    ...asArray(raw.sector_tide),
+    ...asArray(raw.etf_tide)
+  ];
   const first = tideRows[0] || {};
   const callFlow = firstNumber(first, ['call_flow', 'calls_premium', 'call_premium']);
   const putFlow = firstNumber(first, ['put_flow', 'puts_premium', 'put_premium']);
@@ -170,15 +192,47 @@ function normalizeVolumeOi(raw = {}) {
   const oiStrike = asArray(raw.oi_per_strike);
   const oiExpiry = asArray(raw.oi_per_expiry);
   const maxPainRows = asArray(raw.max_pain);
-  const volumeRows = asArray(raw.options_volume);
+  const volumeRows = [
+    ...asArray(raw.options_volume),
+    ...asArray(raw.option_price_levels),
+    ...asArray(raw.volume_oi)
+  ];
   return {
     call_volume_levels: topByAbs(volumeRows.filter((row) => row.is_call === true || row.option_type === 'call'), ['volume', 'call_volume'], ['strike']),
     put_volume_levels: topByAbs(volumeRows.filter((row) => row.is_put === true || row.option_type === 'put'), ['volume', 'put_volume'], ['strike']),
     oi_by_strike: oiStrike.slice(0, 50),
     oi_by_expiry: oiExpiry.slice(0, 50),
-    max_pain: firstNumber(maxPainRows[0] || raw.max_pain || {}, ['max_pain', 'strike', 'price']),
+    max_pain: firstNumber(maxPainRows[0] || {}, ['max_pain', 'strike', 'price']),
     volume_wall_candidates: topByAbs(volumeRows, ['volume', 'total_volume'], ['strike'], 8),
     volume_magnet_candidates: topByAbs(oiStrike, ['open_interest', 'oi', 'total_oi'], ['strike'], 8)
+  };
+}
+
+function normalizeTechnical(raw = {}) {
+  const close = asArray(raw.ohlc)[0] || {};
+  const vwap = firstNumber(asArray(raw.technical_vwap)[0] || {}, ['value', 'vwap']);
+  const atr = firstNumber(asArray(raw.technical_atr)[0] || {}, ['value', 'atr']);
+  const ema = firstNumber(asArray(raw.technical_ema)[0] || {}, ['value', 'ema']);
+  const rsi = firstNumber(asArray(raw.technical_rsi)[0] || {}, ['value', 'rsi']);
+  const price = firstNumber(close, ['close', 'price']);
+  const trend_bias =
+    price != null && ema != null && vwap != null
+      ? price > ema && price > vwap ? 'bullish' : price < ema && price < vwap ? 'bearish' : 'neutral'
+      : 'unknown';
+  const channel_shape =
+    atr == null ? 'unknown' : atr >= 20 ? 'expansion' : atr >= 12 ? 'chop' : 'compression';
+  const volumePressure =
+    firstNumber(close, ['volume']) == null ? 'unknown' : firstNumber(close, ['volume']) > 1000000 ? 'high' : 'normal';
+  return {
+    vwap,
+    atr,
+    ema50: ema,
+    rsi,
+    macd: firstNumber(asArray(raw.technical_macd)[0] || {}, ['value', 'macd']),
+    bb_width: firstNumber(asArray(raw.technical_bbands)[0] || {}, ['bb_width', 'width']),
+    trend_bias,
+    channel_shape,
+    volume_pressure: volumePressure
   };
 }
 
@@ -191,6 +245,7 @@ export function normalizeUwApiSnapshot(snapshot = {}) {
   const volatility = normalizeVolatility(raw);
   const sentiment = normalizeSentiment(raw);
   const volumeOi = normalizeVolumeOi(raw);
+  const technical = normalizeTechnical(raw);
 
   return {
     uw_raw: {
@@ -198,7 +253,7 @@ export function normalizeUwApiSnapshot(snapshot = {}) {
       spot_gex: raw.spot_gex || {},
       options_flow: raw.options_flow || {},
       darkpool: raw.darkpool_spy || raw.darkpool_spx || {},
-      volatility: raw.volatility_stats || raw.iv_rank || {},
+      volatility: raw.volatility || raw.volatility_stats || raw.iv_rank || {},
       market_tide: raw.market_tide || {},
       volume_oi: raw.options_volume || raw.oi_per_strike || {}
     },
@@ -211,7 +266,8 @@ export function normalizeUwApiSnapshot(snapshot = {}) {
       darkpool_factors: darkpool,
       volatility_factors: volatility,
       sentiment_factors: sentiment,
-      volume_oi_factors: volumeOi
+      volume_oi_factors: volumeOi,
+      technical_factors: technical
     }
   };
 }

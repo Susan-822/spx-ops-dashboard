@@ -49,6 +49,7 @@ export function buildUwProvider(snapshot, sourceStatus, options = {}) {
       is_mock: provider.is_mock === true,
       endpoints_ok: Array.isArray(provider.endpoints_ok) ? provider.endpoints_ok : [],
       endpoints_failed: Array.isArray(provider.endpoints_failed) ? provider.endpoints_failed : [],
+      endpoint_coverage: provider.endpoint_coverage || snapshot?.endpoint_coverage || {},
       rate_limit: {
         daily_limit: provider.rate_limit?.daily_limit ?? null,
         per_minute_limit: provider.rate_limit?.per_minute_limit ?? null,

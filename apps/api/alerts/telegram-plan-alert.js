@@ -118,19 +118,25 @@ export function buildTradePlanTelegramMessage({ signal }) {
   if (signal?.command_center) {
     const cc = signal.command_center;
     const reflection = signal.reflection || {};
+    const plan = signal.trade_plan || {};
+    const sizing = signal.position_sizing_engine || {};
     const provider = signal.uw_provider || {};
     const theta = signal.theta?.status || signal.dealer_conclusion?.status || 'unavailable';
     const tv = signal.tv_sentinel?.status || 'waiting';
     const fmp = signal.fmp_conclusion?.status || signal.command_inputs?.external_spot?.status || 'unavailable';
     return [
-      '【SPX 指挥台｜UW API Intelligence】',
-      `状态：${safeLine(cc.final_state)}`,
+      `【SPX 指挥台｜${safeLine(cc.final_state, 'wait')}】`,
+      '',
       `动作：${safeLine(cc.action)}`,
       `原因：${safeLine(cc.main_reason)}`,
       `策略：${buildStrategyLine(signal.strategy_permissions || {})}`,
-      `失效：${Array.isArray(reflection.invalidation_triggers) && reflection.invalidation_triggers.length > 0 ? reflection.invalidation_triggers.join('；') : '--'}`,
+      `入场：${safeLine(plan.entry_zone?.text)}`,
+      `止损：${safeLine(plan.stop_loss?.text)}`,
+      `目标：${buildTargetsLine(plan.targets)}`,
+      `作废：${safeLine(plan.invalidation?.text)}`,
+      `仓位：${safeLine(sizing.plain_chinese || plan.position_sizing, '0仓')}`,
       `数据：UW ${safeLine(provider.status)} / Theta ${safeLine(theta)} / TV ${safeLine(tv)} / FMP ${safeLine(fmp)}`,
-      `反射：${safeLine(reflection.plain_chinese)}`
+      `失效条件：${Array.isArray(reflection.invalidation_triggers) && reflection.invalidation_triggers.length > 0 ? reflection.invalidation_triggers.join('；') : '--'}`
     ].join('\n');
   }
 

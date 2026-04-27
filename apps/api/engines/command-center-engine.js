@@ -27,7 +27,8 @@ export function runCommandCenterEngine({
   theta = {},
   tradePlan = {},
   flowPriceDivergence = {},
-  conflictResolver = {}
+  conflictResolver = {},
+  healthMatrix = {}
 } = {}) {
   const reasons = [];
   const direction = directionFromInputs({ institutionalAlert, dealerEngine, darkpoolSummary, marketSentiment });
@@ -36,6 +37,16 @@ export function runCommandCenterEngine({
   if (dataHealth.summary?.label === 'BLOCKED' || dataHealth.executable === false) {
     finalState = 'blocked';
     reasons.push(dataHealth.summary?.plain_chinese || 'data_health blocked');
+  }
+  if (healthMatrix.state === 'BLOCKED') {
+    finalState = 'blocked';
+    reasons.push(healthMatrix.plain_chinese || 'health_matrix blocked');
+  } else if (healthMatrix.state === 'DEGRADED_CANDIDATE' && finalState !== 'blocked') {
+    finalState = 'candidate';
+    reasons.push(healthMatrix.plain_chinese || 'health_matrix degraded candidate');
+  } else if (healthMatrix.state === 'OBSERVE_ONLY' && finalState !== 'blocked') {
+    finalState = 'wait';
+    reasons.push(healthMatrix.plain_chinese || 'observe only');
   }
   if (uwProvider.status === 'unavailable') reasons.push('UW unavailable，不得主导交易。');
   if (uwProvider.status === 'error') {

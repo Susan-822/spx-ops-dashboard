@@ -383,6 +383,8 @@ function buildRealtimeAnalysis(signal = {}) {
     `量比：${safeText(signal.volume_pressure?.plain_chinese, '量比不可用')}`,
     `通道：${safeText(signal.channel_shape?.plain_chinese, '通道形态不可用')}`,
     `波动状态：${safeText(signal.volatility_activation?.plain_chinese, '波动状态不可用')}`,
+    `Flow验证：${safeText(signal.flow_validation?.plain_chinese, 'Flow validation unavailable')}`,
+    `技术结构：${safeText(signal.technical_engine?.plain_chinese, 'Technical engine unavailable')}`,
     '',
     '【Dealer】',
     `ThetaData：${safeText(signal.theta?.status, 'unavailable')}，${safeText(dealer.plain_chinese, 'Dealer 地图不能执行，只能观察。')}`,
@@ -402,6 +404,8 @@ function buildRealtimeAnalysis(signal = {}) {
     `Charm：${safeText(uwGreeks.net_charm_bias, 'unavailable')}`,
     `Delta：${safeText(uwGreeks.net_delta_bias, 'unavailable')}`,
     `Dealer cross-check：${safeText(uwGreeks.dealer_crosscheck, 'unavailable')}`,
+    `允许：${safeText(signal.allowed_setups, '--')}`,
+    `阻断：${safeText(signal.blocked_setups_reason, '--')}`,
     `UW Dealer Engine：${safeText(signal.dealer_engine?.plain_chinese, 'UW dealer engine unavailable')}`,
     `Dark Pool Summary：${safeText(signal.darkpool_summary?.plain_chinese, 'Dark pool unavailable')}`,
     `Reflection 支持：${safeText(reflection.supporting_evidence, '--')}`,
@@ -451,6 +455,16 @@ function deriveDataQuality(signal) {
 }
 
 function getAction(signal) {
+  if (signal?.command_center?.action) {
+    const key = signal.command_center.final_state === 'blocked' ? 'no_trade' : 'wait';
+    return {
+      ...ACTION_MAP[key],
+      title: signal.command_center.action,
+      summary: signal.command_center.plain_chinese || ACTION_MAP[key].summary,
+      permission: signal.command_center.action,
+      plan: signal.command_center.final_state || ACTION_MAP[key].plan
+    };
+  }
   if (signal?.recommended_action && ACTION_MAP[signal.recommended_action]) return ACTION_MAP[signal.recommended_action];
   if (signal?.conflict?.conflict_level === 'high' || signal?.stale_flags?.any_stale) return ACTION_MAP.no_trade;
   return ACTION_MAP.wait;
@@ -523,6 +537,7 @@ function strategyState(signal, type) {
 }
 
 function buildTrigger(signal) {
+  if (signal.trade_plan?.entry_zone?.text) return signal.trade_plan.entry_zone.text;
   if (deriveDataQuality(signal).executable !== true) return '--';
   const snap = signal.market_snapshot || {};
   if (signal.recommended_action === 'long_on_pullback') return `回踩 ${fmtInt(snap.flip_level)} 上方不破`;
@@ -533,6 +548,9 @@ function buildTrigger(signal) {
 }
 
 function buildTarget(signal) {
+  if (Array.isArray(signal.trade_plan?.targets) && signal.trade_plan.targets.length > 0) {
+    return signal.trade_plan.targets.map((target) => target.text || target.level || target.name).filter(Boolean).join(' / ') || '--';
+  }
   if (deriveDataQuality(signal).executable !== true) return '--';
   const snap = signal.market_snapshot || {};
   if (signal.recommended_action === 'long_on_pullback') return `${fmtInt(snap.call_wall)} / 上方流动性`;
@@ -542,6 +560,7 @@ function buildTarget(signal) {
 }
 
 function buildInvalidation(signal) {
+  if (signal.trade_plan?.invalidation?.text) return signal.trade_plan.invalidation.text;
   if (deriveDataQuality(signal).executable !== true) return '--';
   if (signal.plain_language?.invalidation) return signal.plain_language.invalidation;
   const snap = signal.market_snapshot || {};
@@ -550,6 +569,7 @@ function buildInvalidation(signal) {
 }
 
 function buildAvoid(signal) {
+  if (signal.position_sizing_engine?.plain_chinese) return signal.position_sizing_engine.plain_chinese;
   if (deriveDataQuality(signal).executable !== true) {
     return safeText(signal?.engines?.data_coherence?.reason, '数据冲突 / 演示场景 / 数据过期 / 缺少关键输入');
   }
@@ -966,7 +986,11 @@ function renderRadarSummary(signal) {
           <span class="tag violet">UW Weight ${fmtInt((signal.weights?.uw || 0) * 100)}%</span>
         </div>
         <p class="radar-note">${escapeHtml([
+          `Coverage：${safeText(Object.keys(signal.uw_endpoint_coverage || {}).map((key) => `${key}:${(signal.uw_endpoint_coverage?.[key]?.ok || []).length}/${(signal.uw_endpoint_coverage?.[key]?.required || []).length}`), '--')}`,
           `Factors：${safeText(signal.uw_factors?.flow_factors?.direction, 'none')} / ${safeText(signal.uw_factors?.volatility_factors?.iv_rank, '--')}`,
+          `Technical：${safeText(signal.technical_engine?.plain_chinese, '--')}`,
+          `Allowed：${safeText(signal.allowed_setups_reason, '--')}`,
+          `Blocked：${safeText(signal.blocked_setups_reason, '--')}`,
           `支持：${safeText(signal.reflection?.supporting_evidence, '--')}`,
           `冲突：${safeText(signal.reflection?.conflicting_evidence, '--')}`,
           `缺口：${safeText(signal.reflection?.missing_inputs, '--')}`
