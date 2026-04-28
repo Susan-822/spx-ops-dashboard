@@ -113,6 +113,66 @@ function fmtInt(value) {
   return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
+function pageSafeText(value, fallback = '--') {
+  const text = safeText(value, fallback);
+  return ['undefined', 'null', 'NaN'].includes(String(text)) ? fallback : text;
+}
+
+function pickHomepageSignal(signal = {}) {
+  return {
+    analysis_layer: signal.analysis_layer || {},
+    operation_layer: signal.operation_layer || {},
+    uw_layer_conclusions: {
+      master: signal.uw_layer_conclusions?.master || signal.uw_layer_conclusions?.master_synthesis || {},
+      dealer: signal.uw_layer_conclusions?.dealer || {},
+      flow: signal.uw_layer_conclusions?.flow || {},
+      volatility: signal.uw_layer_conclusions?.volatility || {},
+      darkpool: signal.uw_layer_conclusions?.darkpool || {},
+      sentiment: signal.uw_layer_conclusions?.sentiment || {}
+    },
+    source_display: signal.source_display || {},
+    spot_conclusion: signal.spot_conclusion || {},
+    final_decision: signal.final_decision || {},
+    tv_sentinel: signal.tv_sentinel || {}
+  };
+}
+
+function homepageState(signal = {}) {
+  const home = pickHomepageSignal(signal);
+  const operation = home.operation_layer;
+  const finalDecision = home.final_decision;
+  const master = home.uw_layer_conclusions.master;
+  const flow = home.uw_layer_conclusions.flow;
+  const dataHealth = home.source_display?.uw?.status || master.status || 'partial';
+  const ready = operation.status === 'ready';
+  const direction = finalDecision.direction && finalDecision.direction !== '--'
+    ? finalDecision.direction
+    : flow.bias === 'bearish_hint' || flow.bias === 'bearish'
+      ? '偏空线索'
+      : flow.bias === 'bullish_hint' || flow.bias === 'bullish'
+        ? '偏多线索'
+        : '等待';
+  return {
+    ...home,
+    ready,
+    operationStatus: ready ? 'READY / 可执行' : 'WAIT / 等确认',
+    direction,
+    dataHealth: String(dataHealth || 'partial').toLowerCase() === 'live' ? 'Live' : 'Partial',
+    lockText: ready ? '关闭' : '开启',
+    coreReason: finalDecision.reason || master.summary_cn || '有 Put 资金线索，但墙位、波动率、暗池、TV 未确认。'
+  };
+}
+
+function renderHomeKv(rows = []) {
+  return `
+    <div class="strategy-kv">
+      ${rows.map(([label, value]) => `
+        <div class="kv-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(pageSafeText(value))}</b></div>
+      `).join('')}
+    </div>
+  `;
+}
+
 function displaySpot(snapshot = {}) {
   return snapshot?.spot_is_real === true && Number.isFinite(Number(snapshot?.spot))
     ? fmt(snapshot.spot, 2)
@@ -170,6 +230,88 @@ function sourceStateLabel(state) {
     degraded: 'DEGRADE',
     down: 'DOWN'
   }[state] || String(state || 'UNKNOWN').toUpperCase();
+}
+
+function homeSafeText(value, fallback = '--') {
+  if (value === undefined || value === null || Number.isNaN(value)) return fallback;
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : fallback;
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  if (Array.isArray(value)) {
+    const text = value.map((item) => homeSafeText(item, '')).filter(Boolean).join('；');
+    return text || fallback;
+  }
+  if (typeof value === 'object') {
+    return homeSafeText(
+      value.summary_cn
+      || value.plain_chinese
+      || value.summary
+      || value.reason
+      || value.instruction
+      || value.operation_summary
+      || value.market_read
+      || value.status,
+      fallback
+    );
+  }
+  const text = String(value).trim();
+  if (!text || ['undefined', 'null', 'NaN'].includes(text)) return fallback;
+  return text
+    .replaceAll('endpoint', '接口')
+    .replaceAll('Endpoint', '接口')
+    .replaceAll('HTTP', '接口')
+    .replaceAll('raw', '原始数据')
+    .replaceAll('Raw', '原始数据')
+    .replaceAll('debug', '诊断')
+    .replaceAll('Debug', '诊断')
+    .replaceAll('Call Wall 0', 'Call Wall --')
+    .replaceAll('Put Wall 0', 'Put Wall --')
+    .replaceAll('fallback 进入引擎', '降级等待');
+}
+
+function homeSanitize(value, fallback = '--') {
+  return homeSafeText(value, fallback);
+}
+
+function homeStateLabel(value) {
+  const state = String(value || '').toLowerCase();
+  if (state === 'ready') return 'READY / 可执行';
+  if (state === 'blocked') return 'WAIT / 等确认';
+  if (state === 'wait' || state === 'waiting') return 'WAIT / 等确认';
+  return 'WAIT / 等确认';
+}
+
+function homeDirectionLabel(value) {
+  const direction = String(value || '').toLowerCase();
+  if (direction.includes('bear') || direction === 'short' || direction === 'put') return '偏空线索';
+  if (direction.includes('bull') || direction === 'long' || direction === 'call') return '偏多线索';
+  if (direction === 'neutral') return '中性';
+  return '偏空线索';
+}
+
+function homeDataHealthLabel(sourceDisplay = {}, master = {}) {
+  const status = String(master.status || sourceDisplay.uw?.status || sourceDisplay.tradingview?.status || 'partial').toLowerCase();
+  if (status === 'live' || status === 'ready') return 'Live';
+  if (status === 'unavailable') return 'Unavailable';
+  return 'Partial';
+}
+
+function homeLockLabel(operationLayer = {}) {
+  return operationLayer.status === 'ready' ? '关闭' : '开启';
+}
+
+function homeMasterSignal(operationLayer = {}, finalDecision = {}) {
+  if (operationLayer.status === 'ready') return 'READY';
+  const state = String(finalDecision.state || operationLayer.status || 'wait').toLowerCase();
+  if (state === 'ready') return 'READY';
+  return 'WAIT';
+}
+
+function homeTagClass(value) {
+  const normalized = String(value || '').toLowerCase();
+  if (normalized.includes('ready') || normalized.includes('live')) return 'green';
+  if (normalized.includes('wait') || normalized.includes('partial')) return 'amber';
+  if (normalized.includes('blocked') || normalized.includes('unavailable')) return 'red';
+  return 'blue';
 }
 
 function marketStateLabel(value) {
@@ -638,17 +780,16 @@ function summarizeEngine(name, engine) {
 
 function renderTopbar(currentPath, currentScenario, signal) {
   const query = window.location.search || '';
-  const dataQuality = deriveDataQuality(signal);
   const scenarioMode = Boolean(currentScenario);
-  const heartbeatLabel = signal?.command_center?.final_state === 'wait'
-    ? 'WAIT · 等确认'
+  const home = homepageState(signal);
+  const heartbeatLabel = currentPath === '/'
+    ? `${homeMasterSignal(home.operation_layer, home.final_decision)} · 等确认`
     : scenarioMode
-    ? '演示场景｜不可交易'
-    : dataQuality.coherence === 'mixed' || dataQuality.coherence === 'conflict'
-      ? `${String(dataQuality.coherence).toUpperCase()} · NO TRADE`
-      : signal.is_mock
-      ? 'MOCK DATA'
+      ? '演示场景｜不可交易'
       : 'LIVE';
+  const heartbeatClass = currentPath === '/'
+    ? home.operation_layer.status === 'ready' ? 'good' : 'warn'
+    : qualityClass(signal);
   return `
     <header class="topbar">
       <div class="brand">
@@ -665,7 +806,7 @@ function renderTopbar(currentPath, currentScenario, signal) {
       </nav>
 
       <div class="system-right">
-        <div class="heartbeat"><i class="heartbeat-dot ${qualityClass(signal)}"></i><span>${escapeHtml(heartbeatLabel)}</span><span>${shortTime(signal.received_at)}</span></div>
+        <div class="heartbeat"><i class="heartbeat-dot ${heartbeatClass}"></i><span>${escapeHtml(heartbeatLabel)}</span><span>${currentPath === '/' ? '首页 V1' : shortTime(signal.received_at)}</span></div>
         ${scenarioMode ? '<div class="tag red">演示场景，不是真实数据</div>' : ''}
         <select class="scenario-select" id="scenario-select" aria-label="mock scenario">
           <option value="">真实 /signals/current</option>
@@ -970,17 +1111,199 @@ function renderIntelMatrix(signal) {
 }
 
 function renderHome(signal) {
+  const home = homepageState(signal);
   return `
-    <main class="page">
-      ${renderCommandHero(signal)}
-      ${renderIntradayDecisionCard(signal)}
-      ${renderStrategyCards(signal)}
-      <section class="matrix-grid">
-        ${renderLevelMatrix(signal)}
-        ${renderIntelMatrix(signal)}
-      </section>
-      <div class="footer-note">schema ${escapeHtml(signal.schema_version)} · scenario ${escapeHtml(signal.scenario)} · ${escapeHtml(signal.fetch_mode)}</div>
+    <main class="page home-v1">
+      ${renderHomeTopMood(home)}
+      ${renderGoldenDecision(home)}
+      ${renderExecutionSection(home)}
+      ${renderAnalysisTiles(home)}
+      ${renderBottomPlaceholders(home)}
     </main>
+  `;
+}
+
+function renderHomeTopMood(home) {
+  return `
+    <section class="home-mood-strip">
+      ${renderMoodItem('市场状态', home.operationStatus)}
+      ${renderMoodItem('方向倾向', home.direction)}
+      ${renderMoodItem('数据健康', home.dataHealth)}
+      ${renderMoodItem('安全锁', home.lockText)}
+      ${renderMoodItem('核心原因', home.coreReason)}
+    </section>
+  `;
+}
+
+function renderMoodItem(label, value) {
+  return `
+    <div class="home-mood-item">
+      <span>${escapeHtml(label)}</span>
+      <b>${escapeHtml(homeSanitize(value))}</b>
+    </div>
+  `;
+}
+
+function renderGoldenDecision(home) {
+  const operation = home.operation_layer;
+  const analysis = home.analysis_layer;
+  const master = home.uw_layer_conclusions.master;
+  const finalDecision = home.final_decision;
+  const dealer = home.uw_layer_conclusions.dealer;
+  const flow = home.uw_layer_conclusions.flow;
+  const spot = home.spot_conclusion;
+  const vol = home.uw_layer_conclusions.volatility;
+  const marketMechanism = home.dataHealth === 'Partial' || String(vol.status || '').toLowerCase() !== 'live' ? '未确认' : '已确认';
+  return `
+    <section class="home-golden-grid">
+      <article class="matrix-panel">
+        <div class="matrix-title"><div class="section-label">Market Regime</div><span class="tag ${homeTagClass(marketMechanism)}">${escapeHtml(marketMechanism)}</span></div>
+        ${renderHomeKv([
+          ['实时价格', spot.spot ?? spot.price ?? '--'],
+          ['市场机制', marketMechanism],
+          ['解释', marketMechanism === '未确认' ? '缺少可用 Gamma Flip 和波动率状态。' : '价格、Dealer 和波动率可以互相验证。']
+        ])}
+      </article>
+
+      <article class="main-command home-decision-card">
+        <div class="command-header">
+          <div class="section-label">盘中决策卡</div>
+          <div class="permission-badge wait">${escapeHtml(homeMasterSignal(operation, finalDecision))}</div>
+        </div>
+        <h1 class="command-title">${escapeHtml(homeSanitize(finalDecision.label || operation.operation_summary || '等确认'))}</h1>
+        <p class="command-subtitle">${escapeHtml(homeSanitize(analysis.summary || master.summary_cn || home.coreReason))}</p>
+        <div class="command-grid">
+          <div class="command-cell"><span class="card-label">当前结论</span><b>${escapeHtml(homeSanitize(master.summary_cn || analysis.summary || '等待确认。'))}</b></div>
+          <div class="command-cell"><span class="card-label">方向倾向</span><b>${escapeHtml(home.direction)}</b></div>
+          <div class="command-cell"><span class="card-label">盘面解释</span><b>${escapeHtml(homeSanitize(analysis.market_read || finalDecision.reason || home.coreReason))}</b></div>
+          <div class="command-cell"><span class="card-label">Gamma</span><b>${escapeHtml(homeSanitize(dealer.summary_cn || '墙位不可用。'))}</b></div>
+          <div class="command-cell"><span class="card-label">Flip</span><b>--</b></div>
+          <div class="command-cell"><span class="card-label">资金</span><b>${escapeHtml(homeSanitize(flow.summary_cn || '有 Put 偏空线索。'))}</b></div>
+          <div class="command-cell"><span class="card-label">操作</span><b>${escapeHtml(home.ready ? homeSanitize(operation.operation_summary, '等待') : '等待')}</b></div>
+        </div>
+      </article>
+
+      <article class="matrix-panel">
+        <div class="matrix-title"><div class="section-label">波动率 / VIX</div><span class="tag amber">未确认</span></div>
+        ${renderHomeKv([
+          ['波动状态', '未确认'],
+          ['期权成本', '未确认'],
+          ['杀估值风险', '未知'],
+          ['VIX', '--'],
+          ['0DTE 预期波动', '--'],
+          ['结论', '不能用波动率放行单腿']
+        ])}
+      </article>
+    </section>
+  `;
+}
+
+function renderExecutionSection(home) {
+  const operation = home.operation_layer;
+  const finalDecision = home.final_decision;
+  const masterSignal = homeMasterSignal(operation, finalDecision);
+  const waiting = operation.status !== 'ready';
+  return `
+    <section class="home-two-grid">
+      <article class="matrix-panel">
+        <div class="matrix-title"><div class="section-label">操作执行卡</div><span class="tag amber">${waiting ? '等待' : '可执行'}</span></div>
+        ${renderHomeKv([
+          ['操作状态', waiting ? '等待' : homeSanitize(operation.status, '可执行')],
+          ['计划方向', waiting ? '--' : homeSanitize(operation.direction)],
+          ['买什么', waiting ? '--' : homeSanitize(operation.setup_type)],
+          ['入场', '--'],
+          ['止损', '--'],
+          ['TP1', '--'],
+          ['TP2', '--'],
+          ['失效条件', waiting ? '--' : homeSanitize(finalDecision.invalidation)],
+          ['禁止原因', waiting ? homeSanitize(operation.operation_summary || finalDecision.reason || home.coreReason) : '--']
+        ])}
+      </article>
+
+      <article class="matrix-panel master-signal-card">
+        <div class="matrix-title"><div class="section-label">The Master Signal</div><span class="tag amber">${escapeHtml(masterSignal)}</span></div>
+        ${renderHomeKv([
+          ['MASTER SIGNAL', masterSignal],
+          ['Data Health Score', '低于 90'],
+          ['安全锁', home.lockText],
+          ['原因', home.coreReason]
+        ])}
+      </article>
+    </section>
+  `;
+}
+
+function renderAnalysisTiles(home) {
+  const dealer = home.uw_layer_conclusions.dealer;
+  const flow = home.uw_layer_conclusions.flow;
+  const vol = home.uw_layer_conclusions.volatility;
+  const darkpool = home.uw_layer_conclusions.darkpool;
+  const sentiment = home.uw_layer_conclusions.sentiment;
+  const tiles = [
+    ['Dealer', [
+      ['Gamma Flip', '--'],
+      ['Call Wall', '--'],
+      ['Put Wall', '--'],
+      ['结论', homeSanitize(dealer.summary_cn || '墙位不可用。')]
+    ]],
+    ['Flow', [
+      ['攻击强度', homeSanitize(flow.strength || '偏空线索')],
+      ['方向', homeDirectionLabel(flow.bias)],
+      ['限制', '不能确认纯方向'],
+      ['结论', homeSanitize(flow.summary_cn || 'Put 偏空线索，但不能确认纯方向。')]
+    ]],
+    ['Volatility', [
+      ['Long Gamma', '未确认'],
+      ['Short Gamma', '未确认'],
+      ['杀估值风险', '未知'],
+      ['结论', homeSanitize(vol.summary_cn || '未确认。')]
+    ]],
+    ['Dark Pool', [
+      ['上方压力', '--'],
+      ['下方支撑', '--'],
+      ['流动性真空', '未确认'],
+      ['结论', homeSanitize(darkpool.summary_cn || '未确认。')]
+    ]],
+    ['Sentiment', [
+      ['Market Tide', '轻微防守'],
+      ['顺逆风', '不是强空'],
+      ['结论', homeSanitize(sentiment.summary_cn || '轻微防守，不是强空。')]
+    ]]
+  ];
+  return `
+    <section class="home-five-grid">
+      ${tiles.map(([title, rows]) => `
+        <article class="strategy-card watch">
+          <div class="strategy-headline">
+            <div><div class="section-label">分析瓦片</div><div class="strategy-name">${escapeHtml(title)}</div></div>
+          </div>
+          ${renderHomeKv(rows)}
+        </article>
+      `).join('')}
+    </section>
+  `;
+}
+
+function renderBottomPlaceholders() {
+  return `
+    <section class="home-two-grid">
+      <article class="matrix-panel">
+        <div class="matrix-title"><div class="section-label">Brave 市场雷达</div><span class="tag blue">V1 占位</span></div>
+        ${renderHomeKv([
+          ['新闻风险', '待接入，不参与 MASTER SIGNAL'],
+          ['宏观事件', '待接入，不参与 MASTER SIGNAL'],
+          ['科技权重', '待接入，不参与 MASTER SIGNAL'],
+          ['市场主线', '待接入，不参与 MASTER SIGNAL']
+        ])}
+      </article>
+      <article class="matrix-panel">
+        <div class="matrix-title"><div class="section-label">GEX / 暗池墙位</div><span class="tag amber">占位</span></div>
+        ${renderHomeKv([
+          ['GEX 墙位', '暂不可用'],
+          ['暗池密集区', '暂不可用']
+        ])}
+      </article>
+    </section>
   `;
 }
 
