@@ -145,7 +145,7 @@ function homepageState(signal = {}) {
   const flow = home.uw_layer_conclusions.flow;
   const dataHealth = home.source_display?.uw?.status || master.status || 'partial';
   const ready = operation.status === 'ready';
-  const direction = finalDecision.direction && finalDecision.direction !== '--'
+  const direction = finalDecision.direction && !['--', 'unknown', 'none'].includes(String(finalDecision.direction).toLowerCase())
     ? finalDecision.direction
     : flow.bias === 'bearish_hint' || flow.bias === 'bearish'
       ? '偏空线索'
