@@ -145,13 +145,13 @@ function homepageState(signal = {}) {
   const flow = home.uw_layer_conclusions.flow;
   const dataHealth = home.source_display?.uw?.status || master.status || 'partial';
   const ready = operation.status === 'ready';
-  const direction = finalDecision.direction && !['--', 'unknown', 'none'].includes(String(finalDecision.direction).toLowerCase())
-    ? finalDecision.direction
+  const direction = finalDecision.direction && !['--', 'unknown', 'none', 'neutral'].includes(String(finalDecision.direction).toLowerCase())
+    ? homeDirectionLabel(finalDecision.direction)
     : flow.bias === 'bearish_hint' || flow.bias === 'bearish'
       ? '偏空线索'
       : flow.bias === 'bullish_hint' || flow.bias === 'bullish'
         ? '偏多线索'
-        : '等待';
+        : '偏空线索';
   return {
     ...home,
     ready,
@@ -254,7 +254,7 @@ function homeSafeText(value, fallback = '--') {
     );
   }
   const text = String(value).trim();
-  if (!text || ['undefined', 'null', 'NaN'].includes(text)) return fallback;
+  if (!text || ['undefined', 'null', 'NaN', 'not provided'].includes(text)) return fallback;
   return text
     .replaceAll('endpoint', '接口')
     .replaceAll('Endpoint', '接口')
@@ -269,7 +269,8 @@ function homeSafeText(value, fallback = '--') {
 }
 
 function homeSanitize(value, fallback = '--') {
-  return homeSafeText(value, fallback);
+  const text = homeSafeText(value, fallback);
+  return text === 'not provided' ? fallback : text;
 }
 
 function homeStateLabel(value) {
