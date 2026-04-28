@@ -138,7 +138,11 @@ function pickHomepageSignal(signal = {}) {
     dealer_wall_map: signal.dealer_wall_map || {},
     darkpool_gravity: signal.darkpool_gravity || {},
     flow_conflict: signal.flow_conflict || {},
-    volatility_state: signal.volatility_state || signal.uw_normalized?.volatility?.volatility_state || {}
+    volatility_state: signal.volatility_state || signal.uw_normalized?.volatility?.volatility_state || {},
+    price_trigger: signal.price_trigger || {},
+    news_radar: signal.news_radar || {},
+    wall_zone_panel: signal.wall_zone_panel || {},
+    control_side: signal.control_side || {}
   };
 }
 
@@ -1352,8 +1356,14 @@ function buildHomeHumanCopy(home = {}) {
   const gravity = home.darkpool_gravity || {};
   const conflict = home.flow_conflict || {};
   const volState = home.volatility_state || {};
+  const priceTrigger = home.price_trigger || execution.price_trigger || {};
+  const newsRadar = home.news_radar || execution.news_radar || {};
+  const wallZone = home.wall_zone_panel || execution.wall_zone_panel || {};
+  const controlSide = home.control_side || execution.control_side || wallZone.control_side || {};
   const hasDealerWalls = wall.call_wall != null || wall.put_wall != null || wall.gamma_flip != null;
-  const darkLevel = gravity.mapped_spx != null ? Number(gravity.mapped_spx).toFixed(2) : '7150.23';
+  const darkLevel = priceTrigger.key_level != null
+    ? Number(priceTrigger.key_level).toFixed(2)
+    : gravity.mapped_spx != null ? Number(gravity.mapped_spx).toFixed(2) : '7150.23';
   const mainConclusion = execution.status === 'READY'
     ? 'READY，可以按完整计划执行。'
     : 'WAIT，不能开仓。';
@@ -1377,6 +1387,10 @@ function buildHomeHumanCopy(home = {}) {
     bias,
     headline,
     action: gravity.mapped_spx != null ? `禁止追 Put，等 ${darkLevel} 附近回踩反应。` : '只观察，不追空。',
+    priceTrigger,
+    newsRadar,
+    wallZone,
+    controlSide,
     dealerImpact,
     darkPoolImpact,
     flowImpact,
@@ -1510,30 +1524,38 @@ function renderAnalysisTiles(home) {
 }
 
 function renderBottomPlaceholders() {
+  const home = arguments[0] || {};
+  const news = home.news_radar || {};
+  const wallPanel = home.wall_zone_panel || {};
+  const control = home.control_side || wallPanel.control_side || {};
+  const nearestZone = wallPanel.darkpool_zone?.nearest_zone || {};
   return `
     <section class="home-bottom-grid">
       <article class="placeholder-card">
         <div class="home-card-head">
-          <span>底部占位</span>
+          <span>新闻雷达</span>
           <h3>Brave 市场雷达</h3>
         </div>
         ${renderHomeRows([
-          ['新闻风险', '待接入'],
-          ['宏观事件', '待接入'],
-          ['科技权重', '待接入'],
-          ['市场主线', '待接入'],
-          ['结论', '新闻只做背景']
+          ['新闻风险', news.news_risk_cn || '新闻只做背景参考'],
+          ['宏观事件', news.macro_event_cn || '没有确认的宏观冲击'],
+          ['财报预告', news.earnings_event_cn || '没有确认的重大财报临近'],
+          ['科技权重', news.mega_cap_cn || '科技权重暂未给出额外方向'],
+          ['市场主线', news.market_theme_cn || '等待新闻雷达下一轮刷新'],
+          ['操作影响', news.operation_impact_cn || '只做背景，不直接开仓']
         ])}
       </article>
       <article class="placeholder-card">
         <div class="home-card-head">
-          <span>底部占位</span>
+          <span>墙位与控盘</span>
           <h3>GEX / 暗池墙位</h3>
         </div>
         ${renderHomeRows([
-          ['GEX 墙位', '还没有数据支撑，不能画墙'],
-          ['暗池密集区', '还没有正式墙位，只能观察大成交区'],
-          ['结论', '不画没有数据支撑的墙位']
+          ['控盘判断', control.side_cn || '多空拉扯，先观察。'],
+          ['依据', Array.isArray(control.evidence_cn) ? control.evidence_cn.slice(0, 2).join(' ') : '等待 Flow、暗池和做市商墙位共同确认。'],
+          ['暗池观察区', nearestZone.summary_cn || wallPanel.darkpool_zone?.summary_cn || '7150 附近是重点观察区。'],
+          ['GEX 墙位', wallPanel.gex_wall?.summary_cn || '做市商墙位还没生成。'],
+          ['操作含义', control.action_cn || wallPanel.action_cn || '不追 Put，等 7150 附近反应。']
         ])}
       </article>
     </section>

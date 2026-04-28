@@ -35,7 +35,11 @@ import {
   buildDarkpoolGravity,
   buildDealerWallMap,
   buildFlowConflict,
+  buildNewsRadar,
+  buildPriceTrigger,
   buildTradeExecutionCard,
+  buildWallZonePanel,
+  buildControlSide,
   buildUwLayerConclusions,
   buildUwNormalized
 } from './algorithms/index.js';
@@ -1835,13 +1839,42 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     darkpool_gravity: darkpoolGravity,
     spot_price: priceSourcesV2.spx?.price ?? null
   });
+  const wallZonePanel = buildWallZonePanel({
+    dealer: uwNormalized.dealer,
+    darkpool: uwNormalized.darkpool,
+    dealer_wall_map: dealerWallMap,
+    spot_price: priceSourcesV2.spx?.price ?? null
+  });
+  const priceTrigger = buildPriceTrigger({
+    spot_price: priceSourcesV2.spx?.price ?? null,
+    darkpool_gravity: darkpoolGravity,
+    wall_zone_panel: wallZonePanel,
+    flow_conflict: flowConflict,
+    operation_layer: { status: rawNoteV2.final_decision.state }
+  });
+  const newsRadar = buildNewsRadar();
+  const controlSide = buildControlSide({
+    spot_price: priceSourcesV2.spx?.price ?? null,
+    flow_conflict: flowConflict,
+    darkpool_gravity: darkpoolGravity,
+    wall_zone_panel: wallZonePanel,
+    dealer_wall_map: dealerWallMap,
+    sentiment: uwNormalized.sentiment,
+    volatility_state: uwNormalized.volatility?.volatility_state,
+    price_trigger: priceTrigger
+  });
+  wallZonePanel.control_side = controlSide;
   const executionCard = buildTradeExecutionCard({
     dealer_wall_map: dealerWallMap,
     darkpool_gravity: darkpoolGravity,
     flow_conflict: flowConflict,
     volatility_state: uwNormalized.volatility?.volatility_state,
     sentiment_state: uwNormalized.sentiment,
-    operation_layer: { status: rawNoteV2.final_decision.state }
+    operation_layer: { status: rawNoteV2.final_decision.state },
+    price_trigger: priceTrigger,
+    news_radar: newsRadar,
+    wall_zone_panel: wallZonePanel,
+    control_side: controlSide
   });
   const finalCard = buildIntradayDecisionCardV2({
     finalDecision: rawNoteV2.final_decision,
@@ -1876,6 +1909,10 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     dealer_wall_map: dealerWallMap,
     darkpool_gravity: darkpoolGravity,
     flow_conflict: flowConflict,
+    price_trigger: priceTrigger,
+    news_radar: newsRadar,
+    wall_zone_panel: wallZonePanel,
+    control_side: controlSide,
     execution_card: executionCard,
     uw_aggregate_analysis: buildUwAggregateAnalysis(uwNormalized, uwLayerConclusions, {
       dealerWallMap,
