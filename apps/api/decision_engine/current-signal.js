@@ -287,6 +287,8 @@ function buildLayerContracts(signal = {}) {
   const ready = tradePlanStatus === 'ready' && finalDecision.state === 'actionable' && blockedBy.length === 0;
   const wait = !ready && !['blocked', 'invalidated'].includes(finalDecision.state);
 
+  const layerConclusions = signal.uw_layer_conclusions || {};
+  const master = layerConclusions.master || layerConclusions.master_synthesis || {};
   return {
     data_layer: {
       status: dataStatus,
@@ -305,14 +307,14 @@ function buildLayerContracts(signal = {}) {
     analysis_layer: {
       status: analysisStatus,
       blocked_by_operation_gate: false,
-      summary: finalDecision.reason || (hasAnalysis ? '分析层可展示。' : '暂无分析结论。'),
+      summary: master.summary_cn || finalDecision.reason || (hasAnalysis ? '分析层可展示。' : '暂无分析结论。'),
       market_read: finalDecision.market_read || 'not provided',
       reflection: reflection && Object.keys(reflection).length > 0 ? reflection : 'not provided',
-      dealer_summary: signal.gex_engine?.plain_chinese || 'not provided',
-      flow_summary: signal.flow_aggression_engine?.plain_chinese || 'not provided',
-      volatility_summary: signal.volatility_engine?.plain_chinese || 'not provided',
-      darkpool_summary: signal.darkpool_engine?.plain_chinese || 'not provided',
-      sentiment_summary: signal.market_sentiment_engine?.plain_chinese || 'not provided',
+      dealer_summary: layerConclusions.dealer?.summary_cn || signal.gex_engine?.plain_chinese || 'not provided',
+      flow_summary: layerConclusions.flow?.summary_cn || signal.flow_aggression_engine?.plain_chinese || 'not provided',
+      volatility_summary: layerConclusions.volatility?.summary_cn || signal.volatility_engine?.plain_chinese || 'not provided',
+      darkpool_summary: layerConclusions.darkpool?.summary_cn || signal.darkpool_engine?.plain_chinese || 'not provided',
+      sentiment_summary: layerConclusions.sentiment?.summary_cn || signal.market_sentiment_engine?.plain_chinese || 'not provided',
       tv_summary: signal.tv_sentinel?.plain_chinese || 'not provided',
       missing_analysis: missing
     },
@@ -1711,6 +1713,15 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     ...rawNoteV2,
     fmp_price_audit: fmpSnapshot.price?.audit || null,
     uw_normalized: uwNormalized,
+    uw_layer_conclusions: {
+      dealer: uwLayerConclusions.gex_engine,
+      flow: uwLayerConclusions.flow_aggression_engine,
+      volatility: uwLayerConclusions.volatility_engine,
+      darkpool: uwLayerConclusions.darkpool_engine,
+      sentiment: uwLayerConclusions.market_sentiment_engine,
+      data_health: uwLayerConclusions.data_health_engine,
+      master: uwLayerConclusions.master_synthesis
+    },
     spot_conclusion: spotConclusion,
     event_conclusion: eventConclusion,
     gex_engine: gexEngine,
