@@ -1292,7 +1292,7 @@ test('UW intelligence layer feeds command center permissions reflection and tele
     assert.equal(Number.isFinite(signal.cross_asset_projection.es_equivalent_levels.call_wall), true);
   }
   assert.match(signal.intraday_decision_card.key_levels_summary, /ES|等效价/);
-  assert.match(signal.final_decision.instruction, /禁做|等确认|可执行/);
+  assert.match(signal.final_decision.instruction, /禁做|等确认|可执行|只平仓/);
   assert.match(buildAlertMessage({ signal }), /关键位：[\s\S]*ES/);
 
   await updateTradingViewSnapshot({
@@ -1312,7 +1312,7 @@ test('UW intelligence layer feeds command center permissions reflection and tele
 
   await resetThetaStateEnv();
   signal = await getCurrentSignal(undefined);
-  assert.match(signal.command_center.plain_chinese, /Theta unavailable|Dealer 主结论降级|禁做|等确认/);
+  assert.match(signal.command_center.plain_chinese, /Theta unavailable|Dealer 主结论降级|禁做|等确认|只平仓/);
 
   await resetThetaStateEnv();
   await seedDefaultThetaLiveSnapshot();
@@ -1375,7 +1375,7 @@ test('cross asset projection maps SPX levels to SPY and ES and feeds outputs', a
   assert.equal(signal.trade_plan.target_instrument, 'ES');
   assert.equal(typeof signal.trade_plan.entry_zone.text, 'string');
   assert.match(signal.intraday_decision_card.key_levels_summary, /ES|等效价/);
-  assert.match(signal.final_decision.instruction, /禁做|等确认|可执行/);
+  assert.match(signal.final_decision.instruction, /禁做|等确认|可执行|只平仓/);
   const message = buildAlertMessage({ signal });
   assert.match(message, /关键位：/);
   assert.match(message, /ES/);
