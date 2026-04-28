@@ -1196,6 +1196,36 @@ function yesNo(value) {
   return value ? '是' : '否';
 }
 
+function renderEvidenceList(items = []) {
+  const list = (Array.isArray(items) ? items : [items])
+    .flatMap((item) => String(item || '').split(/[。]；|；/))
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (list.length === 0) return '未提供';
+  return `<ul class="alert-list">${list.map((item) => `<li>${escapeHtml(radarText(item, '未提供'))}</li>`).join('')}</ul>`;
+}
+
+function operationImpactForLayer(name) {
+  if (name.includes('做市商')) return '不能给目标位，也不能用 Gamma Flip 放行。';
+  if (name.includes('机构资金')) return '只能作为偏空线索，不能直接放行 Put。';
+  if (name.includes('波动率')) return '不能判断裸买单腿是否划算。';
+  if (name.includes('暗池')) return '不能给最近支撑 / 最近压力。';
+  if (name.includes('市场情绪')) return '只能做背景，不支持激进突破打法。';
+  if (name.includes('数据质量')) return '整体仍是 partial，只能分析，不能 ready。';
+  return '不能直接放行操作卡。';
+}
+
+function layerStatusLines({ endpointOk, rawOk, keyOk, normalizedOk, canAnalyze, canOperate }) {
+  return [
+    `接口：${yesNo(endpointOk)}`,
+    `Raw：${yesNo(rawOk)}`,
+    `关键字段：${typeof keyOk === 'string' ? keyOk : yesNo(keyOk)}`,
+    `标准化：${typeof normalizedOk === 'string' ? normalizedOk : yesNo(normalizedOk)}`,
+    `可分析：${yesNo(canAnalyze)}`,
+    `可操作：${yesNo(canOperate)}`
+  ].map((line) => escapeHtml(line)).join('<br>');
+}
+
 function sourceUpdatedAt(signal, sourceName) {
   const source = (signal.source_status || []).find((item) => {
     if (sourceName === 'uw') return item.source === 'uw';
@@ -1257,12 +1287,12 @@ function getLayerRows(signal) {
   const providerLive = signal.uw_provider?.status === 'live';
   const dataHealth = layers.data_health || {};
   return [
-    ['做市商 / 希腊值', layers.dealer || {}, providerLive, normalized.dealer?.has_data, normalized.dealer?.greek_exposure_has_data, true],
-    ['机构资金流', layers.flow || {}, providerLive, normalized.flow?.has_data, normalized.flow?.ask_side_premium != null || normalized.flow?.total_premium != null, true],
-    ['波动率', layers.volatility || {}, providerLive, normalized.volatility?.has_data, Array.isArray(normalized.volatility?.term_structure) && normalized.volatility.term_structure.length > 0, true],
-    ['暗池 / 场外成交', layers.darkpool || {}, providerLive, normalized.darkpool?.has_data, normalized.darkpool?.prints_count > 0, true],
-    ['市场情绪', layers.sentiment || {}, providerLive, normalized.sentiment?.has_data, normalized.sentiment?.net_call_premium != null, true],
-    ['数据质量', dataHealth, providerLive, normalized.data_health?.has_data, normalized.data_health?.provider_live, true]
+    ['做市商 / 希腊值', layers.dealer || {}, { endpointOk: providerLive, rawOk: normalized.dealer?.has_data, keyOk: true, normalizedOk: '部分', canAnalyze: true, canOperate: false }],
+    ['机构资金流', layers.flow || {}, { endpointOk: providerLive, rawOk: normalized.flow?.has_data, keyOk: true, normalizedOk: '部分', canAnalyze: true, canOperate: false }],
+    ['波动率', layers.volatility || {}, { endpointOk: providerLive, rawOk: normalized.volatility?.has_data, keyOk: '部分', normalizedOk: '部分', canAnalyze: true, canOperate: false }],
+    ['暗池 / 场外成交', layers.darkpool || {}, { endpointOk: providerLive, rawOk: normalized.darkpool?.has_data, keyOk: '部分', normalizedOk: '部分', canAnalyze: true, canOperate: false }],
+    ['市场情绪', layers.sentiment || {}, { endpointOk: providerLive, rawOk: normalized.sentiment?.has_data, keyOk: '部分', normalizedOk: '部分', canAnalyze: true, canOperate: false }],
+    ['数据质量', dataHealth, { endpointOk: providerLive, rawOk: normalized.data_health?.has_data, keyOk: true, normalizedOk: true, canAnalyze: true, canOperate: false }]
   ];
 }
 
@@ -1272,21 +1302,18 @@ function renderUwLayerStatus(signal) {
     <section class="radar-card">
       <div class="radar-title"><h2>UW 六层接入状态</h2><span class="tag violet">normalized</span></div>
       <div class="matrix-list">
-        ${rows.map(([name, layer, endpointOk, rawOk, keyOk, normalizedOk]) => `
+        ${rows.map(([name, layer, status]) => `
           <div class="matrix-item">
             <div class="matrix-name">${escapeHtml(name)}<br>${statusTag(layer.status)}</div>
             <div class="matrix-value">
               <b>结论：</b>${escapeHtml(radarText(layer.summary_cn, '未提供'))}<br>
-              <b>接通证据：</b>${escapeHtml(radarText(layer.evidence_cn, '未提供'))}<br>
+              <b>接通证据：</b>${renderEvidenceList(layer.evidence_cn)}<br>
               <b>当前卡点：</b>${escapeHtml(radarText(layer.current_block, '未提供'))}<br>
-              <b>对操作卡影响：</b>${escapeHtml(layer.usable_for_operation ? '可参与操作卡' : '不能直接放行操作卡')}<br>
+              <b>对操作卡影响：</b>${escapeHtml(operationImpactForLayer(name))}<br>
               <b>下一步修复：</b>${escapeHtml(radarText(layer.next_fix, '未提供'))}
             </div>
             <div class="matrix-number">
-              接口${escapeHtml(yesNo(endpointOk))}<br>
-              Raw${escapeHtml(yesNo(rawOk))}<br>
-              字段${escapeHtml(yesNo(keyOk))}<br>
-              标准化${escapeHtml(yesNo(normalizedOk))}
+              ${layerStatusLines(status)}
             </div>
           </div>
         `).join('')}
@@ -1343,6 +1370,44 @@ function renderMappingStatus(signal) {
   `;
 }
 
+function renderFactorGuide() {
+  const rows = [
+    ['Dealer / GEX：10 个因子｜看做市商是控波还是放波'],
+    ['Flow：11 个因子｜看机构资金有没有连续攻击'],
+    ['Volatility：7 个因子｜看期权贵不贵，会不会杀估值'],
+    ['Dark Pool：8 个因子｜看暗池有没有支撑压力'],
+    ['Sentiment：8 个因子｜看全市场顺风逆风'],
+    ['Data Health：9 个因子｜看数据是否 live、完整、可信']
+  ].map((row) => row.map((cell) => escapeHtml(cell)));
+  return `
+    <section class="radar-card">
+      <details>
+        <summary><strong>UW 六层因子说明</strong></summary>
+        ${renderRadarTable(['说明'], rows)}
+      </details>
+    </section>
+  `;
+}
+
+function renderAggregationGuide() {
+  const rows = [
+    ['1. 数据安检不过 → 等'],
+    ['2. 波动率过热 / 暗池压力太近 → 禁做'],
+    ['3. Dealer 环境冲突 → 禁做'],
+    ['4. 情绪背离 → 禁做或等'],
+    ['5. Flow + TV 最后触发 → 才能做'],
+    ['当前总判断：当前有偏空资金线索，但 Dealer 墙位、波动率打法、暗池空间和 TV 触发都不完整，只能等待。']
+  ].map((row) => row.map((cell) => escapeHtml(cell)));
+  return `
+    <section class="radar-card">
+      <details>
+        <summary><strong>六层如何合成 做 / 等 / 禁做</strong></summary>
+        ${renderRadarTable(['逻辑'], rows)}
+      </details>
+    </section>
+  `;
+}
+
 function renderDataGaps(signal) {
   const failed = signal.uw_provider?.endpoints_failed || [];
   const legacy = (signal.source_status || []).filter((item) => item.is_mock || ['uw_dom', 'uw_screenshot', 'scheduler_health'].includes(item.source));
@@ -1385,25 +1450,24 @@ function safeJson(value) {
 }
 
 function renderDebugJson(signal) {
+  const provider = signal.uw_provider || {};
   const payload = {
     source_display: signal.source_display,
     source_status: signal.source_status,
+    uw_normalized: signal.uw_normalized,
+    uw_layer_conclusions: signal.uw_layer_conclusions,
     data_layer: signal.data_layer,
     analysis_layer: signal.analysis_layer,
     operation_layer: signal.operation_layer,
-    uw_provider: signal.uw_provider,
-    uw_endpoint_coverage: signal.uw_endpoint_coverage,
-    uw_raw: signal.uw_raw,
-    uw_normalized: signal.uw_normalized,
-    uw_layer_conclusions: signal.uw_layer_conclusions,
-    uw_factors: signal.uw_factors,
-    gex_engine: signal.gex_engine,
-    flow_aggression_engine: signal.flow_aggression_engine,
-    volatility_engine: signal.volatility_engine,
-    darkpool_engine: signal.darkpool_engine,
-    market_sentiment_engine: signal.market_sentiment_engine,
-    last_updated: signal.last_updated,
-    stale_flags: signal.stale_flags
+    uw_provider_endpoint_summary: {
+      status: provider.status,
+      fetch_mode: provider.fetch_mode,
+      endpoint_count: provider.endpoint_count,
+      endpoints_ok_count: provider.endpoints_ok_count,
+      endpoints_failed_count: provider.endpoints_failed_count,
+      endpoints_failed: provider.endpoints_failed
+    },
+    uw_raw: '完整 raw 过大，已隐藏；请用 API /signals/current 查看。'
   };
   return `
     <section class="radar-card">
@@ -1423,6 +1487,8 @@ function renderRadar(signal) {
         ${renderUwLayerStatus(signal)}
         ${renderEndpointEvidence(signal)}
         ${renderMappingStatus(signal)}
+        ${renderFactorGuide()}
+        ${renderAggregationGuide()}
         ${renderDataGaps(signal)}
         ${renderDebugJson(signal)}
       </section>
