@@ -1277,13 +1277,17 @@ test('UW intelligence layer feeds command center permissions reflection and tele
   assert.equal(signal.uw_normalized.volatility.volatility_state.vscore, 95.2);
   assert.equal(signal.uw_normalized.volatility.volatility_state.classification, 'prohibit_long_single');
   assert.equal(signal.uw_normalized.darkpool.tier, 'major_wall');
-  if (signal.dealer_diagnostics.rows_near_spot === 0) {
-    assert.match(signal.execution_card.dealer, /likely_cause/);
-  } else {
-    assert.match(signal.execution_card.dealer, /继续等待墙位确认/);
-  }
-  assert.match(signal.execution_card.volatility, /Vscore=95.2/);
-  assert.match(signal.execution_card.darkpool, /major_wall/);
+  assert.equal(typeof signal.dealer_wall_map.summary_cn, 'string');
+  assert.equal(['positive_gamma_magnet', 'negative_gamma_slide', 'unknown'].includes(signal.dealer_wall_map.regime), true);
+  assert.equal(typeof signal.darkpool_gravity.summary_cn, 'string');
+  assert.equal(typeof signal.flow_conflict.flow_wall_state_cn, 'string');
+  assert.equal(signal.execution_card.trade.entry, '--');
+  assert.equal(signal.execution_card.trade.stop, '--');
+  assert.equal(signal.execution_card.trade.tp1, '--');
+  assert.equal(signal.execution_card.trade.tp2, '--');
+  assert.equal(Array.isArray(signal.execution_card.why_cn), true);
+  assert.equal(Array.isArray(signal.execution_card.wait_for_cn), true);
+  assert.equal(Array.isArray(signal.execution_card.do_not_cn), true);
   assert.equal(signal.uw_endpoint_coverage.dealer_gex.required.length > 0, true);
   assert.equal(signal.uw_endpoint_coverage.flow.required.length > 0, true);
   assert.equal(Boolean(signal.health_matrix.state), true);

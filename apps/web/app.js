@@ -133,14 +133,19 @@ function pickHomepageSignal(signal = {}) {
     source_display: signal.source_display || {},
     spot_conclusion: signal.spot_conclusion || {},
     final_decision: signal.final_decision || {},
-    tv_sentinel: signal.tv_sentinel || {}
+    tv_sentinel: signal.tv_sentinel || {},
+    execution_card: signal.execution_card || {},
+    dealer_wall_map: signal.dealer_wall_map || {},
+    darkpool_gravity: signal.darkpool_gravity || {},
+    flow_conflict: signal.flow_conflict || {},
+    volatility_state: signal.volatility_state || signal.uw_normalized?.volatility?.volatility_state || {}
   };
 }
 
 function homepageState(signal = {}) {
   const home = pickHomepageSignal(signal);
   const operation = home.operation_layer;
-  const executionCard = signal.execution_card || {};
+  const executionCard = home.execution_card || {};
   const finalDecision = home.final_decision;
   const master = home.uw_layer_conclusions.master;
   const flow = home.uw_layer_conclusions.flow;
@@ -1230,11 +1235,15 @@ function renderExecutionSection(home) {
 }
 
 function renderAnalysisTiles(home) {
+  const wall = home.dealer_wall_map || {};
+  const gravity = home.darkpool_gravity || {};
+  const conflict = home.flow_conflict || {};
+  const volState = home.volatility_state || {};
   const tiles = [
-    ['Dealer', '墙位不可用', '做市商数据已接通', 'Call Wall / Put Wall / Flip 暂不能用'],
-    ['Flow', '偏空线索', 'Put RepeatedHits', '缺 0DTE / 多腿过滤'],
-    ['Volatility', '打法未确认', '数据已展开', '不能判断裸买是否划算'],
-    ['Dark Pool', '空间未确认', '有 SPY prints', '未聚合支撑压力'],
+    ['Dealer', wall.regime_cn || '墙位压缩中', `Call ${homeSanitize(wall.call_wall)} / Put ${homeSanitize(wall.put_wall)} / Flip ${homeSanitize(wall.gamma_flip)}`, `最近墙距离 ${homeSanitize(wall.nearest_wall_distance)}`],
+    ['Flow', conflict.flow_wall_state_cn || '偏空线索', conflict.flow_state_cn || 'Put RepeatedHits', conflict.prohibit_cn || '缺 0DTE / 多腿过滤'],
+    ['Volatility', volState.state || '公式就绪', volState.vscore != null ? `Vscore ${volState.vscore}` : '等 IVR / IVP', volState.summary_cn || '不能判断裸买是否划算'],
+    ['Dark Pool', gravity.state || '空间参考', `SPX ${homeSanitize(gravity.mapped_spx)} / ${homeSanitize(gravity.tier_cn)}`, gravity.action_cn || '未聚合支撑压力'],
     ['Sentiment', '轻微防守', '不是强空', '只能做背景']
   ];
   return `

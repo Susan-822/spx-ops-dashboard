@@ -31,7 +31,14 @@ import { runUwConclusionEngine } from './uw-conclusion-engine.js';
 import { runRawNoteV2 } from './raw-note-v2/index.js';
 import { buildUwConclusionV2 } from './raw-note-v2/uw-conclusion.js';
 import { buildThetaConclusion } from './raw-note-v2/formatters.js';
-import { buildUwLayerConclusions, buildUwNormalized } from './algorithms/index.js';
+import {
+  buildDarkpoolGravity,
+  buildDealerWallMap,
+  buildFlowConflict,
+  buildTradeExecutionCard,
+  buildUwLayerConclusions,
+  buildUwNormalized
+} from './algorithms/index.js';
 
 export {
   buildProjectionPrices,
@@ -329,21 +336,25 @@ function buildExecutionCardDiagnostics(uwNormalized = {}, layerConclusions = {})
   };
 }
 
-function buildUwAggregateAnalysis(uwNormalized = {}, layerConclusions = {}, operationLayer = {}) {
+function buildUwAggregateAnalysis(uwNormalized = {}, layerConclusions = {}, context = {}) {
   const darkpool = uwNormalized.darkpool || {};
   const volatility = uwNormalized.volatility?.volatility_state || {};
   const dealer = uwNormalized.dealer?.dealer_resolution || {};
+  const dealerWallMap = context.dealerWallMap || {};
+  const darkpoolGravity = context.darkpoolGravity || {};
+  const flowConflict = context.flowConflict || {};
+  const operationLayer = context.operationLayer || {};
   return {
-    market_bias_cn: 'Flow 偏空，Sentiment 轻微防守，但 Dealer 墙位、Volatility Vscore、Dark Pool 聚类都还没完全放行，整体是看空候选 / 等确认。',
+    market_bias_cn: 'SPX 当前处于 Dealer 墙位与暗池减速区之间，偏震荡夹击。',
     supporting_factors_cn: [
-      'Put RepeatedHits',
-      'Market Tide 轻微防守',
-      darkpool.state && darkpool.state !== 'none' ? 'SPY 暗池有低置信脚印' : 'SPY 暗池等待有效脚印'
+      dealerWallMap.call_wall != null ? 'Dealer 已给出上方墙、下方墙和 Flip' : 'Dealer 正在压缩墙位',
+      darkpoolGravity.state ? 'Dark Pool 给出下方减速区' : 'Dark Pool 等待有效减速区',
+      'Flow 有 Put RepeatedHits'
     ],
     limiting_factors_cn: [
-      dealer.can_compute_wall ? 'Dealer 已拿到近现价 strike，但墙位算法仍未放行' : 'Dealer 现价附近 strike 未抓到',
+      flowConflict.flow_wall_state === 'stalling' ? 'Put Flow 接近下方暗池减速区，存在撞墙风险' : 'Flow 缺 0DTE / 多腿过滤',
+      dealerWallMap.regime === 'positive_gamma_magnet' ? '如果处于 Positive Gamma，单边追空胜率下降' : 'Dealer regime 仍需确认',
       volatility.data_ready ? `Volatility 已生成 Vscore=${volatility.vscore}` : 'Volatility 缺 IVR / IVP 或 Vscore 未生成',
-      'Flow 缺 0DTE / 多腿过滤',
       darkpool.state === 'footprint' ? 'Dark Pool 只有 footprint，不是墙' : 'Dark Pool 仍需聚类确认'
     ],
     conclusion_cn: [
@@ -1803,6 +1814,28 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     cross_asset_projection: crossAssetProjection,
     uw_wall_diagnostics: uwConclusionV2.uw_wall_diagnostics
   });
+  const dealerWallMap = buildDealerWallMap({
+    dealer: uwNormalized.dealer,
+    spot_price: priceSourcesV2.spx?.price ?? null
+  });
+  const darkpoolGravity = buildDarkpoolGravity({
+    darkpool: uwNormalized.darkpool,
+    spot_price: priceSourcesV2.spx?.price ?? null
+  });
+  const flowConflict = buildFlowConflict({
+    flow: uwNormalized.flow,
+    dealer_wall_map: dealerWallMap,
+    darkpool_gravity: darkpoolGravity,
+    spot_price: priceSourcesV2.spx?.price ?? null
+  });
+  const executionCard = buildTradeExecutionCard({
+    dealer_wall_map: dealerWallMap,
+    darkpool_gravity: darkpoolGravity,
+    flow_conflict: flowConflict,
+    volatility_state: uwNormalized.volatility?.volatility_state,
+    sentiment_state: uwNormalized.sentiment,
+    operation_layer: { status: rawNoteV2.final_decision.state }
+  });
   const finalCard = buildIntradayDecisionCardV2({
     finalDecision: rawNoteV2.final_decision,
     uwConclusion: rawNoteV2.uw_conclusion,
@@ -1833,8 +1866,15 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     uw_normalized: uwNormalized,
     dealer_diagnostics: uwNormalized.dealer?.dealer_diagnostics || {},
     dealer_resolution: uwNormalized.dealer?.dealer_resolution || {},
-    execution_card: buildExecutionCardDiagnostics(uwNormalized, uwLayerConclusions),
-    uw_aggregate_analysis: buildUwAggregateAnalysis(uwNormalized, uwLayerConclusions),
+    dealer_wall_map: dealerWallMap,
+    darkpool_gravity: darkpoolGravity,
+    flow_conflict: flowConflict,
+    execution_card: executionCard,
+    uw_aggregate_analysis: buildUwAggregateAnalysis(uwNormalized, uwLayerConclusions, {
+      dealerWallMap,
+      darkpoolGravity,
+      flowConflict
+    }),
     uw_layer_conclusions: {
       dealer: uwLayerConclusions.gex_engine,
       flow: uwLayerConclusions.flow_aggression_engine,
