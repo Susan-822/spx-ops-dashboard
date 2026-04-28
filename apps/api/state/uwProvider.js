@@ -81,7 +81,8 @@ export async function refreshUwProvider(options = {}) {
 export async function readUwProvider(options = {}) {
   if (String(process.env.UW_PROVIDER_MODE || '').toLowerCase() === 'api') {
     let apiSnapshot = await readUwApiSnapshot(options);
-    if (!apiSnapshot || apiSnapshot.provider?.status === 'stale') {
+    const needsSpotAuditRefresh = options.currentSpot != null && !apiSnapshot?.raw?.spot_gex_request_audit;
+    if (!apiSnapshot || apiSnapshot.provider?.status === 'stale' || needsSpotAuditRefresh) {
       const refreshed = await fetchUwApiSnapshot(options);
       if (refreshed?.provider?.status !== 'error' || !apiSnapshot) {
         apiSnapshot = refreshed;

@@ -432,7 +432,9 @@ function normalizeDarkpool(raw = {}, context = {}) {
     parser_status: prints.length > 0 ? 'partial' : 'failed',
     missing_fields: ['nearest_support', 'nearest_resistance', 'SPX 支撑压力映射'],
     reason_cn: prints.length > 0
-      ? `金额约 ${Math.round((largestPrint.premium ?? 0) / 1000) / 10} 万美元，低于强墙阈值时不能定义正式支撑 / 压力。`
+      ? tier === 'footprint'
+        ? `金额约 ${Math.round((largestPrint.premium ?? 0) / 1000) / 10} 万美元，低于强墙阈值，不能定义正式支撑 / 压力。`
+        : `金额约 ${Math.round((largestPrint.premium ?? 0) / 1000) / 10} 万美元，达到 ${tier} 档；仍需聚类和方向确认后才能作为正式墙位。`
       : '暗池 raw 暂无可用样本。',
     current_block_cn: prints.length > 0
       ? '有低置信空间参考，但不能作为墙位。'
