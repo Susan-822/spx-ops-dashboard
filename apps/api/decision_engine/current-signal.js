@@ -31,7 +31,7 @@ import { runUwConclusionEngine } from './uw-conclusion-engine.js';
 import { runRawNoteV2 } from './raw-note-v2/index.js';
 import { buildUwConclusionV2 } from './raw-note-v2/uw-conclusion.js';
 import { buildThetaConclusion } from './raw-note-v2/formatters.js';
-import { buildUwLayerConclusions } from './algorithms/index.js';
+import { buildUwLayerConclusions, buildUwNormalized } from './algorithms/index.js';
 
 export {
   buildProjectionPrices,
@@ -1604,6 +1604,10 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   };
 
   const priceSourcesV2 = buildPriceSourcesV2({ signal: output, projectionPrices, crossAssetProjection });
+  const uwNormalized = buildUwNormalized({
+    raw: uwSnapshot?.raw || uwApi.uw_raw,
+    provider: uwProvider
+  });
   const uwConclusionV2 = buildUwConclusionV2({
     provider: uwProvider,
     factors: uwApi.uw_factors,
@@ -1706,6 +1710,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     ...output,
     ...rawNoteV2,
     fmp_price_audit: fmpSnapshot.price?.audit || null,
+    uw_normalized: uwNormalized,
     spot_conclusion: spotConclusion,
     event_conclusion: eventConclusion,
     gex_engine: gexEngine,

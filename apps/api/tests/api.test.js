@@ -1262,6 +1262,10 @@ test('UW intelligence layer feeds command center permissions reflection and tele
 
   let signal = await getCurrentSignal(undefined);
   assert.equal(signal.uw_provider.status, 'live');
+  assert.equal(signal.uw_normalized.flow.has_data, true);
+  assert.equal(signal.uw_normalized.flow.field_semantics_confirmed, false);
+  assert.equal(signal.uw_normalized.sentiment.status, 'partial');
+  assert.equal(signal.uw_normalized.dealer.wall_algorithm_allowed, false);
   assert.equal(signal.uw_endpoint_coverage.dealer_gex.required.length > 0, true);
   assert.equal(signal.uw_endpoint_coverage.flow.required.length > 0, true);
   assert.equal(Boolean(signal.health_matrix.state), true);

@@ -1,4 +1,5 @@
 export { buildUwLayerConclusions } from './uw-layer-conclusion-builder.js';
+export { buildUwNormalized } from './uw-normalizer.js';
 export { buildDealerGexConclusion } from './dealer-gex.js';
 export { buildFlowAggressionLayer } from './flow-aggression.js';
 export { buildVolatilityLayer } from './volatility.js';
