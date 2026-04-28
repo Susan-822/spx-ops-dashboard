@@ -1,7 +1,12 @@
 import crypto from 'node:crypto';
 
 export function sendJson(res, statusCode, payload) {
-  res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    Pragma: 'no-cache',
+    Expires: '0'
+  });
   res.end(JSON.stringify(payload, null, 2));
 }
 

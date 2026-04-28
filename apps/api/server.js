@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handleApiRoute } from './routes/index.js';
+import { startLiveRefreshScheduler } from './scheduler/live-refresh-scheduler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -105,6 +106,7 @@ const shouldListen = process.env.NODE_ENV !== 'test';
 if (shouldListen) {
   const port = Number(process.env.PORT || 3000);
   createServer().listen(port, () => {
+    startLiveRefreshScheduler();
     console.log(`spx-ops-dashboard skeleton listening on http://localhost:${port}`);
   });
 }

@@ -190,6 +190,9 @@ export async function handleApiRoute(req, res) {
 
   if (req.method === 'GET' && url.pathname === '/signals/current') {
     const signal = await getCurrentSignal(scenario);
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     return sendJson(res, 200, {
       ...signal,
       ...getBuildMetadata()

@@ -143,7 +143,12 @@ function pickHomepageSignal(signal = {}) {
     news_radar: signal.news_radar || {},
     wall_zone_panel: signal.wall_zone_panel || {},
     control_side: signal.control_side || {},
-    price_sources: signal.price_sources || {}
+    price_sources: signal.price_sources || {},
+    observation_price: signal.observation_price || {},
+    tradeable_price: signal.tradeable_price || {},
+    refresh_policy: signal.refresh_policy || {},
+    data_clock: signal.data_clock || {},
+    refresh_state: signal.refresh_state || {}
   };
 }
 
@@ -222,9 +227,10 @@ function getScenario() {
 
 async function loadSignal() {
   const scenario = getScenario();
-  const path = scenario
-    ? `/signals/current?scenario=${encodeURIComponent(scenario)}`
-    : '/signals/current';
+  const params = new URLSearchParams();
+  if (scenario) params.set('scenario', scenario);
+  params.set('ts', String(Date.now()));
+  const path = `/signals/current?${params.toString()}`;
   const response = await fetch(path, { cache: 'no-store' });
   if (!response.ok) throw new Error(`/signals/current ${response.status}`);
   return await response.json();
@@ -1296,11 +1302,33 @@ function renderHome(signal) {
   return `
     <main class="page home-v1">
       ${renderHomeTopMood(home)}
+      ${renderRealtimePriceBox(home)}
       ${renderExecutionSection(home)}
       ${renderGoldenDecision(home)}
       ${renderAnalysisTiles(home)}
       ${renderBottomPlaceholders(home)}
     </main>
+  `;
+}
+
+function renderRealtimePriceBox(home) {
+  const price = home.observation_price || {};
+  const dataClock = home.data_clock || {};
+  const policy = home.refresh_policy || {};
+  const refresh = home.refresh_state || {};
+  return `
+    <section class="home-realtime-price">
+      ${renderHomeRows([
+        ['实时价格', price.value != null ? Number(price.value).toFixed(2) : '价格暂未获取'],
+        ['更新时间', shortTime(price.updated_at || dataClock.price?.updated_at || dataClock.now)],
+        ['价格状态', price.status === 'live' ? '实时' : price.status === 'stale' ? '延迟' : '失联'],
+        ['用途', price.can_use_for_distance ? '可用于距离观察，暂不能生成完整交易计划' : '价格暂未获取，不能计算距离'],
+        ['自动刷新', refresh.last_success_at && Date.now() - new Date(refresh.last_success_at).getTime() > 30000 ? '实时链路异常，请手动刷新。' : refresh.last_success_at && Date.now() - new Date(refresh.last_success_at).getTime() > 10000 ? '页面数据延迟，正在重试。' : '开启'],
+        ['页面刷新', `每 ${Math.round((policy.ui_poll_ms || 3000) / 1000)} 秒`],
+        ['价格刷新', `每 ${Math.round((policy.source_refresh_ms?.price || 2000) / 1000)} 秒`],
+        ['最近更新', shortTime(dataClock.now)]
+      ])}
+    </section>
   `;
 }
 
@@ -2106,6 +2134,32 @@ function renderDataSourceOverview(signal) {
   `;
 }
 
+function renderRadarDataClock(signal) {
+  const clock = signal.data_clock || {};
+  const row = (name, item = {}) => [
+    name,
+    radarHumanText(item.value ?? item.source ?? '--'),
+    radarHumanText(item.updated_at ? shortTime(item.updated_at) : '--'),
+    radarHumanText(item.age_seconds != null ? `${item.age_seconds}s` : '--'),
+    radarHumanText(item.status || '--')
+  ];
+  const rows = [
+    row('价格', clock.price),
+    row('UW 总体', clock.uw),
+    row('Flow', clock.flow),
+    row('Dark Pool', clock.darkpool),
+    row('Dealer', clock.dealer),
+    row('Volatility', clock.volatility),
+    row('News', clock.news)
+  ].map((cells) => cells.map((cell) => escapeHtml(radarHumanText(cell, '未提供'))));
+  return `
+    <section class="radar-card">
+      <div class="radar-title"><h2>Data Clock / 数据时钟</h2><span class="tag blue">${escapeHtml(clock.market_session || 'unknown')}</span></div>
+      ${renderRadarTable(['来源', '数值/来源', '更新时间', '年龄', '状态'], rows)}
+    </section>
+  `;
+}
+
 function getLayerRows(signal) {
   const layers = signal.uw_layer_conclusions || {};
   const normalized = signal.uw_normalized || {};
@@ -2345,6 +2399,7 @@ function renderRadar(signal) {
     <main class="page">
       <section class="radar-layout">
         ${renderUwAggregateAnalysis(signal)}
+        ${renderDataClock(signal)}
         ${renderDataSourceOverview(signal)}
         ${renderUwLayerStatus(signal)}
         ${renderMappingStatus(signal)}

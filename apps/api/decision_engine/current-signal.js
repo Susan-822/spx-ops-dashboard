@@ -43,6 +43,7 @@ import {
   buildUwLayerConclusions,
   buildUwNormalized
 } from './algorithms/index.js';
+import { getLiveRefreshLog } from '../scheduler/live-refresh-scheduler.js';
 
 export {
   buildProjectionPrices,
@@ -199,6 +200,146 @@ function buildEventConclusion({ fmpConclusion = {}, uwConclusion = {} } = {}) {
     source: caution ? 'uw' : 'unavailable',
     sell_vol_permission: 'block',
     plain_chinese: caution ? 'UW 波动指标提示谨慎，卖波禁做。' : '事件风险未知，卖波禁做。'
+  };
+}
+
+function currentMarketSession(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour12: false,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).formatToParts(now);
+  const get = (type) => parts.find((part) => part.type === type)?.value;
+  const weekday = get('weekday');
+  if (['Sat', 'Sun'].includes(weekday)) return 'closed';
+  const minutes = Number(get('hour')) * 60 + Number(get('minute'));
+  if (minutes >= 570 && minutes < 960) return 'regular';
+  if (minutes >= 240 && minutes < 570) return 'premarket';
+  if (minutes >= 960 && minutes < 1200) return 'afterhours';
+  return 'closed';
+}
+
+function buildRefreshPolicy(now = new Date(), tabHidden = false) {
+  const marketSession = currentMarketSession(now);
+  const uiPollMs = tabHidden
+    ? 15000
+    : marketSession === 'regular'
+      ? 3000
+      : marketSession === 'premarket'
+        ? 10000
+        : 30000;
+  return {
+    market_session: marketSession,
+    ui_poll_ms: uiPollMs,
+    source_refresh_ms: {
+      price: 2000,
+      uw_flow: 15000,
+      darkpool: 30000,
+      market_tide: 30000,
+      dealer_gex: 60000,
+      volatility: 60000,
+      radar: 10000,
+      news: 1800000
+    },
+    stale_threshold_ms: {
+      price: 8000,
+      uw: 90000,
+      news: 1800000
+    },
+    down_threshold_ms: {
+      price: 20000,
+      uw: 180000,
+      news: 3600000
+    }
+  };
+}
+
+function ageMs(updatedAt, now = new Date()) {
+  const time = Date.parse(updatedAt);
+  if (!Number.isFinite(time)) return null;
+  return Math.max(0, now.getTime() - time);
+}
+
+function statusByAge(age, staleMs, downMs) {
+  if (age == null) return 'down';
+  if (age > downMs) return 'down';
+  if (age > staleMs) return 'stale';
+  return 'live';
+}
+
+function buildObservationPrices({ priceSources = {}, spotConclusion = {}, priceTrigger = {}, now = new Date() } = {}) {
+  const triggerPrice = numberOrNull(priceTrigger.current_price);
+  const sourcePrice = numberOrNull(priceSources.spx?.price);
+  const spot = numberOrNull(spotConclusion.spot ?? spotConclusion.price);
+  const value = triggerPrice && triggerPrice > 0 ? triggerPrice : sourcePrice ?? spot;
+  const updatedAt = priceSources.spx?.last_updated || spotConclusion.last_updated || now.toISOString();
+  const age = ageMs(updatedAt, now);
+  const status = statusByAge(age, 8000, 20000);
+  const observation = {
+    value: value ?? null,
+    source: triggerPrice && triggerPrice > 0 ? 'price_trigger' : priceSources.spx?.source || spotConclusion.source || 'unavailable',
+    updated_at: updatedAt,
+    age_ms: age,
+    status,
+    can_use_for_distance: value != null && status !== 'down'
+  };
+  const tradeable = {
+    value: value ?? null,
+    source: priceSources.spx?.source || spotConclusion.source || 'unavailable',
+    updated_at: updatedAt,
+    age_ms: age,
+    status: status === 'live' && spotConclusion.status === 'live' ? 'live' : status === 'down' ? 'down' : 'stale',
+    can_generate_trade_plan: false
+  };
+  return { observation, tradeable };
+}
+
+function secondsFromMs(value) {
+  return value == null ? null : Math.round(value / 1000);
+}
+
+function clockEntry({ value = null, source = 'unavailable', updatedAt = null, staleMs = 90000, downMs = 180000, now = new Date() } = {}) {
+  const age = ageMs(updatedAt, now);
+  return {
+    value,
+    source,
+    updated_at: updatedAt || null,
+    age_seconds: secondsFromMs(age),
+    status: statusByAge(age, staleMs, downMs)
+  };
+}
+
+function buildDataClock({ now = new Date(), marketSession = 'closed', observationPrice = {}, uwProvider = {}, uwNormalized = {}, newsRadar = {} } = {}) {
+  const providerUpdatedAt = uwProvider.last_update || uwProvider.last_updated || null;
+  const flowUpdatedAt = uwNormalized.flow?.last_update || providerUpdatedAt;
+  const darkpoolUpdatedAt = uwNormalized.darkpool?.last_update || providerUpdatedAt;
+  const dealerUpdatedAt = uwNormalized.dealer?.last_update || providerUpdatedAt;
+  const volatilityUpdatedAt = uwNormalized.volatility?.last_update || providerUpdatedAt;
+  return {
+    now: now.toISOString(),
+    market_session: marketSession,
+    price: clockEntry({
+      value: observationPrice.value,
+      source: observationPrice.source,
+      updatedAt: observationPrice.updated_at,
+      staleMs: 8000,
+      downMs: 20000,
+      now
+    }),
+    uw: clockEntry({ updatedAt: providerUpdatedAt, source: 'uw', now }),
+    flow: clockEntry({ updatedAt: flowUpdatedAt, source: 'uw_flow', now }),
+    darkpool: clockEntry({ updatedAt: darkpoolUpdatedAt, source: 'uw_darkpool', now }),
+    dealer: clockEntry({ updatedAt: dealerUpdatedAt, source: 'uw_dealer_gex', now }),
+    volatility: clockEntry({ updatedAt: volatilityUpdatedAt, source: 'uw_volatility', now }),
+    news: clockEntry({
+      updatedAt: newsRadar.last_updated,
+      source: 'brave_news',
+      staleMs: 1800000,
+      downMs: 3600000,
+      now
+    })
   };
 }
 
@@ -1899,6 +2040,22 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     targetInstrument: process.env.TARGET_INSTRUMENT || 'ES'
   });
   const normalizedRawNote = rawNoteV2;
+  const refreshPolicy = buildRefreshPolicy(new Date());
+  const liveRefresh = { logs: getLiveRefreshLog() };
+  const { observation, tradeable } = buildObservationPrices({
+    priceSources: priceSourcesV2,
+    spotConclusion,
+    priceTrigger,
+    now: new Date()
+  });
+  const dataClock = buildDataClock({
+    now: new Date(),
+    refreshPolicy,
+    observation,
+    uwProvider,
+    uwNormalized,
+    newsRadar
+  });
   const finalOutput = {
     ...output,
     ...rawNoteV2,
@@ -1913,6 +2070,11 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     news_radar: newsRadar,
     wall_zone_panel: wallZonePanel,
     control_side: controlSide,
+    refresh_policy: refreshPolicy,
+    refresh_state: liveRefresh,
+    data_clock: dataClock,
+    observation_price: observation,
+    tradeable_price: tradeable,
     execution_card: executionCard,
     uw_aggregate_analysis: buildUwAggregateAnalysis(uwNormalized, uwLayerConclusions, {
       dealerWallMap,
