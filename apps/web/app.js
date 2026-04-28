@@ -1374,14 +1374,21 @@ function buildHomeHumanCopy(home = {}) {
     if (gravity.zone_side === 'upper') return mapped / (1 + distance / 100);
     return null;
   })();
+  const triggerCurrentPrice = (() => {
+    const current = Number(priceTrigger.current_price);
+    const key = Number(priceTrigger.key_level);
+    if (!Number.isFinite(current) || current <= 0) return null;
+    if (Number.isFinite(key) && Math.abs(current - key) < 0.01 && inferredFromDarkpool != null) return null;
+    return current;
+  })();
   const displayPrice = validPrice(
-    priceTrigger.current_price,
+    triggerCurrentPrice,
+    inferredFromDarkpool,
     home.spot_conclusion?.spot_price,
     home.spot_conclusion?.spot,
     home.source_display?.price,
     home.operation_layer?.spot,
-    home.price_sources?.spx?.price,
-    inferredFromDarkpool
+    home.price_sources?.spx?.price
   );
   const displayTrigger = displayPrice != null && priceTrigger.key_level != null
     ? {
