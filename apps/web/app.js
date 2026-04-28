@@ -145,13 +145,12 @@ function homepageState(signal = {}) {
   const flow = home.uw_layer_conclusions.flow;
   const dataHealth = home.source_display?.uw?.status || master.status || 'partial';
   const ready = operation.status === 'ready';
-  const direction = finalDecision.direction && !['--', 'unknown', 'none', 'neutral'].includes(String(finalDecision.direction).toLowerCase())
-    ? homeDirectionLabel(finalDecision.direction)
-    : flow.bias === 'bearish_hint' || flow.bias === 'bearish'
+  const flowDirection = flow.bias === 'bearish_hint' || flow.bias === 'bearish'
       ? '偏空线索'
       : flow.bias === 'bullish_hint' || flow.bias === 'bullish'
         ? '偏多线索'
         : '偏空线索';
+  const direction = flowDirection;
   return {
     ...home,
     ready,
@@ -159,7 +158,7 @@ function homepageState(signal = {}) {
     direction,
     dataHealth: String(dataHealth || 'partial').toLowerCase() === 'live' ? 'Live' : 'Partial',
     lockText: ready ? '关闭' : '开启',
-    coreReason: master.summary_cn || '有 Put 资金线索，但墙位、波动率、暗池、TV 未确认。'
+    coreReason: '有 Put 资金线索，但墙位、波动率、暗池、TV 未确认。'
   };
 }
 
