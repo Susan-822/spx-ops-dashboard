@@ -1465,6 +1465,7 @@ function renderGoldenDecision(home) {
 
 function renderExecutionSection(home) {
   const operation = home.operation_layer;
+  const execution = home.execution_card || {};
   const copy = buildHomeHumanCopy(home);
   const masterSignal = homeMasterSignal(operation, home.final_decision);
   const waiting = operation.status !== 'ready';
