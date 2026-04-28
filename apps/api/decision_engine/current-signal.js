@@ -213,8 +213,13 @@ function sourceDisplay(status, reason = '') {
 }
 
 function buildUnifiedSourceStatus({ uwProvider = {}, thetaConclusion = {}, fmpConclusion = {}, tvSentinel = {} } = {}) {
+  const uwDisplay = sourceDisplay(uwProvider.status, uwProvider.plain_chinese || '');
   return {
-    uw: sourceDisplay(uwProvider.status, uwProvider.plain_chinese || ''),
+    uw: {
+      ...uwDisplay,
+      usable_for_operation: false,
+      reason: 'UW API live，可用于页面分析；但六层结论仍有 partial/low confidence，不能直接放行操作卡。'
+    },
     theta: sourceDisplay(thetaConclusion.status, thetaConclusion.status === 'disabled' ? 'ThetaData 当前不可用，不参与 Dealer 主源判断。' : thetaConclusion.plain_chinese || ''),
     fmp: sourceDisplay(fmpConclusion.status, fmpConclusion.status === 'unavailable' ? 'FMP 当前不可用，价格/事件风险降级。' : fmpConclusion.plain_chinese || ''),
     tradingview: sourceDisplay(tvSentinel.status === 'stale' ? 'stale' : tvSentinel.status === 'waiting' ? 'partial' : 'live', tvSentinel.plain_chinese || '')
