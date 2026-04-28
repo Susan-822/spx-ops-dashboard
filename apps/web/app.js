@@ -2160,6 +2160,33 @@ function renderRadarDataClock(signal) {
   `;
 }
 
+function renderDataClock(signal) {
+  const clock = signal.data_clock || {};
+  const rowFor = (label, item = {}) => [
+    label,
+    item.value == null ? '--' : item.value,
+    item.source || '--',
+    item.updated_at ? shortTime(item.updated_at) : '--',
+    item.age_seconds == null ? '--' : `${item.age_seconds}s`,
+    item.status === 'live' ? '实时' : item.status === 'stale' ? '延迟' : '失联'
+  ].map((cell) => escapeHtml(String(cell)));
+  const rows = [
+    rowFor('价格', clock.price),
+    rowFor('UW 总体', clock.uw),
+    rowFor('Flow', clock.flow),
+    rowFor('Dark Pool', clock.darkpool),
+    rowFor('Dealer', clock.dealer),
+    rowFor('Volatility', clock.volatility),
+    rowFor('News', clock.news)
+  ];
+  return `
+    <section class="radar-card">
+      <div class="radar-title"><h2>Data Clock / 数据时钟</h2><span class="tag blue">${escapeHtml(clock.market_session || '--')}</span></div>
+      ${renderRadarTable(['项目', '值', '来源', '更新时间', '年龄', '状态'], rows)}
+    </section>
+  `;
+}
+
 function getLayerRows(signal) {
   const layers = signal.uw_layer_conclusions || {};
   const normalized = signal.uw_normalized || {};
