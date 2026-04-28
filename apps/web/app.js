@@ -1815,6 +1815,11 @@ function radarText(value, fallback = '--') {
 }
 
 function statusTag(status) {
+  const original = String(status || '');
+  if (/[^\x00-\x7F]/.test(original)) {
+    const cls = original.includes('可用') || original.includes('就绪') || original.includes('参考') || original.includes('背景') || original.includes('可分析') ? 'amber' : 'blue';
+    return `<span class="tag ${cls}">${escapeHtml(original)}</span>`;
+  }
   const normalized = String(status || '').toLowerCase();
   const cls = normalized === 'live' ? 'green' : normalized === 'partial' || normalized === 'degraded' ? 'amber' : normalized === 'mock' || normalized === 'error' ? 'red' : 'blue';
   const text = normalized === 'live'
