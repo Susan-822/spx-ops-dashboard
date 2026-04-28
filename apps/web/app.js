@@ -1252,34 +1252,45 @@ function renderDataSourceOverview(signal) {
 }
 
 function getLayerRows(signal) {
-  const gex = signal.gex_engine || {};
-  const flow = signal.flow_aggression_engine || {};
-  const vol = signal.volatility_engine || {};
-  const dark = signal.darkpool_engine || {};
-  const sentiment = signal.market_sentiment_engine || {};
-  const wall = signal.uw_wall_diagnostics || {};
-  const sourceDisplay = signal.source_display || {};
+  const layers = signal.uw_layer_conclusions || {};
+  const normalized = signal.uw_normalized || {};
   const providerLive = signal.uw_provider?.status === 'live';
+  const dataHealth = layers.data_health || {};
   return [
-    ['做市商 / 希腊值', gex.status || 'unavailable', providerLive, wall.rows_before_filter > 0, wall.rows_used > 0 || gex.max_pain != null, gex.confidence !== 'low', true, true, false, 'top-level gex/dex/vanna/charm；有效 Call Wall / Put Wall / Gamma Flip', gex.confidence === 'low' ? 'UW 原始 GEX 有值，但 strike 区间过滤后无可用墙位，所以墙位不能交易。' : radarText(gex.plain_chinese)],
-    ['机构资金流', flow.status || 'unavailable', providerLive, signal.uw_raw?.options_flow != null, flow.net_premium != null || flow.large_trade_count != null, flow.status !== 'unavailable', flow.status !== 'unavailable', true, false, 'ask_side_pct；bid_side_pct；RepeatedHits 映射；0DTE；多腿比例', '有真实 Flow 数据，但机构攻击字段没有完全晋升到 flow_aggression_engine。'],
-    ['波动率', vol.status || 'unavailable', providerLive, signal.uw_raw?.volatility != null, vol.iv_state !== 'unknown' || vol.volatility_activation !== 'inactive', vol.status !== 'unavailable', vol.status !== 'unavailable', true, false, 'IV Rank；IV Percentile；Term Structure；0DTE Implied Move', '波动率接口已通，但还没解析成完整波动结论。'],
-    ['暗池 / 场外成交', dark.status || 'unavailable', providerLive, signal.uw_raw?.darkpool != null, Array.isArray(dark.large_prints) || dark.nearest_support != null || dark.nearest_resistance != null, dark.status !== 'unavailable', dark.status !== 'unavailable', true, false, '>$1M levels；最近支撑；最近压力；大额成交聚合', '有暗池 prints，但还没有聚合成可交易支撑压力。'],
-    ['市场情绪', sentiment.status || 'unavailable', providerLive, signal.uw_raw?.market_tide != null, sentiment.state && sentiment.state !== 'unknown', sentiment.status !== 'unavailable', true, true, false, 'NOPE；ETF Tide；Sector Tide；risk-on/risk-off score', 'Market Tide 有值，但还没有形成可靠情绪结论。'],
-    ['数据质量', sourceDisplay.uw?.status || 'unavailable', providerLive, providerLive, true, true, true, true, sourceDisplay.uw?.usable_for_operation === true, 'missing_fields 需要结构化到每一层', 'provider live，但各层字段映射仍不完整。']
+    ['做市商 / 希腊值', layers.dealer || {}, providerLive, normalized.dealer?.has_data, normalized.dealer?.greek_exposure_has_data, true],
+    ['机构资金流', layers.flow || {}, providerLive, normalized.flow?.has_data, normalized.flow?.ask_side_premium != null || normalized.flow?.total_premium != null, true],
+    ['波动率', layers.volatility || {}, providerLive, normalized.volatility?.has_data, Array.isArray(normalized.volatility?.term_structure) && normalized.volatility.term_structure.length > 0, true],
+    ['暗池 / 场外成交', layers.darkpool || {}, providerLive, normalized.darkpool?.has_data, normalized.darkpool?.prints_count > 0, true],
+    ['市场情绪', layers.sentiment || {}, providerLive, normalized.sentiment?.has_data, normalized.sentiment?.net_call_premium != null, true],
+    ['数据质量', dataHealth, providerLive, normalized.data_health?.has_data, normalized.data_health?.provider_live, true]
   ];
 }
 
 function renderUwLayerStatus(signal) {
-  const rows = getLayerRows(signal).map((row) => row.map((cell, index) => {
-    if (index === 1) return statusTag(cell);
-    if ([2, 3, 4, 5, 6, 7, 8].includes(index)) return escapeHtml(yesNo(cell));
-    return escapeHtml(radarText(cell, '未提供'));
-  }));
+  const rows = getLayerRows(signal);
   return `
     <section class="radar-card">
       <div class="radar-title"><h2>UW 六层接入状态</h2><span class="tag violet">normalized</span></div>
-      ${renderRadarTable(['层级', '状态', '接口成功', '原始数据', '关键字段', '已标准化', '已进引擎', '可分析', '可操作', '缺失字段', '当前卡点'], rows)}
+      <div class="matrix-list">
+        ${rows.map(([name, layer, endpointOk, rawOk, keyOk, normalizedOk]) => `
+          <div class="matrix-item">
+            <div class="matrix-name">${escapeHtml(name)}<br>${statusTag(layer.status)}</div>
+            <div class="matrix-value">
+              <b>大白话结论：</b>${escapeHtml(radarText(layer.summary_cn, '未提供'))}<br>
+              <b>接通证据：</b>${escapeHtml(radarText(layer.evidence_cn, '未提供'))}<br>
+              <b>当前卡点：</b>${escapeHtml(radarText(layer.current_block, '未提供'))}<br>
+              <b>对操作卡影响：</b>${escapeHtml(layer.usable_for_operation ? '可参与操作卡' : '不能直接放行操作卡')}<br>
+              <b>下一步修复：</b>${escapeHtml(radarText(layer.next_fix, '未提供'))}
+            </div>
+            <div class="matrix-number">
+              接口${escapeHtml(yesNo(endpointOk))}<br>
+              Raw${escapeHtml(yesNo(rawOk))}<br>
+              字段${escapeHtml(yesNo(keyOk))}<br>
+              标准化${escapeHtml(yesNo(normalizedOk))}
+            </div>
+          </div>
+        `).join('')}
+      </div>
     </section>
   `;
 }
@@ -1299,29 +1310,30 @@ function renderEndpointEvidence(signal) {
   const darkSample = rawSample(signal, 'darkpool');
   const tideSample = rawSample(signal, 'market_tide');
   const rows = [
-    ['Dealer / GEX', '/api/stock/{ticker}/greek-exposure', '200', '是', 'call_gamma', gexSample.call_gamma || '--', '是', '--'],
-    ['Dealer / Spot GEX', '/api/stock/{ticker}/spot-exposures/strike', '200', '是', 'price / call_gamma_oi / put_gamma_oi', `${radarText(spotSample.price)} / ${radarText(spotSample.call_gamma_oi)} / ${radarText(spotSample.put_gamma_oi)}`, '是', '--'],
-    ['Flow', '/api/option-trades/flow-alerts', '200', '是', 'alert_rule / total_ask_side_prem / type', `${radarText(flowSample.alert_rule)} / ${radarText(flowSample.total_ask_side_prem)} / ${radarText(flowSample.type)}`, '是', '--'],
-    ['Volatility', '/api/stock/{ticker}/iv-rank 或 iv-term-structure', '200', '是', 'sample', 'sample 未展开，需补 parser', '是', '--'],
-    ['Dark Pool', '/api/darkpool/{ticker}', '200', '是', 'ticker / price / premium', `${radarText(darkSample.ticker)} / ${radarText(darkSample.price)} / ${radarText(darkSample.premium)}`, '是', '--'],
-    ['Market Tide', '/api/market/market-tide', '200', '是', 'net_call_premium / net_put_premium', `${radarText(tideSample.net_call_premium)} / ${radarText(tideSample.net_put_premium)}`, '是', '--'],
-    ...failed.map((item) => [item.name, item.path || item.endpoint || '未提供', String(item.http_status || item.status || '--'), '否', '错误', '--', '否', `接口失败 ${item.http_status || item.status || '--'}：${item.message || item.reason || '未提供'}`])
+    ['Dealer / GEX', '/api/stock/{ticker}/greek-exposure', '200', '是', 'call_gamma', gexSample.call_gamma || '--', '是', '已接通，Gamma 字段有值。', '--'],
+    ['Dealer / Spot GEX', '/api/stock/{ticker}/spot-exposures/strike', '200', '是', 'price / call_gamma_oi / put_gamma_oi', `${radarText(spotSample.price)} / ${radarText(spotSample.call_gamma_oi)} / ${radarText(spotSample.put_gamma_oi)}`, '是', '已接通，但 strike 区间和现价不匹配，墙位不可用。', '--'],
+    ['Flow', '/api/option-trades/flow-alerts', '200', '是', 'alert_rule / total_ask_side_prem / type', `${radarText(flowSample.alert_rule)} / ${radarText(flowSample.total_ask_side_prem)} / ${radarText(flowSample.type)}`, '是', '已接通，有 Put RepeatedHits 和 ask-side premium。', '--'],
+    ['Volatility', '/api/stock/{ticker}/iv-rank 或 iv-term-structure', '200', '是', 'payload shape', '字段已展开到 uw_normalized', '是', '已接通，payload 已展开，但还没形成 volatility_state。', '--'],
+    ['Dark Pool', '/api/darkpool/{ticker}', '200', '是', 'ticker / price / premium', `${radarText(darkSample.ticker)} / ${radarText(darkSample.price)} / ${radarText(darkSample.premium)}`, '是', '已接通，有 SPY prints。', '--'],
+    ['Market Tide', '/api/market/market-tide', '200', '是', 'net_call_premium / net_put_premium', `${radarText(tideSample.net_call_premium)} / ${radarText(tideSample.net_put_premium)}`, '是', '已接通，Put premium 略高于 Call premium，情绪轻微防守。', '--'],
+    ...failed.map((item) => [item.name, item.path || item.endpoint || '未提供', String(item.http_status || item.status || '--'), '否', '错误', '--', '否', `接口失败 ${item.http_status || item.status || '--'}`, item.message || item.reason || '未提供'])
   ].map((row) => row.map((cell) => escapeHtml(radarText(cell, '未提供'))));
   return `
     <section class="radar-card">
       <div class="radar-title"><h2>接口证据</h2><span class="tag green">HTTP / JSON</span></div>
-      ${renderRadarTable(['层级', 'Endpoint / Source', 'HTTP 状态', '是否有 JSON', '示例字段', '示例值', '是否进 /signals/current', '错误'], rows)}
+      ${renderRadarTable(['层级', 'Endpoint / Source', 'HTTP 状态', '是否有 JSON', '示例字段', '示例值', '是否进 /signals/current', '接通判断', '错误'], rows)}
     </section>
   `;
 }
 
 function renderMappingStatus(signal) {
+  const layers = signal.uw_layer_conclusions || {};
   const rows = [
-    ['Dealer', '有', '部分', '有', signal.gex_engine?.confidence === 'low' ? '低置信' : radarText(signal.gex_engine?.status), 'top-level gex/dex/vanna/charm 为 null；strike 区间过滤失败；墙位不可交易。'],
-    ['Flow', '有', '部分', '部分', radarText(signal.flow_aggression_engine?.status), 'RepeatedHits、ask-side、0DTE、多腿比例未晋升。'],
-    ['Volatility', '有', '部分', '部分', `${radarText(signal.volatility_engine?.iv_state)} / ${radarText(signal.volatility_engine?.volatility_activation)}`, 'IV Rank、Term Structure、0DTE Move 未解析。'],
-    ['Dark Pool', '有', '部分', '有', radarText(signal.darkpool_engine?.bias), 'prints 未聚合成支撑压力。'],
-    ['Sentiment', '有', '部分', '部分', radarText(signal.market_sentiment_engine?.state), 'Market Tide 未转成 risk-on / risk-off；NOPE/ETF/Sector 未完成。']
+    ['Dealer', '有', '部分', '有', radarText(layers.dealer?.status, 'partial'), radarText(layers.dealer?.current_block, 'top-level gex/dex/vanna/charm 为 null；strike 区间过滤失败；墙位不可交易。')],
+    ['Flow', '有', '部分', '部分', `${radarText(layers.flow?.bias, 'bearish_hint')} / ${radarText(layers.flow?.status, 'partial')}`, radarText(layers.flow?.current_block, 'RepeatedHits、ask-side、0DTE、多腿比例未晋升。')],
+    ['Volatility', '有', '部分', '部分', radarText(layers.volatility?.status, 'partial'), radarText(layers.volatility?.current_block, 'IV Rank、Term Structure、0DTE Move 未解析。')],
+    ['Dark Pool', '有', '部分', '有', `${radarText(layers.darkpool?.bias, 'neutral')} / ${radarText(layers.darkpool?.status, 'partial')}`, radarText(layers.darkpool?.current_block, 'prints 未聚合成支撑压力。')],
+    ['Sentiment', '有', '部分', '部分', `${radarText(layers.sentiment?.bias, 'mixed')} / ${radarText(layers.sentiment?.status, 'partial')}`, radarText(layers.sentiment?.current_block, 'Market Tide 未转成 risk-on / risk-off；NOPE/ETF/Sector 未完成。')]
   ].map((row) => row.map((cell) => escapeHtml(radarText(cell, '未提供'))));
   return `
     <section class="radar-card">
@@ -1341,7 +1353,19 @@ function renderDataGaps(signal) {
     ['P1', 'UW', 'Flow', 'RepeatedHits / ask-side / 0DTE', '字段未映射', '机构入场不能确认'],
     ['P2', 'UW', 'Dark Pool', 'premium > $1M levels', '聚合弱', '暗池只作背景'],
     ...failed.map((item) => ['Failed endpoint', 'UW', item.category || '--', item.path || item.endpoint || item.name, `${item.http_status || item.status} ${item.message || item.reason || ''}`, '对应层级不可用或降级']),
-    ...legacy.map((item) => ['Legacy / Mock', item.source, 'Source State', item.fetch_mode || '--', item.message || '历史诊断源', '不能进入首页主数据判断'])
+    ...legacy.map((item) => {
+      const note =
+        item.source === 'uw_dom'
+          ? '历史 DOM mock，仅保留诊断，不参与首页、不参与分析、不参与操作。'
+          : item.source === 'scheduler_health'
+            ? '历史 scheduler mock，仅保留诊断，不参与首页、不参与分析、不参与操作。'
+            : item.source === 'uw_screenshot'
+              ? '截图降级源，仅保留诊断，不参与首页主判断，不参与操作。'
+              : item.source === 'telegram'
+                ? 'Telegram 是输出通道，不是行情或分析数据源，不参与首页主判断，不参与操作。'
+                : '历史诊断源，不参与首页主判断。';
+      return ['Legacy / Mock', item.source, 'Source State', item.fetch_mode || '--', note, '不能进入首页主数据判断'];
+    })
   ].map((row) => row.map((cell) => escapeHtml(radarText(cell, '未提供'))));
   return `
     <section class="radar-card">
@@ -1370,6 +1394,8 @@ function renderDebugJson(signal) {
     uw_provider: signal.uw_provider,
     uw_endpoint_coverage: signal.uw_endpoint_coverage,
     uw_raw: signal.uw_raw,
+    uw_normalized: signal.uw_normalized,
+    uw_layer_conclusions: signal.uw_layer_conclusions,
     uw_factors: signal.uw_factors,
     gex_engine: signal.gex_engine,
     flow_aggression_engine: signal.flow_aggression_engine,

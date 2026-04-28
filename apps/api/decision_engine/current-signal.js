@@ -236,8 +236,22 @@ function applySourceDisplayRules(sourceStatus = [], unified = {}) {
     fmp_price: 'fmp',
     tradingview: 'tradingview'
   };
+  const diagnosticOnly = {
+    uw_dom: '历史 DOM mock，仅保留诊断，不参与首页、不参与分析、不参与操作。',
+    uw_screenshot: '截图降级源，仅保留诊断，不参与首页主判断，不参与操作。',
+    scheduler_health: '历史 scheduler mock，仅保留诊断，不参与首页、不参与分析、不参与操作。',
+    telegram: 'Telegram 是输出通道，不是行情或分析数据源，不参与首页主判断，不参与操作。'
+  };
   return (sourceStatus || []).map((item) => {
-    const display = unified[map[item.source]] || sourceDisplay(item.state, item.message);
+    const display = diagnosticOnly[item.source]
+      ? {
+          ...sourceDisplay('unavailable', diagnosticOnly[item.source]),
+          show_on_homepage: false,
+          show_in_data_gaps: true,
+          usable_for_analysis: false,
+          usable_for_operation: false
+        }
+      : unified[map[item.source]] || sourceDisplay(item.state, item.message);
     return {
       ...item,
       display_status: display.status,
