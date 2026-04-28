@@ -273,13 +273,19 @@ function buildObservationPrices({ priceSources = {}, spotConclusion = {}, priceT
   const triggerPrice = numberOrNull(priceTrigger.current_price);
   const sourcePrice = numberOrNull(priceSources.spx?.price);
   const spot = numberOrNull(spotConclusion.spot ?? spotConclusion.price);
-  const value = triggerPrice && triggerPrice > 0 ? triggerPrice : sourcePrice ?? spot;
-  const updatedAt = priceSources.spx?.last_updated || spotConclusion.last_updated || now.toISOString();
+  const value = triggerPrice && triggerPrice > 0
+    ? triggerPrice
+    : sourcePrice && sourcePrice > 0
+      ? sourcePrice
+      : spot && spot > 0
+        ? spot
+        : null;
+  const updatedAt = value == null ? null : priceSources.spx?.last_updated || spotConclusion.last_updated || now.toISOString();
   const age = ageMs(updatedAt, now);
   const status = statusByAge(age, 8000, 20000);
   const observation = {
     value: value ?? null,
-    source: triggerPrice && triggerPrice > 0 ? 'price_trigger' : priceSources.spx?.source || spotConclusion.source || 'unavailable',
+    source: triggerPrice && triggerPrice > 0 ? 'price_trigger' : value == null ? 'unavailable' : priceSources.spx?.source || spotConclusion.source || 'unavailable',
     updated_at: updatedAt,
     age_ms: age,
     status,
