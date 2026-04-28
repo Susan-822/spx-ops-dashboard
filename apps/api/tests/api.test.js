@@ -1160,6 +1160,24 @@ test('live mode TV sentinel remains gated by command environment safety', async 
   assert.equal(['wait', 'long_on_pullback', 'no_trade'].includes(signal.recommended_action), true);
 });
 
+test('layer contracts separate data analysis and operation gates', async () => {
+  await resetThetaStateEnv();
+  await seedDefaultThetaLiveSnapshot();
+  const signal = await getCurrentSignal(undefined);
+
+  assert.equal(['available', 'partial'].includes(signal.data_layer.status), true);
+  assert.equal(signal.data_layer.blocked_by_operation_gate, false);
+  assert.equal(['available', 'partial'].includes(signal.analysis_layer.status), true);
+  assert.equal(signal.analysis_layer.blocked_by_operation_gate, false);
+  assert.equal(['ready', 'wait', 'blocked'].includes(signal.operation_layer.status), true);
+  assert.equal(signal.operation_layer.can_show_operation_card, true);
+  if (signal.final_decision.trace.some((item) => item.rule === 'time_to_close_lt_15')) {
+    assert.equal(signal.operation_layer.status, 'blocked');
+    assert.equal(signal.operation_layer.blocked_by.includes('hard_close_window'), true);
+    assert.equal(signal.analysis_layer.summary.length > 0, true);
+  }
+});
+
 test('UW API provider handles missing key 401 429 partial live and stale states', async () => {
   await resetUwApiStateEnv({ UW_PROVIDER_MODE: 'api' });
   let snapshot = await fetchUwApiSnapshot({ fetchImpl: async () => { throw new Error('should not fetch'); } });

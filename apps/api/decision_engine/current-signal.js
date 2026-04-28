@@ -249,6 +249,85 @@ function applySourceDisplayRules(sourceStatus = [], unified = {}) {
   });
 }
 
+function buildLayerContracts(signal = {}) {
+  const sourceDisplayMap = signal.source_display || {};
+  const sourceEntries = Object.values(sourceDisplayMap);
+  const gaps = sourceEntries.filter((item) => item.show_in_data_gaps);
+  const visible = Object.entries(sourceDisplayMap)
+    .filter(([, item]) => item.show_on_homepage)
+    .map(([source]) => source);
+  const hasMock = sourceEntries.some((item) => item.status === 'mock');
+  const hasLive = sourceEntries.some((item) => item.status === 'live');
+  const hasPartial = sourceEntries.some((item) => item.status === 'partial');
+  const dataStatus = hasMock ? 'blocked' : hasLive && gaps.length === 0 ? 'available' : hasLive || hasPartial ? 'partial' : 'unavailable';
+  const finalDecision = signal.final_decision || {};
+  const reflection = finalDecision.reflection || {};
+  const supporting = Array.isArray(reflection.supporting) ? reflection.supporting : [];
+  const missing = Array.isArray(reflection.missing) ? reflection.missing : [];
+  const analysisParts = [
+    signal.gex_engine?.plain_chinese,
+    signal.flow_aggression_engine?.plain_chinese,
+    signal.volatility_engine?.plain_chinese,
+    signal.darkpool_engine?.plain_chinese,
+    signal.market_sentiment_engine?.plain_chinese,
+    signal.tv_sentinel?.plain_chinese
+  ].filter(Boolean);
+  const hasAnalysis = Boolean(finalDecision.market_read) || analysisParts.length > 0 || supporting.length > 0 || missing.length > 0;
+  const analysisStatus = hasMock ? 'partial' : hasAnalysis ? (missing.length > 0 || hasPartial ? 'partial' : 'available') : 'unavailable';
+  const traceRules = Array.isArray(finalDecision.trace) ? finalDecision.trace.map((item) => item.rule).filter(Boolean) : [];
+  const blockedBy = [
+    traceRules.includes('time_to_close_lt_15') ? 'hard_close_window' : null,
+    traceRules.includes('spot_unavailable') ? 'spot_unavailable' : null,
+    traceRules.includes('event_risk_blocked') ? 'event_risk_blocked' : null,
+    hasMock ? 'mock_source' : null,
+    signal.source_display?.uw?.usable_for_operation === false ? 'uw_analysis_only' : null
+  ].filter(Boolean);
+  const tradePlanStatus = signal.trade_plan?.status || finalDecision.state || 'wait';
+  const ready = tradePlanStatus === 'ready' && finalDecision.state === 'actionable' && blockedBy.length === 0;
+  const wait = !ready && !['blocked', 'invalidated'].includes(finalDecision.state);
+
+  return {
+    data_layer: {
+      status: dataStatus,
+      blocked_by_operation_gate: false,
+      summary: hasMock
+        ? '检测到 mock 数据，数据层高风险但仍显示来源。'
+        : dataStatus === 'available'
+          ? '核心数据可展示。'
+          : dataStatus === 'partial'
+            ? '部分数据可展示，缺口进入 Data Gaps。'
+            : '暂无可用数据。',
+      sources: sourceDisplayMap,
+      visible_sections: visible,
+      data_gaps_count: gaps.length
+    },
+    analysis_layer: {
+      status: analysisStatus,
+      blocked_by_operation_gate: false,
+      summary: finalDecision.reason || (hasAnalysis ? '分析层可展示。' : '暂无分析结论。'),
+      market_read: finalDecision.market_read || 'not provided',
+      reflection: reflection && Object.keys(reflection).length > 0 ? reflection : 'not provided',
+      dealer_summary: signal.gex_engine?.plain_chinese || 'not provided',
+      flow_summary: signal.flow_aggression_engine?.plain_chinese || 'not provided',
+      volatility_summary: signal.volatility_engine?.plain_chinese || 'not provided',
+      darkpool_summary: signal.darkpool_engine?.plain_chinese || 'not provided',
+      sentiment_summary: signal.market_sentiment_engine?.plain_chinese || 'not provided',
+      tv_summary: signal.tv_sentinel?.plain_chinese || 'not provided',
+      missing_analysis: missing
+    },
+    operation_layer: {
+      status: ready ? 'ready' : wait ? 'wait' : 'blocked',
+      blocked_by: blockedBy,
+      single_leg_allowed: ready && ['A_long_candidate', 'A_short_candidate'].some((setup) => finalDecision.allowed_setups?.includes(setup)),
+      direction: finalDecision.direction === 'bullish' ? 'call' : finalDecision.direction === 'bearish' ? 'put' : '--',
+      setup_type: finalDecision.trade_plan?.setup || 'none',
+      trade_plan_status: tradePlanStatus,
+      operation_summary: finalDecision.instruction || '等待操作条件。',
+      can_show_operation_card: true
+    }
+  };
+}
+
 function buildBasisTracker(priceSources = {}) {
   const es = priceSources.es || {};
   const spx = priceSources.spx || {};
@@ -1725,6 +1804,10 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     tvSentinel: finalOutput.tv_sentinel
   });
   finalOutput.source_status = applySourceDisplayRules(finalOutput.source_status, finalOutput.source_display);
+  const layerOutput = buildLayerContracts(finalOutput);
+  finalOutput.data_layer = layerOutput.data_layer;
+  finalOutput.analysis_layer = layerOutput.analysis_layer;
+  finalOutput.operation_layer = layerOutput.operation_layer;
 
   return replaceUndefined(scrubLegacyDecisionStrings(sanitizeUwPromotedStrings(finalOutput, uwProvider.status === 'live')));
 }
