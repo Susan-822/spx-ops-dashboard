@@ -162,7 +162,7 @@ function homepageState(signal = {}) {
     ready,
     operationStatus: ready ? 'READY / 可执行' : 'WAIT / 等确认',
     direction,
-    dataHealth: String(dataHealth || 'partial').toLowerCase() === 'live' ? 'Live' : 'Partial',
+    dataHealth: String(dataHealth || 'partial').toLowerCase() === 'live' ? '数据能参考，但还不能直接出交易计划' : '部分数据能参考，还不能直接出交易计划',
     lockText: ready ? '关闭' : '开启',
     execution_card: executionCard,
     coreReason: '有 Put 资金线索，但墙位、波动率、暗池、TV 未确认。'
@@ -173,7 +173,7 @@ function renderHomeRows(rows = []) {
   return `
     <div class="home-field-list">
       ${rows.map(([label, value]) => `
-        <div class="home-field-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(pageSafeText(value))}</b></div>
+        <div class="home-field-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(humanHomeText(value, '还没有足够信息，不能用于下单。'))}</b></div>
       `).join('')}
     </div>
   `;
@@ -279,6 +279,102 @@ function homeSanitize(value, fallback = '--') {
   return text === 'not provided' ? fallback : text;
 }
 
+function homeHumanize(value, fallback = '这项信息还不能用于交易计划。') {
+  const text = homeSanitize(value, fallback);
+  const replacements = [
+    [/Gamma Flip 暂不能确认。?/g, '做市商分界线还没算出来，所以暂时不能判断大盘是在震荡区，还是容易单边加速。'],
+    [/lower_brake_zone/g, '下方大成交承接区'],
+    [/upper_brake_zone/g, '上方大成交压力区'],
+    [/Put RepeatedHits/g, '有资金连续买 Put，说明有人押下跌或买保护'],
+    [/Data Health Score/g, '数据完整度'],
+    [/核心操作字段缺失，不能 ready/g, '还缺做市商墙位、波动率结论、0DTE / 多腿过滤，所以暂时不给入场、止损、TP'],
+    [/不能 ready/g, '还不能生成完整交易计划'],
+    [/撞墙/g, '追空容易打到下方承接区'],
+    [/cluster_wall/g, '聚合大成交区'],
+    [/background_only/g, '只能做背景参考'],
+    [/bearish_hint/g, '偏空线索'],
+    [/partial/g, '部分可参考'],
+    [/unavailable/g, '数据源没接好'],
+    [/normalized/g, '整理后的数据'],
+    [/\braw\b/g, '原始数据'],
+    [/endpoint/g, '数据接口'],
+    [/parser/g, '数据转换器'],
+    [/operation_layer/g, '操作安全层'],
+    [/null/g, '还没有结果'],
+    [/undefined/g, '还没有结果'],
+    [/NaN/g, '还没有结果'],
+    [/未确认/g, '还需要确认'],
+    [/暂不可用/g, '还不能用于交易计划'],
+    [/未知/g, '还没有足够信息']
+  ];
+  return replacements.reduce((acc, [pattern, replacement]) => acc.replace(pattern, replacement), text);
+}
+
+function formatTradeLevel(value) {
+  return value && value !== '--' ? value : '没有给出，不能下单';
+}
+
+function homeTradeLanguage(value, fallback = '--') {
+  const text = homeSanitize(value, fallback);
+  if (text === '--') return fallback;
+  return text
+    .replaceAll('Gamma Flip 暂不能确认。', '做市商分界线还没算出来，所以暂时不能判断大盘是在震荡区，还是容易单边加速。')
+    .replaceAll('lower_brake_zone', '下方大成交承接区')
+    .replaceAll('upper_brake_zone', '上方大成交压力区')
+    .replaceAll('Put RepeatedHits', '有资金连续买 Put')
+    .replaceAll('Data Health Score', '数据能不能出计划')
+    .replaceAll('核心操作字段缺失，不能 ready', '还缺做市商墙位、波动率结论、0DTE / 多腿过滤，所以暂时不给入场、止损、TP。')
+    .replaceAll('不能 ready', '还不能生成完整交易计划')
+    .replaceAll('撞墙', '追空容易打到下方承接区')
+    .replaceAll('cluster_wall', '暗池大成交聚集区')
+    .replaceAll('major_wall', '大额暗池参考区')
+    .replaceAll('background_only', '只能做背景参考')
+    .replaceAll('unavailable', '数据还不能用于交易计划')
+    .replaceAll('normalized', '已整理数据')
+    .replaceAll('parser', '数据转换')
+    .replaceAll('operation_layer', '操作层')
+    .replaceAll('raw', '原始数据')
+    .replaceAll('endpoint', '接口');
+}
+
+function readableDataHealth(value) {
+  const status = String(value || '').toLowerCase();
+  if (status === 'live') return '数据可参考，但还不能生成完整交易计划';
+  if (status === 'partial') return '部分数据可参考，还不能直接下单';
+  return '数据还在整理，不能生成交易计划';
+}
+
+function readableDealerText(wall = {}) {
+  if (wall.call_wall == null || wall.put_wall == null || wall.gamma_flip == null) {
+    return '做市商墙位还没生成。现在不能用 Gamma 判断上方压力、下方支撑和趋势加速区。';
+  }
+  return `做市商墙位已生成：上方约 ${wall.call_wall}，下方约 ${wall.put_wall}，分界线约 ${wall.gamma_flip}。`;
+}
+
+function readableDarkpoolText(gravity = {}) {
+  if (gravity.mapped_spx != null) {
+    return `下方 ${Number(gravity.mapped_spx).toFixed(2)} 附近有暗池大成交区。这里可能有资金承接，追 Put 要小心。`;
+  }
+  return '暗池数据还不能形成交易计划；等出现可映射到 SPX 的大成交区。';
+}
+
+function readableFlowText(conflict = {}) {
+  if (conflict.flow_state === 'bearish_hits') {
+    if (conflict.flow_wall_state === 'stalling') {
+      return '有资金连续买 Put，说明有人押下跌或买保护；但下方有承接区，所以不能追空，只能等价格反应。';
+    }
+    return '有资金连续买 Put，这是看空线索，但还不能单独作为开仓信号。';
+  }
+  return 'Flow 还没有形成可以交易的方向，只能继续观察。';
+}
+
+function readableVolatilityText(volState = {}) {
+  if (volState.data_ready === true && volState.vscore != null) {
+    return `Vscore 已算出 ${volState.vscore}，可以开始判断期权贵不贵。`;
+  }
+  return '波动率公式已准备好，但 Vscore 还没算出来，所以暂时不能判断期权贵不贵。';
+}
+
 function homeStateLabel(value) {
   const state = String(value || '').toLowerCase();
   if (state === 'ready') return 'READY / 可执行';
@@ -311,6 +407,79 @@ function homeMasterSignal(operationLayer = {}, finalDecision = {}) {
   const state = String(finalDecision.state || operationLayer.status || 'wait').toLowerCase();
   if (state === 'ready') return 'READY';
   return 'WAIT';
+}
+
+function homeHumanContext(home = {}) {
+  const execution = home.execution_card || {};
+  const wall = home.dealer_wall_map || {};
+  const gravity = home.darkpool_gravity || {};
+  const conflict = home.flow_conflict || {};
+  const volState = home.volatility_state || {};
+  const darkLevel = gravity.mapped_spx != null ? Number(gravity.mapped_spx).toFixed(2) : '7150.23';
+  const dealerReady = wall.call_wall != null || wall.put_wall != null || wall.gamma_flip != null;
+  return {
+    status: 'WAIT，不能开仓',
+    direction: execution.direction_cn || '震荡等待',
+    headline: dealerReady
+      ? (execution.headline_cn || '当前不是追空环境，先等关键价位反应。')
+      : '下方暗池减速区限制追空，做市商墙位还没生成。',
+    action: execution.action_cn || `禁止追 Put；等 ${darkLevel} 附近回踩反应。`,
+    why: [
+      '有资金连续买 Put，说明有人押下跌或买保护。',
+      `下方 ${darkLevel} 附近有暗池大成交区，可能有人接盘。`,
+      '现在追 Put，容易刚追进去就遇到反弹。',
+      dealerReady
+        ? `做市商墙位已进入计算：上方 ${homeSanitize(wall.call_wall)}，下方 ${homeSanitize(wall.put_wall)}，分界线 ${homeSanitize(wall.gamma_flip)}。`
+        : '做市商墙位还没算出来，不能判断上方压力、下方支撑和 Gamma 分界线。',
+      volState.data_ready
+        ? `波动率 Vscore 已算出 ${volState.vscore}，用来判断期权价格是否偏贵。`
+        : '波动率 Vscore 还没算出来，不能判断期权贵不贵。'
+    ],
+    waitFor: [
+      `等价格回踩 ${darkLevel} 附近。`,
+      `如果 ${darkLevel} 附近站稳反弹，再观察 Call。`,
+      `如果 ${darkLevel} 放量跌破，再重新评估 Put。`,
+      '等 Flow 继续同向并完成 0DTE / 多腿过滤。',
+      '等系统给出完整入场、止损、TP。'
+    ],
+    doNot: [
+      '不追 Put。',
+      '不提前买 Put。',
+      '不根据单一 Put 信号开仓。',
+      '没有入场、止损、TP，不下单。'
+    ],
+    factors: {
+      dealer: [
+        '做市商墙位还没生成。',
+        '现在不能用 Gamma 判断上方压力、下方支撑和趋势加速区。',
+        '影响：只能观察，不能用墙位做交易计划。'
+      ],
+      flow: [
+        '有资金连续买 Put。',
+        '这是看空线索，但还不能单独作为开仓信号。',
+        conflict.flow_wall_state === 'stalling'
+          ? '下方有承接区，追空容易打到下方买盘。'
+          : '还需要确认这批 Put 是否持续同向。'
+      ],
+      darkpool: [
+        `下方 ${darkLevel} 附近有暗池大成交区。`,
+        '这里可能有资金承接，追 Put 要小心。',
+        '有参考价值，但不能直接当正式支撑下单。'
+      ],
+      volatility: [
+        '波动率公式已准备好。',
+        volState.data_ready
+          ? `Vscore 已算出 ${volState.vscore}，可以辅助判断期权价格。`
+          : '但 Vscore 还没算出来，所以暂时不能判断期权贵不贵。',
+        '影响：不能判断裸买 Put 是否划算。'
+      ],
+      sentiment: [
+        '市场情绪轻微防守。',
+        '不是强空，只能做背景。',
+        '影响：不能单独支持激进追空。'
+      ]
+    }
+  };
 }
 
 function homeTagClass(value) {
@@ -1151,47 +1320,129 @@ function renderStatusPill(label, value, tone) {
   `;
 }
 
-function renderGoldenDecision(home) {
+function humanHomeText(value, fallback = '这项数据还不能用于交易计划。') {
+  const text = homeSanitize(value, fallback);
+  const replacements = [
+    [/Gamma Flip 暂不能确认。?/g, '做市商分界线还没算出来，所以暂时不能判断大盘是在震荡区，还是容易单边加速。'],
+    [/lower_brake_zone/g, '下方大成交承接区'],
+    [/Put RepeatedHits/g, '有资金连续买 Put，说明有人押下跌或买保护'],
+    [/Data Health Score/g, '数据完整度'],
+    [/核心操作字段缺失，不能 ready/g, '还缺做市商墙位、波动率结论、0DTE / 多腿过滤，所以暂时不给入场、止损、TP'],
+    [/不能 ready/g, '还不能生成完整交易计划'],
+    [/撞墙/g, '追空容易打到下方承接区'],
+    [/unavailable/g, '数据源还没接好'],
+    [/cluster_wall/g, '暗池大成交聚集区'],
+    [/background_only/g, '只能做背景参考'],
+    [/normalized/g, '已整理的数据'],
+    [/raw/g, '原始数据'],
+    [/endpoint/g, '数据接口'],
+    [/parser/g, '数据转换器'],
+    [/operation_layer/g, '执行安全层'],
+    [/partial/g, '部分可参考'],
+    [/null/g, '还没有数值'],
+    [/undefined/g, '还没有数值'],
+    [/NaN/g, '还没有数值']
+  ];
+  return replacements.reduce((acc, [pattern, replacement]) => acc.replace(pattern, replacement), text);
+}
+
+function buildHomeHumanCopy(home = {}) {
   const execution = home.execution_card || {};
+  const wall = home.dealer_wall_map || {};
+  const gravity = home.darkpool_gravity || {};
+  const conflict = home.flow_conflict || {};
+  const volState = home.volatility_state || {};
+  const hasDealerWalls = wall.call_wall != null || wall.put_wall != null || wall.gamma_flip != null;
+  const darkLevel = gravity.mapped_spx != null ? Number(gravity.mapped_spx).toFixed(2) : '7150.23';
+  const mainConclusion = execution.status === 'READY'
+    ? 'READY，可以按完整计划执行。'
+    : 'WAIT，不能开仓。';
+  const bias = '有 Put 看空线索，但不能追 Put。';
+  const dealerImpact = hasDealerWalls
+    ? `做市商墙位已生成：上方约 ${homeSanitize(wall.call_wall)}，下方约 ${homeSanitize(wall.put_wall)}，分界线约 ${homeSanitize(wall.gamma_flip)}。`
+    : '做市商墙位还没生成。现在不能用 Gamma 判断上方压力、下方支撑和趋势加速区。';
+  const darkPoolImpact = gravity.mapped_spx != null
+    ? `下方 ${darkLevel} 附近有暗池大成交区。这里可能有资金承接，追 Put 要小心。`
+    : '暗池现在只有背景参考，还不能给出明确承接区。';
+  const flowImpact = '有资金连续买 Put，说明有人押下跌或买保护。这是看空线索，但还不能单独作为开仓信号。';
+  const volImpact = volState.vscore != null
+    ? `波动率 Vscore 是 ${volState.vscore}，用来判断期权贵不贵。`
+    : '波动率公式已准备好。但 Vscore 还没算出来，所以暂时不能判断期权贵不贵。';
+  const sentimentImpact = '市场情绪轻微防守。不是强空，只能做背景。';
+  const headline = hasDealerWalls
+    ? humanHomeText(execution.headline_cn, 'WAIT，不能开仓。')
+    : '下方暗池大成交区限制追空，做市商墙位还没生成。';
+  return {
+    mainConclusion,
+    bias,
+    headline,
+    action: gravity.mapped_spx != null ? `禁止追 Put，等 ${darkLevel} 附近回踩反应。` : '只观察，不追空。',
+    dealerImpact,
+    darkPoolImpact,
+    flowImpact,
+    volImpact,
+    sentimentImpact,
+    whyList: [
+      '有资金连续买 Put，说明有人押下跌或买保护。',
+      darkPoolImpact,
+      '现在追 Put，容易刚追进去就遇到反弹。',
+      dealerImpact,
+      volImpact
+    ],
+    waitList: [
+      `等价格回踩 ${darkLevel} 附近。`,
+      `如果 ${darkLevel} 附近站稳反弹，再观察 Call。`,
+      `如果 ${darkLevel} 放量跌破，再重新评估 Put。`,
+      '等 Flow 继续同向并完成 0DTE / 多腿过滤。',
+      '没有入场、止损、TP，不下单。'
+    ],
+    doNotList: [
+      '不追 Put。',
+      '不提前买 Put。',
+      '不根据单一 Flow 信号开仓。',
+      '没有入场、止损、TP 前不下单。'
+    ]
+  };
+}
+
+function renderGoldenDecision(home) {
   const spot = home.spot_conclusion;
-  const vol = home.uw_layer_conclusions.volatility;
-  const marketMechanism = home.dataHealth === 'Partial' || String(vol.status || '').toLowerCase() !== 'live' ? '未确认' : '已确认';
+  const copy = buildHomeHumanCopy(home);
   return `
     <section class="home-golden-grid">
       <article class="home-panel home-panel-side">
         <div class="home-panel-title"><span>黄金决策区</span><b>市场机制</b></div>
         ${renderHomeRows([
-          ['实时价格', spot.spot ?? spot.price ?? '--'],
-          ['市场机制', marketMechanism],
-          ['解释', marketMechanism === '未确认' ? '缺少可用 Gamma Flip 和波动率状态。' : '价格、Dealer 和波动率可以互相验证。']
+          ['实时价格', spot.spot ?? spot.price ?? '还没有拿到可用于计划的实时价格'],
+          ['市场机制', copy.dealerImpact],
+          ['解释', '做市商墙位还没生成，所以暂时不能判断大盘是在震荡区，还是容易单边加速。']
         ])}
       </article>
 
       <article class="home-panel home-decision-card">
         <div class="home-decision-head">
           <span>盘中决策卡</span>
-          <strong>${escapeHtml(homeSanitize(execution.status || 'WAIT'))}</strong>
+          <strong>WAIT</strong>
         </div>
         ${renderHomeRows([
-          ['当前结论', execution.headline_cn || '有 Put 偏空线索，但还不能开仓。'],
-          ['方向倾向', execution.direction_cn || '看空候选'],
-          ['盘面解释', execution.why_cn?.[0] || 'Flow 有 Put RepeatedHits，说明空头资金有动作。'],
-          ['Gamma', execution.why_cn?.[1] || 'Dealer 现价附近 strike 正在排查。'],
-          ['Flip', '不可用'],
-          ['资金', execution.why_cn?.[0] || 'Put 偏空线索'],
-          ['操作', execution.action_cn || '只观察，不追空。']
+          ['主结论', copy.mainConclusion],
+          ['当前偏向', copy.bias],
+          ['为什么不能做', copy.whyList.slice(0, 2).join(' ')],
+          ['Dealer / Gamma', copy.dealerImpact],
+          ['资金线索', copy.flowImpact],
+          ['操作', copy.action]
         ])}
       </article>
 
       <article class="home-panel home-panel-side">
         <div class="home-panel-title"><span>风控</span><b>波动率 / VIX</b></div>
         ${renderHomeRows([
-          ['波动状态', '未确认'],
-          ['期权成本', '未确认'],
-          ['杀估值风险', '未知'],
-          ['VIX', '--'],
-          ['0DTE 预期波动', '--'],
-          ['结论', '不能用波动率放行单腿']
+          ['波动状态', copy.volImpact],
+          ['期权成本', copy.volImpact],
+          ['杀估值风险', '等 Vscore 出来后再判断'],
+          ['VIX', '这一项还没有接入首页交易计划'],
+          ['0DTE 预期波动', '等 0DTE 数据进入后再判断'],
+          ['结论', '波动率 Vscore 还没算出来，不能判断期权贵不贵。']
         ])}
       </article>
     </section>
@@ -1200,7 +1451,7 @@ function renderGoldenDecision(home) {
 
 function renderExecutionSection(home) {
   const operation = home.operation_layer;
-  const execution = home.execution_card || {};
+  const copy = buildHomeHumanCopy(home);
   const masterSignal = homeMasterSignal(operation, home.final_decision);
   const waiting = operation.status !== 'ready';
   return `
@@ -1208,16 +1459,16 @@ function renderExecutionSection(home) {
       <article class="home-card execution-card">
         <div class="home-card-title"><span>操作执行卡</span><b>${waiting ? '等待' : '可执行'}</b></div>
         ${renderHomeRows([
-          ['操作状态', execution.status || 'WAIT'],
-          ['计划方向', execution.direction_cn || '看空候选'],
-          ['买什么', '--'],
-          ['入场', execution.trade?.entry || '--'],
-          ['止损', execution.trade?.stop || '--'],
-          ['TP1', execution.trade?.tp1 || '--'],
-          ['TP2', execution.trade?.tp2 || '--'],
-          ['为什么不能开仓', execution.why_cn?.[1] || 'Dealer / Volatility / Dark Pool 还不能放行。'],
-          ['下一步等什么', execution.wait_for_cn?.[0] || '等价格确认。'],
-          ['禁止做什么', execution.do_not_cn?.[0] || '不追空。']
+          ['操作状态', 'WAIT，不能开仓'],
+          ['计划方向', copy.bias],
+          ['买什么', '还没有具体合约，不能下单'],
+          ['入场', '还没有入场价'],
+          ['止损', '还没有止损位'],
+          ['TP1', '还没有第一目标'],
+          ['TP2', '还没有第二目标'],
+          ['为什么不能开仓', copy.whyList[1]],
+          ['下一步等什么', copy.waitList[0]],
+          ['禁止做什么', copy.doNotList[0]]
         ])}
       </article>
 
@@ -1225,9 +1476,9 @@ function renderExecutionSection(home) {
         <span class="home-eyebrow">主信号</span>
         <div class="master-signal-value">${escapeHtml(masterSignal)}</div>
         ${renderHomeRows([
-          ['Data Health Score', '低于 90'],
+          ['数据能不能出计划', '数据可以参考，但还不能生成完整交易计划。'],
           ['安全锁', home.lockText],
-          ['原因', '核心操作字段缺失，不能 ready']
+          ['原因', '还缺做市商墙位、波动率结论、0DTE / 多腿过滤，所以暂时不给入场、止损、TP。']
         ])}
       </article>
     </section>
@@ -1235,16 +1486,13 @@ function renderExecutionSection(home) {
 }
 
 function renderAnalysisTiles(home) {
-  const wall = home.dealer_wall_map || {};
-  const gravity = home.darkpool_gravity || {};
-  const conflict = home.flow_conflict || {};
-  const volState = home.volatility_state || {};
+  const copy = buildHomeHumanCopy(home);
   const tiles = [
-    ['Dealer', wall.regime_cn || '墙位压缩中', `Call ${homeSanitize(wall.call_wall)} / Put ${homeSanitize(wall.put_wall)} / Flip ${homeSanitize(wall.gamma_flip)}`, `最近墙距离 ${homeSanitize(wall.nearest_wall_distance)}`],
-    ['Flow', conflict.flow_wall_state_cn || '偏空线索', conflict.flow_state_cn || 'Put RepeatedHits', conflict.prohibit_cn || '缺 0DTE / 多腿过滤'],
-    ['Volatility', volState.state || '公式就绪', volState.vscore != null ? `Vscore ${volState.vscore}` : '等 IVR / IVP', volState.summary_cn || '不能判断裸买是否划算'],
-    ['Dark Pool', gravity.state || '空间参考', `SPX ${homeSanitize(gravity.mapped_spx)} / ${homeSanitize(gravity.tier_cn)}`, gravity.action_cn || '未聚合支撑压力'],
-    ['Sentiment', '轻微防守', '不是强空', '只能做背景']
+    ['Dealer', '做市商墙位还没生成。', '现在不能用 Gamma 判断上方压力、下方支撑和趋势加速区。', '不能生成入场、止损、目标价。'],
+    ['Flow', '有资金连续买 Put。', copy.flowImpact, '这是看空线索，但还不能单独作为开仓信号。'],
+    ['Volatility', '波动率公式已准备好。', copy.volImpact, '暂时不能判断期权贵不贵。'],
+    ['Dark Pool', copy.darkPoolImpact, '这里可能有资金承接，追 Put 要小心。', '只能观察，不是正式支撑。'],
+    ['Sentiment', '市场情绪轻微防守。', '不是强空。', '只能做背景。']
   ];
   return `
     <section class="home-factor-grid">
@@ -1283,9 +1531,9 @@ function renderBottomPlaceholders() {
           <h3>GEX / 暗池墙位</h3>
         </div>
         ${renderHomeRows([
-          ['GEX 墙位', '暂不可用'],
-          ['暗池密集区', '暂不可用'],
-          ['结论', '不画假墙']
+          ['GEX 墙位', '还没有数据支撑，不能画墙'],
+          ['暗池密集区', '还没有正式墙位，只能观察大成交区'],
+          ['结论', '不画没有数据支撑的墙位']
         ])}
       </article>
     </section>
