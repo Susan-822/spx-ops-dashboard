@@ -31,6 +31,7 @@ import { runUwConclusionEngine } from './uw-conclusion-engine.js';
 import { runRawNoteV2 } from './raw-note-v2/index.js';
 import { buildUwConclusionV2 } from './raw-note-v2/uw-conclusion.js';
 import { buildThetaConclusion } from './raw-note-v2/formatters.js';
+import { buildUwLayerConclusions } from './algorithms/index.js';
 
 export {
   buildProjectionPrices,
@@ -343,61 +344,6 @@ function buildBasisTracker(priceSources = {}) {
     basis_confidence: typeof rawBasis === 'number' ? 'high' : calculated != null ? 'medium' : 'low',
     plain_chinese: basis == null ? 'Basis 暂不可用。' : `ES/SPX basis ${basis}。`
   };
-}
-
-function buildInstitutionalEngines({ uwConclusion = {}, diagnostics = {}, priceSources = {}, darkpoolSummary = {}, volatilityActivation = {}, marketSentiment = {}, institutionalAlert = {}, uwApi = {} } = {}) {
-  const gexEngine = {
-    status: diagnostics.confidence === 'low' ? 'partial' : uwConclusion.status || 'unavailable',
-    net_gex: uwConclusion.net_gex ?? null,
-    gamma_regime: uwConclusion.gamma_regime || 'unknown',
-    gamma_flip: uwConclusion.zero_gamma ?? null,
-    call_wall: diagnostics.confidence === 'low' ? null : uwConclusion.call_wall ?? null,
-    put_wall: diagnostics.confidence === 'low' ? null : uwConclusion.put_wall ?? null,
-    max_pain: uwConclusion.max_pain ?? null,
-    top_call_gamma_strikes: diagnostics.top_call_gamma_strikes || [],
-    top_put_gamma_strikes: diagnostics.top_put_gamma_strikes || [],
-    top_net_gex_strikes: diagnostics.top_net_gex_strikes || [],
-    confidence: diagnostics.confidence || 'low',
-    plain_chinese: diagnostics.confidence === 'low' ? 'UW GEX strike 区间低可信，墙位不用于交易。' : 'UW GEX 已进入 Dealer/GEX 引擎。'
-  };
-  const flow = uwApi.uw_factors?.flow_factors || {};
-  const flowEngine = {
-    status: uwConclusion.flow_available ? 'live' : flow.net_premium_5m != null ? 'partial' : 'unavailable',
-    bias: uwConclusion.flow_bias === 'unavailable' ? 'mixed' : uwConclusion.flow_bias,
-    aggression: flow.call_put_ratio > 1.25 ? 'ask_side_attack' : flow.call_put_ratio < 0.8 ? 'bid_side_attack' : 'unknown',
-    net_premium: flow.net_premium_5m ?? null,
-    ask_side_pct: null,
-    bid_side_pct: null,
-    large_trade_count: flow.large_trade_count_5m ?? null,
-    confidence: uwConclusion.flow_available ? 'high' : 'low',
-    plain_chinese: uwConclusion.flow_available ? `UW Flow ${uwConclusion.flow_bias}。` : 'UW Flow 不足，只做候选参考。'
-  };
-  const darkpoolEngine = {
-    status: ['bullish', 'bearish', 'neutral'].includes(uwConclusion.darkpool_bias) ? 'live' : 'unavailable',
-    bias: darkpoolSummary.bias || uwConclusion.darkpool_bias || 'unknown',
-    large_prints: darkpoolSummary.large_levels || [],
-    nearest_support: darkpoolSummary.nearest_support ?? null,
-    nearest_resistance: darkpoolSummary.nearest_resistance ?? null,
-    confidence: darkpoolSummary.bias && darkpoolSummary.bias !== 'unknown' ? 'medium' : 'low',
-    plain_chinese: darkpoolSummary.plain_chinese || '暗池中性或不可用。'
-  };
-  const volEngine = {
-    status: volatilityActivation.strength ? 'partial' : 'unavailable',
-    iv_state: volatilityActivation.strength === 'extreme' ? 'panic' : volatilityActivation.strength === 'strong' ? 'elevated' : 'unknown',
-    term_structure: 'unknown',
-    volatility_activation: volatilityActivation.strength === 'off' ? 'inactive' : volatilityActivation.strength || 'inactive',
-    single_leg_permission: ['active', 'strong', 'extreme'].includes(volatilityActivation.strength) ? 'allow' : 'wait',
-    vertical_permission: volatilityActivation.strength === 'off' ? 'wait' : 'allow',
-    iron_condor_permission: volatilityActivation.light === 'red' ? 'wait' : 'block',
-    plain_chinese: volatilityActivation.plain_chinese || '波动未启动。'
-  };
-  const sentimentEngine = {
-    status: marketSentiment.state && marketSentiment.state !== 'unavailable' ? 'live' : 'unavailable',
-    state: marketSentiment.state === 'unavailable' ? 'unknown' : marketSentiment.state || 'unknown',
-    score: null,
-    plain_chinese: marketSentiment.plain_chinese || ''
-  };
-  return { gexEngine, flowEngine, darkpoolEngine, volEngine, sentimentEngine };
 }
 
 function buildPriceSourcesV2({ signal = {}, projectionPrices = {}, crossAssetProjection = {} } = {}) {
@@ -1676,22 +1622,36 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     uwConclusion: uwConclusionV2.uw_conclusion
   });
   const basisTracker = buildBasisTracker(priceSourcesV2);
-  const {
-    gexEngine,
-    flowEngine,
-    darkpoolEngine,
-    volEngine,
-    sentimentEngine
-  } = buildInstitutionalEngines({
-    uwConclusion: uwConclusionV2.uw_conclusion,
-    diagnostics: uwConclusionV2.uw_wall_diagnostics,
-    priceSources: priceSourcesV2,
-    darkpoolSummary,
-    volatilityActivation,
-    marketSentiment,
-    institutionalAlert,
-    uwApi
+  const uwLayerConclusions = buildUwLayerConclusions({
+    uw_provider: uwProvider,
+    uw_conclusion: uwConclusionV2.uw_conclusion,
+    uw_wall_diagnostics: uwConclusionV2.uw_wall_diagnostics,
+    darkpool_summary: darkpoolSummary,
+    volatility_activation: volatilityActivation,
+    market_sentiment: marketSentiment,
+    institutional_alert: institutionalAlert,
+    uw_factors: uwApi.uw_factors,
+    source_display: buildUnifiedSourceStatus({
+      uwProvider,
+      thetaConclusion: buildThetaConclusion({
+        status: output.theta?.status,
+        atm_call_mid: output.theta?.atm_call_mid,
+        atm_put_mid: output.theta?.atm_put_mid,
+        spot: output.market_snapshot?.spot
+      }),
+      fmpConclusion: buildFmpConclusionV2(output),
+      tvSentinel: output.tv_sentinel
+    }),
+    spot_conclusion: spotConclusion,
+    tv_sentinel: output.tv_sentinel
   });
+  const {
+    gex_engine: gexEngine,
+    flow_aggression_engine: flowEngine,
+    darkpool_engine: darkpoolEngine,
+    volatility_engine: volEngine,
+    market_sentiment_engine: sentimentEngine
+  } = uwLayerConclusions;
   const rawNoteV2 = runRawNoteV2({
     spot_conclusion: spotConclusion,
     event_conclusion: eventConclusion,
