@@ -193,6 +193,24 @@ function summarizeStrikeRows(rows = []) {
   };
 }
 
+function summarizeSpotGexRequest({ label = '', ticker = 'SPX', url = null, page = 1, limit = null, body = {} } = {}) {
+  const safeUrl = url ? new URL(String(url)) : null;
+  const rowSummary = summarizeStrikeRows(endpointRows(body));
+  return {
+    label,
+    endpoint: safeUrl ? safeUrl.pathname : null,
+    request_url: safeUrl ? sanitizeUwRequestUrl(safeUrl) : null,
+    ticker,
+    query_params: safeUrl ? Object.fromEntries(safeUrl.searchParams.entries()) : {},
+    page,
+    limit,
+    min_strike: safeUrl?.searchParams.get('min_strike') ? Number(safeUrl.searchParams.get('min_strike')) : null,
+    max_strike: safeUrl?.searchParams.get('max_strike') ? Number(safeUrl.searchParams.get('max_strike')) : null,
+    date: new Date().toISOString(),
+    ...rowSummary
+  };
+}
+
 async function fetchUwJson({ fetchImpl, url, apiKey }) {
   const response = await fetchImpl(url, {
     headers: {
@@ -563,46 +581,57 @@ export async function fetchUwApiSnapshot(options = {}) {
         data: body
       };
       endpointsOk.push(name);
+      for (let index = endpointsFailed.length - 1; index >= 0; index -= 1) {
+        if (endpointsFailed[index]?.name === name) endpointsFailed.splice(index, 1);
+      }
       if (name === 'spot_gex') {
-        spotGexDiagnostics.push(summarizeSpotGexRequest({
-          label: 'old_request',
-          ticker: config.ticker,
-          url,
-          page: Number(url.searchParams.get('page') || 1),
-          limit: Number(url.searchParams.get('limit') || 500),
-          body
-        }));
-        const dynamic = await fetchSpotGexDiagnostics({ fetchImpl, config, now });
-        raw.spot_gex_paged = {
-          path: definition.requestedPath || definition.path,
-          status: response.status,
-          fetched_at: dynamic.fetchedAt,
-          pages: dynamic.pageRequests,
-          meta: { pages_checked: dynamic.pageRequests.length },
-          data: dynamic.dynamicRows
-        };
-        raw.spot_gex_spy_proxy = {
-          path: '/api/stock/SPY/spot-exposures/strike',
-          status: response.status,
-          fetched_at: dynamic.fetchedAt,
-          request: dynamic.spyRequest,
-          data: dynamic.spyRows
-        };
-        raw.spot_gex_request_audit = {
-          old_request: dynamic.oldRequest,
-          dynamic_window_request: dynamic.pageRequests[0] || null,
-          pages_checked: dynamic.pageRequests.length,
-          spx_result: {
-            rows_total: dynamic.dynamicRows.length,
-            rows_near_spot: countRowsNearSpot(dynamic.dynamicRows, config.currentSpot),
-            pages: dynamic.pageRequests
-          },
-          spy_proxy_result: {
-            rows_total: dynamic.spyRows.length,
-            rows_near_spot: countRowsNearSpot(dynamic.spyRows.map((row) => ({ ...row, strike: numberOrNull(row.strike ?? row.price ?? row.level) * 10 })), config.currentSpot),
-            request: dynamic.spyRequest
-          }
-        };
+        try {
+          spotGexDiagnostics.push(summarizeSpotGexRequest({
+            label: 'old_request',
+            ticker: config.ticker,
+            url,
+            page: Number(url.searchParams.get('page') || 1),
+            limit: Number(url.searchParams.get('limit') || 500),
+            body
+          }));
+          const dynamic = await fetchSpotGexDiagnostics({ fetchImpl, config, now });
+          raw.spot_gex_paged = {
+            path: definition.requestedPath || definition.path,
+            status: response.status,
+            fetched_at: dynamic.fetchedAt,
+            pages: dynamic.pageRequests,
+            meta: { pages_checked: dynamic.pageRequests.length },
+            data: dynamic.dynamicRows
+          };
+          raw.spot_gex_spy_proxy = {
+            path: '/api/stock/SPY/spot-exposures/strike',
+            status: response.status,
+            fetched_at: dynamic.fetchedAt,
+            request: dynamic.spyRequest,
+            data: dynamic.spyRows
+          };
+          raw.spot_gex_request_audit = {
+            old_request: dynamic.oldRequest,
+            dynamic_window_request: dynamic.pageRequests[0] || null,
+            pages_checked: dynamic.pageRequests.length,
+            spx_result: {
+              rows_total: dynamic.dynamicRows.length,
+              rows_near_spot: countRowsNearSpot(dynamic.dynamicRows, config.currentSpot),
+              pages: dynamic.pageRequests
+            },
+            spy_proxy_result: {
+              rows_total: dynamic.spyRows.length,
+              rows_near_spot: countRowsNearSpot(dynamic.spyRows.map((row) => ({ ...row, strike: numberOrNull(row.strike ?? row.price ?? row.level) * 10 })), config.currentSpot),
+              request: dynamic.spyRequest
+            }
+          };
+        } catch (diagnosticError) {
+          raw.spot_gex_request_audit = {
+            old_request: spotGexDiagnostics[0] || summarizeSpotGexRequest({ label: 'old_request', ticker: config.ticker, url, body }),
+            diagnostic_error: diagnosticError.message,
+            pages_checked: 0
+          };
+        }
       }
     } catch (error) {
       endpointsFailed.push({
