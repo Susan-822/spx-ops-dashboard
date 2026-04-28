@@ -162,11 +162,11 @@ function homepageState(signal = {}) {
   };
 }
 
-function renderHomeKv(rows = []) {
+function renderHomeRows(rows = []) {
   return `
-    <div class="strategy-kv">
+    <div class="home-field-list">
       ${rows.map(([label, value]) => `
-        <div class="kv-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(pageSafeText(value))}</b></div>
+        <div class="home-field-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(pageSafeText(value))}</b></div>
       `).join('')}
     </div>
   `;
@@ -1125,20 +1125,19 @@ function renderHome(signal) {
 
 function renderHomeTopMood(home) {
   return `
-    <section class="home-mood-strip">
-      <div class="section-label home-mood-title">顶部情绪条</div>
-      ${renderMoodItem('市场状态', home.operationStatus)}
-      ${renderMoodItem('方向倾向', home.direction)}
-      ${renderMoodItem('数据健康', home.dataHealth)}
-      ${renderMoodItem('安全锁', home.lockText)}
-      ${renderMoodItem('核心原因', home.coreReason)}
+    <section class="home-status-strip">
+      ${renderStatusPill('MASTER', homeMasterSignal(home.operation_layer, home.final_decision), 'wait')}
+      ${renderStatusPill('方向', home.direction, 'support')}
+      ${renderStatusPill('数据', home.dataHealth, 'support')}
+      ${renderStatusPill('安全锁', home.lockText, 'prohibit')}
+      <div class="status-reason"><span>原因</span><b>${escapeHtml(homeSanitize(home.coreReason))}</b></div>
     </section>
   `;
 }
 
-function renderMoodItem(label, value) {
+function renderStatusPill(label, value, tone) {
   return `
-    <div class="home-mood-item">
+    <div class="status-pill ${tone}">
       <span>${escapeHtml(label)}</span>
       <b>${escapeHtml(homeSanitize(value))}</b>
     </div>
@@ -1146,49 +1145,39 @@ function renderMoodItem(label, value) {
 }
 
 function renderGoldenDecision(home) {
-  const operation = home.operation_layer;
-  const analysis = home.analysis_layer;
-  const master = home.uw_layer_conclusions.master;
-  const finalDecision = home.final_decision;
-  const dealer = home.uw_layer_conclusions.dealer;
-  const flow = home.uw_layer_conclusions.flow;
   const spot = home.spot_conclusion;
   const vol = home.uw_layer_conclusions.volatility;
   const marketMechanism = home.dataHealth === 'Partial' || String(vol.status || '').toLowerCase() !== 'live' ? '未确认' : '已确认';
   return `
-    <div class="home-section-heading">黄金决策区</div>
     <section class="home-golden-grid">
-      <div class="section-label home-section-span">黄金决策区</div>
-      <article class="matrix-panel">
-        <div class="matrix-title"><div class="section-label">Market Regime</div><span class="tag ${homeTagClass(marketMechanism)}">${escapeHtml(marketMechanism)}</span></div>
-        ${renderHomeKv([
+      <article class="home-panel home-panel-side">
+        <div class="home-panel-title"><span>黄金决策区</span><b>市场机制</b></div>
+        ${renderHomeRows([
           ['实时价格', spot.spot ?? spot.price ?? '--'],
           ['市场机制', marketMechanism],
           ['解释', marketMechanism === '未确认' ? '缺少可用 Gamma Flip 和波动率状态。' : '价格、Dealer 和波动率可以互相验证。']
         ])}
       </article>
 
-      <article class="main-command home-decision-card">
-        <div class="command-header">
-          <div class="section-label">盘中决策卡</div>
-          <div class="permission-badge wait">${escapeHtml(homeMasterSignal(operation, finalDecision))}</div>
+      <article class="home-panel home-decision-card">
+        <div class="home-decision-head">
+          <span>盘中决策卡</span>
+          <strong>WAIT</strong>
         </div>
-        <h1 class="command-title">${escapeHtml(homeSanitize(finalDecision.label || operation.operation_summary || '等确认'))}</h1>
-        <p class="command-subtitle">${escapeHtml(homeSanitize(analysis.summary || master.summary_cn || home.coreReason))}</p>
-        <div class="command-grid">
-          <div class="command-cell"><span class="card-label">当前结论</span><b>${escapeHtml(homeSanitize(master.summary_cn || analysis.summary || '等待确认。'))}</b></div>
-          <div class="command-cell"><span class="card-label">方向倾向</span><b>${escapeHtml(home.direction)}</b></div>
-          <div class="command-cell"><span class="card-label">盘面解释</span><b>${escapeHtml(homeSanitize(analysis.market_read || finalDecision.reason || home.coreReason))}</b></div>
-          <div class="command-cell"><span class="card-label">Gamma</span><b>${escapeHtml(homeSanitize(dealer.summary_cn || '墙位不可用。'))}</b></div>
-          <div class="command-cell"><span class="card-label">Flip</span><b>--</b></div>
-          <div class="command-cell"><span class="card-label">资金</span><b>${escapeHtml(homeSanitize(flow.summary_cn || '有 Put 偏空线索。'))}</b></div>
-          <div class="command-cell"><span class="card-label">操作</span><b>${escapeHtml(home.ready ? homeSanitize(operation.operation_summary, '等待') : '等待')}</b></div>
-        </div>
+        ${renderHomeRows([
+          ['当前结论', '等待'],
+          ['方向倾向', '偏空线索'],
+          ['盘面解释', '有 Put 资金线索，但 Dealer、波动率、暗池、TV 都未确认。'],
+          ['Gamma', '墙位不可用'],
+          ['Flip', '不可用'],
+          ['资金', 'Put 偏空线索'],
+          ['操作', '等待，不追单']
+        ])}
       </article>
 
-      <article class="matrix-panel">
-        <div class="matrix-title"><div class="section-label">波动率 / VIX</div><span class="tag amber">未确认</span></div>
-        ${renderHomeKv([
+      <article class="home-panel home-panel-side">
+        <div class="home-panel-title"><span>风控</span><b>波动率 / VIX</b></div>
+        ${renderHomeRows([
           ['波动状态', '未确认'],
           ['期权成本', '未确认'],
           ['杀估值风险', '未知'],
@@ -1203,33 +1192,31 @@ function renderGoldenDecision(home) {
 
 function renderExecutionSection(home) {
   const operation = home.operation_layer;
-  const finalDecision = home.final_decision;
-  const masterSignal = homeMasterSignal(operation, finalDecision);
+  const masterSignal = homeMasterSignal(operation, home.final_decision);
   const waiting = operation.status !== 'ready';
   return `
-    <section class="home-two-grid">
-      <article class="matrix-panel">
-        <div class="matrix-title"><div class="section-label">操作执行卡</div><span class="tag amber">${waiting ? '等待' : '可执行'}</span></div>
-        ${renderHomeKv([
-          ['操作状态', waiting ? '等待' : homeSanitize(operation.status, '可执行')],
-          ['计划方向', waiting ? '--' : homeSanitize(operation.direction)],
-          ['买什么', waiting ? '--' : homeSanitize(operation.setup_type)],
+    <section class="home-execution-grid">
+      <article class="home-card execution-card">
+        <div class="home-card-title"><span>操作执行卡</span><b>${waiting ? '等待' : '可执行'}</b></div>
+        ${renderHomeRows([
+          ['操作状态', '等待'],
+          ['计划方向', waiting ? 'Put 候选 / --' : homeSanitize(operation.direction)],
+          ['买什么', '--'],
           ['入场', '--'],
           ['止损', '--'],
           ['TP1', '--'],
           ['TP2', '--'],
-          ['失效条件', waiting ? '--' : homeSanitize(finalDecision.invalidation)],
-          ['禁止原因', waiting ? homeSanitize(operation.operation_summary || finalDecision.reason || home.coreReason) : '--']
+          ['禁止原因', '数据只支持分析，不支持开仓']
         ])}
       </article>
 
-      <article class="matrix-panel master-signal-card">
-        <div class="matrix-title"><div class="section-label">The Master Signal</div><span class="tag amber">${escapeHtml(masterSignal)}</span></div>
-        ${renderHomeKv([
-          ['MASTER SIGNAL', masterSignal],
+      <article class="home-card master-signal-card">
+        <span class="home-eyebrow">主信号</span>
+        <div class="master-signal-value">${escapeHtml(masterSignal)}</div>
+        ${renderHomeRows([
           ['Data Health Score', '低于 90'],
           ['安全锁', home.lockText],
-          ['原因', home.coreReason]
+          ['原因', '核心操作字段缺失，不能 ready']
         ])}
       </article>
     </section>
@@ -1237,52 +1224,22 @@ function renderExecutionSection(home) {
 }
 
 function renderAnalysisTiles(home) {
-  const dealer = home.uw_layer_conclusions.dealer;
-  const flow = home.uw_layer_conclusions.flow;
-  const vol = home.uw_layer_conclusions.volatility;
-  const darkpool = home.uw_layer_conclusions.darkpool;
-  const sentiment = home.uw_layer_conclusions.sentiment;
   const tiles = [
-    ['Dealer', [
-      ['Gamma Flip', '--'],
-      ['Call Wall', '--'],
-      ['Put Wall', '--'],
-      ['结论', homeSanitize(dealer.summary_cn || '墙位不可用。')]
-    ]],
-    ['Flow', [
-      ['攻击强度', homeSanitize(flow.strength || '偏空线索')],
-      ['方向', homeDirectionLabel(flow.bias)],
-      ['限制', '不能确认纯方向'],
-      ['结论', homeSanitize(flow.summary_cn || 'Put 偏空线索，但不能确认纯方向。')]
-    ]],
-    ['Volatility', [
-      ['Long Gamma', '未确认'],
-      ['Short Gamma', '未确认'],
-      ['杀估值风险', '未知'],
-      ['结论', homeSanitize(vol.summary_cn || '未确认。')]
-    ]],
-    ['Dark Pool', [
-      ['上方压力', '--'],
-      ['下方支撑', '--'],
-      ['流动性真空', '未确认'],
-      ['结论', homeSanitize(darkpool.summary_cn || '未确认。')]
-    ]],
-    ['Sentiment', [
-      ['Market Tide', '轻微防守'],
-      ['顺逆风', '不是强空'],
-      ['结论', homeSanitize(sentiment.summary_cn || '轻微防守，不是强空。')]
-    ]]
+    ['Dealer', '墙位不可用', '做市商数据已接通', 'Call Wall / Put Wall / Flip 暂不能用'],
+    ['Flow', '偏空线索', 'Put RepeatedHits', '缺 0DTE / 多腿过滤'],
+    ['Volatility', '打法未确认', '数据已展开', '不能判断裸买是否划算'],
+    ['Dark Pool', '空间未确认', '有 SPY prints', '未聚合支撑压力'],
+    ['Sentiment', '轻微防守', '不是强空', '只能做背景']
   ];
   return `
-    <div class="home-section-heading">五个分析瓦片</div>
-    <section class="home-five-grid">
-      <div class="section-label home-section-span">五个分析瓦片</div>
-      ${tiles.map(([title, rows]) => `
-        <article class="strategy-card watch">
-          <div class="strategy-headline">
-            <div><div class="section-label">分析瓦片</div><div class="strategy-name">${escapeHtml(title)}</div></div>
-          </div>
-          ${renderHomeKv(rows)}
+    <section class="home-factor-grid">
+      <div class="home-section-heading">五因子瓦片</div>
+      ${tiles.map(([title, state, summary, limit]) => `
+        <article class="factor-tile">
+          <div class="factor-title">${escapeHtml(title)}</div>
+          <div class="factor-state">${escapeHtml(state)}</div>
+          <div class="factor-summary">${escapeHtml(summary)}</div>
+          <div class="factor-limit">${escapeHtml(limit)}</div>
         </article>
       `).join('')}
     </section>
@@ -1291,21 +1248,29 @@ function renderAnalysisTiles(home) {
 
 function renderBottomPlaceholders() {
   return `
-    <section class="home-two-grid">
-      <article class="matrix-panel">
-        <div class="matrix-title"><div class="section-label">Brave 市场雷达</div><span class="tag blue">V1 占位</span></div>
-        ${renderHomeKv([
-          ['新闻风险', '待接入，不参与 MASTER SIGNAL'],
-          ['宏观事件', '待接入，不参与 MASTER SIGNAL'],
-          ['科技权重', '待接入，不参与 MASTER SIGNAL'],
-          ['市场主线', '待接入，不参与 MASTER SIGNAL']
+    <section class="home-bottom-grid">
+      <article class="placeholder-card">
+        <div class="home-card-head">
+          <span>底部占位</span>
+          <h3>Brave 市场雷达</h3>
+        </div>
+        ${renderHomeRows([
+          ['新闻风险', '待接入'],
+          ['宏观事件', '待接入'],
+          ['科技权重', '待接入'],
+          ['市场主线', '待接入'],
+          ['结论', '新闻只做背景']
         ])}
       </article>
-      <article class="matrix-panel">
-        <div class="matrix-title"><div class="section-label">GEX / 暗池墙位</div><span class="tag amber">占位</span></div>
-        ${renderHomeKv([
+      <article class="placeholder-card">
+        <div class="home-card-head">
+          <span>底部占位</span>
+          <h3>GEX / 暗池墙位</h3>
+        </div>
+        ${renderHomeRows([
           ['GEX 墙位', '暂不可用'],
-          ['暗池密集区', '暂不可用']
+          ['暗池密集区', '暂不可用'],
+          ['结论', '不画假墙']
         ])}
       </article>
     </section>
