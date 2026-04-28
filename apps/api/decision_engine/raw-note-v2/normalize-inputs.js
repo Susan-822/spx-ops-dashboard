@@ -122,6 +122,12 @@ export function normalizeRawNoteInputs(input = {}, now = new Date()) {
       ...input.command_environment
     },
     price_sources: priceSources,
+    gex_engine: input.gex_engine || {},
+    flow_aggression_engine: input.flow_aggression_engine || {},
+    darkpool_engine: input.darkpool_engine || {},
+    volatility_engine: input.volatility_engine || {},
+    market_sentiment_engine: input.market_sentiment_engine || {},
+    basis_tracker: input.basis_tracker || {},
     cross_asset_projection: input.cross_asset_projection || {},
     now
   };

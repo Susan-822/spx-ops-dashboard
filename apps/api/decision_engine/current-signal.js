@@ -1529,7 +1529,40 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     marketSentiment,
     technicalEngine
   });
+  const spotConclusion = buildSpotConclusion({
+    fmpConclusion: buildFmpConclusionV2(output),
+    priceSources: priceSourcesV2
+  });
+  const eventConclusion = buildEventConclusion({
+    fmpConclusion: buildFmpConclusionV2(output),
+    uwConclusion: uwConclusionV2.uw_conclusion
+  });
+  const basisTracker = buildBasisTracker(priceSourcesV2);
+  const {
+    gexEngine,
+    flowEngine,
+    darkpoolEngine,
+    volEngine,
+    sentimentEngine
+  } = buildInstitutionalEngines({
+    uwConclusion: uwConclusionV2.uw_conclusion,
+    diagnostics: uwConclusionV2.uw_wall_diagnostics,
+    priceSources: priceSourcesV2,
+    darkpoolSummary,
+    volatilityActivation,
+    marketSentiment,
+    institutionalAlert,
+    uwApi
+  });
   const rawNoteV2 = runRawNoteV2({
+    spot_conclusion: spotConclusion,
+    event_conclusion: eventConclusion,
+    gex_engine: gexEngine,
+    flow_aggression_engine: flowEngine,
+    darkpool_engine: darkpoolEngine,
+    volatility_engine: volEngine,
+    market_sentiment_engine: sentimentEngine,
+    basis_tracker: basisTracker,
     fmp_conclusion: buildFmpConclusionV2(output),
     uw_conclusion: uwConclusionV2.uw_conclusion,
     theta_conclusion: buildThetaConclusion({
@@ -1575,6 +1608,14 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     ...output,
     ...rawNoteV2,
     fmp_price_audit: fmpSnapshot.price?.audit || null,
+    spot_conclusion: spotConclusion,
+    event_conclusion: eventConclusion,
+    gex_engine: gexEngine,
+    flow_aggression_engine: flowEngine,
+    darkpool_engine: darkpoolEngine,
+    volatility_engine: volEngine,
+    market_sentiment_engine: sentimentEngine,
+    basis_tracker: basisTracker,
     scenario: scenarioMode ? output.scenario : null,
     fetch_mode: scenarioMode ? output.fetch_mode : 'live',
     is_mock: scenarioMode ? output.is_mock : false,
