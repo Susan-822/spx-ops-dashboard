@@ -1383,6 +1383,16 @@ function buildHomeHumanCopy(home = {}) {
     home.price_sources?.spx?.price,
     inferredFromDarkpool
   );
+  const displayTrigger = displayPrice != null && priceTrigger.key_level != null
+    ? {
+        ...priceTrigger,
+        current_price: displayPrice,
+        distance_pct: Math.abs(displayPrice - Number(priceTrigger.key_level)) / displayPrice * 100,
+        state: Math.abs(displayPrice - Number(priceTrigger.key_level)) / displayPrice * 100 <= 0.5 ? 'watch_reaction' : priceTrigger.state,
+        state_cn: Math.abs(displayPrice - Number(priceTrigger.key_level)) / displayPrice * 100 <= 0.5 ? `已接近 ${darkLevel}，观察反应` : priceTrigger.state_cn,
+        next_action_cn: Math.abs(displayPrice - Number(priceTrigger.key_level)) / displayPrice * 100 <= 0.5 ? '不追 Put，先看这里有没有承接。' : priceTrigger.next_action_cn
+      }
+    : priceTrigger;
   const newsRiskCn = ['live', 'fresh'].includes(String(newsRadar.status || '').toLowerCase())
     ? newsRadar.news_risk_cn || '暂未确认'
     : '暂未确认';
@@ -1409,7 +1419,7 @@ function buildHomeHumanCopy(home = {}) {
     bias,
     headline,
     action: gravity.mapped_spx != null ? `禁止追 Put，等 ${darkLevel} 附近回踩反应。` : '只观察，不追空。',
-    priceTrigger,
+    priceTrigger: displayTrigger,
     newsRadar,
     displayPrice,
     newsRiskCn,
@@ -1511,8 +1521,8 @@ function renderExecutionSection(home) {
           ['看 Call 条件', copy.priceTrigger.bullish_condition_cn || '7150 附近站稳并反弹，再观察 Call 候选。'],
           ['看 Put 条件', copy.priceTrigger.bearish_condition_cn || '7150 放量跌破并回抽不过，再重新评估 Put。'],
           ['禁做条件', copy.priceTrigger.no_trade_condition_cn || '7150 附近来回乱磨，或者没有入场、止损、TP，不做。'],
-          ['新闻风险', copy.newsRiskText],
-          ['新闻原因', copy.newsReasonText],
+          ['新闻风险', copy.newsRiskCn],
+          ['新闻原因', copy.newsUnavailableReason],
           ['墙位区', execution.wall_zone_panel?.summary_cn || 'GEX 墙位暂时不能用；暗池显示 7150 附近有大成交观察区。'],
           ['入场 / 止损 / TP', '还没有入场、止损、目标价，不能下单']
         ])}
