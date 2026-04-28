@@ -30,6 +30,7 @@ const {
   mapThetaSnapshotToSourceStatus
 } = await import('../decision_engine/dealer-conclusion-engine.js');
 const { evaluateDataCoherence } = await import('../decision_engine/data-coherence-engine.js');
+const { buildUwNormalized } = await import('../decision_engine/algorithms/index.js');
 
 const EXPECTED_ACTIONS = {
   negative_gamma_wait_pullback: 'wait',
@@ -1266,6 +1267,19 @@ test('UW intelligence layer feeds command center permissions reflection and tele
   assert.equal(signal.uw_normalized.flow.field_semantics_confirmed, false);
   assert.equal(signal.uw_normalized.sentiment.status, 'partial');
   assert.equal(signal.uw_normalized.dealer.wall_algorithm_allowed, false);
+  assert.equal(['pagination_issue', 'missing_strike_filter', 'ticker_mapping_issue', 'endpoint_field_issue', 'date_stale', 'provider_data_gap', 'unknown'].includes(signal.dealer_diagnostics.likely_cause), true);
+  assert.equal(signal.dealer_diagnostics.rows_near_spot, 0);
+  assert.equal(typeof signal.dealer_diagnostics.spx_has_near_spot, 'boolean');
+  assert.equal(typeof signal.dealer_diagnostics.spy_proxy_has_near_spot, 'boolean');
+  assert.equal(signal.uw_normalized.volatility.volatility_state.formula_ready, true);
+  assert.equal(signal.uw_normalized.volatility.volatility_state.parser_ready, true);
+  assert.equal(signal.uw_normalized.volatility.volatility_state.data_ready, true);
+  assert.equal(signal.uw_normalized.volatility.volatility_state.vscore, 95.2);
+  assert.equal(signal.uw_normalized.volatility.volatility_state.classification, 'prohibit_long_single');
+  assert.equal(signal.uw_normalized.darkpool.tier, 'major_wall');
+  assert.match(signal.execution_card.dealer, /likely_cause/);
+  assert.match(signal.execution_card.volatility, /Vscore=95.2/);
+  assert.match(signal.execution_card.darkpool, /major_wall/);
   assert.equal(signal.uw_endpoint_coverage.dealer_gex.required.length > 0, true);
   assert.equal(signal.uw_endpoint_coverage.flow.required.length > 0, true);
   assert.equal(Boolean(signal.health_matrix.state), true);

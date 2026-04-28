@@ -134,7 +134,20 @@ function endpointPath(definition, config) {
 
 function endpointUrl(definition, config) {
   const url = new URL(`${config.baseUrl}${endpointPath(definition, config)}`);
-  if (definition.path === '/api/option-trades/flow-alerts') {
+  if (definition.path === '/api/stock/{ticker}/spot-exposures/strike') {
+    if (definition.ticker === 'SPY') {
+      url.searchParams.set('limit', '500');
+      url.searchParams.set('page', String(definition.page || 1));
+    } else {
+      const spot = numberOrNull(config.currentSpot);
+      if (spot != null) {
+        url.searchParams.set('min_strike', String(Math.round(spot * 0.85)));
+        url.searchParams.set('max_strike', String(Math.round(spot * 1.15)));
+      }
+      url.searchParams.set('limit', '500');
+      url.searchParams.set('page', String(definition.page || 1));
+    }
+  } else if (definition.path === '/api/option-trades/flow-alerts') {
     url.searchParams.set('ticker_symbol', config.ticker);
     url.searchParams.set('limit', '100');
   } else if (definition.path === '/api/darkpool/recent') {
@@ -153,6 +166,28 @@ function endpointUrl(definition, config) {
     url.searchParams.set('limit', '100');
   }
   return url;
+}
+
+function rows(value) {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.data?.data)) return value.data.data;
+  if (Array.isArray(value?.data)) return value.data;
+  if (Array.isArray(value?.results)) return value.results;
+  return [];
+}
+
+function numberOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function countRowsNearSpot(items = [], spotPrice = null) {
+  if (!Number.isFinite(Number(spotPrice)) || Number(spotPrice) <= 0) return 0;
+  const spot = Number(spotPrice);
+  return items.filter((row) => {
+    const strike = numberOrNull(row?.strike ?? row?.price ?? row?.level);
+    return strike != null && Math.abs(strike - spot) / spot <= 0.15;
+  }).length;
 }
 
 function parseRateLimit(headers) {

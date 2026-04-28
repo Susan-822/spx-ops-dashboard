@@ -20,23 +20,26 @@ function baseLayer(overrides = {}) {
 
 function buildDealerLayer(dealer = {}) {
   const hasData = dealer.has_data === true || dealer.greek_exposure_has_data === true;
+  const diagnostics = dealer.dealer_diagnostics || {};
+  const likelyCause = diagnostics.likely_cause || 'unknown';
   return baseLayer({
     status: hasData ? 'partial' : 'unavailable',
     bias: 'unknown',
     confidence: hasData ? 30 : 0,
     usable_for_analysis: hasData,
     blocks_operation: true,
-    summary_cn: hasData ? '做市商数据已经接通，但墙位还不能用。' : '做市商数据未接通。',
+    summary_cn: hasData ? `做市商数据已经接通，但墙位还不能用。原因：${likelyCause}。` : '做市商数据未接通。',
     evidence_cn: hasData
       ? [
           'UW 返回了真实 Gamma / Vanna / Charm 字段。',
-          `当前 spot_price=${dealer.spot_price ?? '--'}，但 strike 区间只有 ${dealer.min_strike ?? '--'} 到 ${dealer.max_strike ?? '--'}，现价附近 rows_used=${dealer.rows_used ?? 0}。`,
+          `当前 spot_price=${diagnostics.spot_price ?? dealer.spot_price ?? '--'}，请求区间 ${diagnostics.requested_min_strike ?? '--'} 到 ${diagnostics.requested_max_strike ?? '--'}，rows_near_spot=${diagnostics.rows_near_spot ?? dealer.rows_near_spot ?? 0}。`,
+          `pages_checked=${diagnostics.pages_checked ?? '--'}，SPX near spot=${diagnostics.spx_has_near_spot === true ? '是' : '否'}，SPY proxy near spot=${diagnostics.spy_proxy_has_near_spot === true ? '是' : '否'}。`,
           '所以 Call Wall / Put Wall / Gamma Flip 暂不能计算。'
         ]
       : [],
     missing_fields: dealer.missing_fields || ['有效 strike 区间', 'Call Wall', 'Put Wall', 'Gamma Flip'],
-    current_block: 'strike 区间和现价不匹配，Dealer 只能做背景，不能给目标位。',
-    next_fix: '确认 SPX / SPY ticker 映射、strike 单位和 spot_gex 过滤区间。'
+    current_block: `strike 区间和现价不匹配，likely_cause=${likelyCause}，Dealer 只能做背景，不能给目标位。`,
+    next_fix: diagnostics.next_fix || '确认 SPX / SPY ticker 映射、strike 单位和 spot_gex 过滤区间。'
   });
 }
 
@@ -69,44 +72,54 @@ function buildFlowLayer(flow = {}) {
 
 function buildVolatilityConclusionLayer(volatility = {}) {
   const hasData = volatility.has_data === true;
+  const state = volatility.volatility_state || {};
+  const formulaReady = state.formula_ready === true;
+  const dataReady = state.data_ready === true;
   return baseLayer({
     status: hasData ? 'partial' : 'unavailable',
     bias: 'unknown',
     confidence: hasData ? 40 : 0,
     usable_for_analysis: hasData,
     blocks_operation: true,
-    summary_cn: hasData
-      ? '波动率数据已经接通并展开，但还没形成完整打法结论。'
-      : '波动率数据未接通。',
+    summary_cn: formulaReady && dataReady
+      ? `Vscore=${state.vscore}，分类=${state.classification}。`
+      : formulaReady
+        ? 'Vscore 公式已就绪，等数据进入即可计算。'
+        : hasData
+          ? '波动率数据已经接通并展开，但还没形成完整打法结论。'
+          : '波动率数据未接通。',
     evidence_cn: hasData
       ? [
-          'IV Rank / Interpolated IV / Realized Volatility / Term Structure endpoint 都有返回结构。',
-          '当前还需要把 IV Rank、期限结构、0DTE implied move 标准化成统一字段。'
+          'Vscore = IVR * 0.3 + IVP * 0.7。',
+          `formula_ready=${formulaReady ? 'true' : 'false'}，parser_ready=${state.parser_ready === true ? 'true' : 'false'}，data_ready=${dataReady ? 'true' : 'false'}。`,
+          dataReady ? `IVR=${state.iv_rank_normalized}，IVP=${state.iv_percentile_normalized}。` : '等待 IV Rank / IV Percentile 同时进入。'
         ]
       : [],
     missing_fields: volatility.missing_fields || ['IV Rank', 'IV Percentile', 'Interpolated IV', '0DTE Implied Move'],
-    current_block: '波动率只能说明数据已接入，暂不能判断单腿是否划算。',
+    current_block: formulaReady && !dataReady ? '公式已就绪，等数据进入即可计算。' : '波动率只能说明数据已接入，暂不能判断单腿是否划算。',
     next_fix: '把 iv_rank_1y、percentile、term_structure、implied_move 映射成 volatility_state。'
   });
 }
 
 function buildDarkpoolConclusionLayer(darkpool = {}) {
   const hasData = darkpool.has_data === true || Number(darkpool.prints_count) > 0;
+  const tier = darkpool.tier || 'none';
   return baseLayer({
     status: hasData ? 'partial' : 'unavailable',
     bias: 'neutral',
     confidence: hasData ? 40 : 0,
     usable_for_analysis: hasData,
     blocks_operation: true,
-    summary_cn: hasData ? '暗池数据已经接通，但还没有形成明确支撑或压力。' : '暗池数据未接通。',
+    summary_cn: hasData ? '有低置信空间参考，但不能作为墙位。' : '暗池数据未接通。',
     evidence_cn: hasData
       ? [
           `当前暗池样本来自 ${darkpool.source_ticker || 'SPY'}，可作为 SPX 的参考 proxy。`,
-          `样本 premium 低于 ${darkpool.major_threshold ?? 1000000} 美元，不足以单独定义强支撑或压力。`
+          `当前档位 ${tier} / ${darkpool.tier_cn || '零星脚印'} / 低置信参考。`,
+          `mapped_spx=${darkpool.mapped_spx ?? '--'}，distance_pct=${darkpool.distance_pct ?? '--'}。`
         ]
       : [],
     missing_fields: darkpool.missing_fields || ['nearest_support', 'nearest_resistance', 'SPX 支撑压力映射'],
-    current_block: '需要聚合 SPY 的 100 万美元以上 prints，才能生成支撑/压力区。',
+    current_block: hasData ? '有低置信空间参考，但不能作为墙位。' : '暗池 raw 暂无可用样本。',
     next_fix: '生成 price_bins、nearest_support、nearest_resistance、largest_level。'
   });
 }

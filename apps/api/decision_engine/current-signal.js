@@ -266,6 +266,29 @@ function applySourceDisplayRules(sourceStatus = [], unified = {}) {
   });
 }
 
+function buildExecutionCardDiagnostics(uwNormalized = {}, layerConclusions = {}) {
+  const dealerDiagnostics = uwNormalized.dealer?.dealer_diagnostics || {};
+  const volatilityState = uwNormalized.volatility?.volatility_state || {};
+  const darkpool = uwNormalized.darkpool || {};
+  const dealerText = dealerDiagnostics.rows_near_spot === 0
+    ? `Dealer：rows_near_spot=0，likely_cause=${dealerDiagnostics.likely_cause || 'unknown'}。`
+    : `Dealer：rows_near_spot=${dealerDiagnostics.rows_near_spot ?? '--'}，继续等待墙位确认。`;
+  const volatilityText = volatilityState.formula_ready === true && volatilityState.data_ready === false
+    ? 'Volatility：公式已就绪，等数据进入即可计算。'
+    : volatilityState.data_ready === true
+      ? `Volatility：Vscore=${volatilityState.vscore}，${volatilityState.classification}。`
+      : 'Volatility：Vscore 公式待数据确认。';
+  const darkpoolText = darkpool.tier && darkpool.tier !== 'none'
+    ? `Dark Pool：${darkpool.tier} / ${darkpool.tier_cn || '空间参考'}，有低置信空间参考，但不能作为墙位。`
+    : layerConclusions.darkpool?.summary_cn || 'Dark Pool：暂不可用。';
+  return {
+    status: 'waiting',
+    dealer: dealerText,
+    volatility: volatilityText,
+    darkpool: darkpoolText
+  };
+}
+
 function buildLayerContracts(signal = {}) {
   const sourceDisplayMap = signal.source_display || {};
   const sourceEntries = Object.values(sourceDisplayMap);
@@ -1624,7 +1647,8 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   const priceSourcesV2 = buildPriceSourcesV2({ signal: output, projectionPrices, crossAssetProjection });
   const uwNormalized = buildUwNormalized({
     raw: uwSnapshot?.raw || uwApi.uw_raw,
-    provider: uwProvider
+    provider: uwProvider,
+    spot_price: priceSourcesV2.spx?.price ?? null
   });
   const uwConclusionV2 = buildUwConclusionV2({
     provider: uwProvider,
@@ -1730,6 +1754,8 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     ...rawNoteV2,
     fmp_price_audit: fmpSnapshot.price?.audit || null,
     uw_normalized: uwNormalized,
+    dealer_diagnostics: uwNormalized.dealer?.dealer_diagnostics || {},
+    execution_card: buildExecutionCardDiagnostics(uwNormalized, uwLayerConclusions),
     uw_layer_conclusions: {
       dealer: uwLayerConclusions.gex_engine,
       flow: uwLayerConclusions.flow_aggression_engine,
