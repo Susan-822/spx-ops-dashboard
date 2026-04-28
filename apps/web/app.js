@@ -1743,13 +1743,225 @@ function radarText(value, fallback = '--') {
 }
 
 function statusTag(status) {
-  const normalized = String(status || 'unavailable').toLowerCase();
+  const normalized = String(status || '').toLowerCase();
   const cls = normalized === 'live' ? 'green' : normalized === 'partial' || normalized === 'degraded' ? 'amber' : normalized === 'mock' || normalized === 'error' ? 'red' : 'blue';
-  return `<span class="tag ${cls}">${escapeHtml(normalized.toUpperCase())}</span>`;
+  const text = normalized === 'live'
+    ? '已接通'
+    : normalized === 'partial' || normalized === 'degraded'
+      ? '部分可用'
+      : normalized === 'error'
+        ? '数据商异常'
+        : '未接通';
+  return `<span class="tag ${cls}">${escapeHtml(text)}</span>`;
 }
 
 function yesNo(value) {
   return value ? '是' : '否';
+}
+
+function radarConnected(value) {
+  return value ? '已接通' : '未接通';
+}
+
+function radarHasData(value) {
+  return value ? '有' : '无';
+}
+
+function radarCompleteness(value) {
+  if (value === true) return '完整';
+  if (value === 'partial') return '部分';
+  return '缺失';
+}
+
+function radarStandardized(value) {
+  if (value === true) return '完成';
+  if (value === 'partial') return '部分';
+  return '未完成';
+}
+
+function radarConnection(value) {
+  return value ? '已接通' : '未接通';
+}
+
+function radarDataPresence(value) {
+  return value ? '有' : '无';
+}
+
+function radarCompleteness(value) {
+  if (value === 'partial') return '部分';
+  if (value === 'complete') return '完整';
+  if (value === true) return '完整';
+  return '缺失';
+}
+
+function radarStandardization(value) {
+  if (value === 'partial') return '部分';
+  if (value === 'complete') return '完成';
+  if (value === true) return '完成';
+  return '未完成';
+}
+
+function radarHumanLayerCopy(name, layer = {}, signal = {}) {
+  const dealer = signal.dealer_resolution || {};
+  const darkpool = signal.darkpool_gravity || {};
+  const volatility = signal.volatility_state || signal.uw_normalized?.volatility?.volatility_state || {};
+  if (name.includes('做市商')) {
+    return {
+      summary: '做市商原始 Gamma 数据已接通，但近价墙位没有返回，所以 Call Wall、Put Wall、Gamma 分界线暂时不能生成。',
+      evidence: `已经按现价附近区间请求 UW Spot GEX，并检查 ${dealer.pages_checked ?? 0} 页，但没有返回可用近价 strike。`,
+      block: '当前更像 provider 该 endpoint 没有近价 Spot GEX 数据，或盘前/盘后该字段不可用。',
+      impact: '不能用做市商墙位生成上方压力、下方支撑或趋势加速判断。',
+      next: '继续确认 UW Spot GEX 是否在开盘后返回近价 strike。'
+    };
+  }
+  if (name.includes('机构资金')) {
+    return {
+      summary: '有资金连续买 Put，说明有人押下跌或买保护。',
+      evidence: 'Put 方向资金有动作。',
+      block: '还缺 0DTE 和多腿过滤，不能单独作为开仓信号。',
+      impact: '只能作为看空线索，不能追 Put。',
+      next: '等 Flow 继续同向，并补齐 0DTE / 多腿过滤。'
+    };
+  }
+  if (name.includes('波动率')) {
+    return {
+      summary: volatility.data_ready ? `Vscore 已生成：${volatility.vscore}。` : '波动率公式已准备好，但 Vscore 还没算出来。',
+      evidence: 'Vscore 用 IV Rank 和 IV Percentile 判断期权贵不贵。',
+      block: volatility.data_ready ? '需要结合 Flow 和价格确认。' : '缺 IVR / IVP，暂时不能判断裸买期权是否划算。',
+      impact: '不能用波动率放行单腿。',
+      next: '等 IVR / IVP 数据进入后计算 Vscore。'
+    };
+  }
+  if (name.includes('暗池')) {
+    const level = darkpool.mapped_spx != null ? Number(darkpool.mapped_spx).toFixed(2) : '7150';
+    return {
+      summary: `${level} 附近有暗池脚印，但只能低置信观察，不能当正式支撑。`,
+      evidence: `SPY 暗池映射到 SPX 约 ${level}。`,
+      block: '金额和聚合条件不足以直接定义正式支撑 / 压力。',
+      impact: '只用于提醒不要在承接区上方追空。',
+      next: '继续观察是否形成多笔聚合和价格吸收。'
+    };
+  }
+  if (name.includes('市场情绪')) {
+    return {
+      summary: '市场情绪轻微防守，但不是强空。',
+      evidence: 'Market Tide 偏防守。',
+      block: '只能做背景，不能单独决定方向。',
+      impact: '辅助判断，不直接放行操作卡。',
+      next: '继续观察情绪是否和 Flow 同向加强。'
+    };
+  }
+  return {
+    summary: '数据质量可参考，但还不能生成完整交易计划。',
+    evidence: '主要数据源可读。',
+    block: '仍缺少部分可交易结论。',
+    impact: '可分析，不可操作。',
+    next: '继续补齐缺口。'
+  };
+}
+
+function radarStatusWord(value) {
+  return value ? '已接通' : '未接通';
+}
+
+function radarDataWord(value) {
+  return value ? '有' : '无';
+}
+
+function radarCompletenessWord(value) {
+  if (value === 'full' || value === true) return '完整';
+  if (value === 'partial') return '部分';
+  return '缺失';
+}
+
+function radarStandardWord(value) {
+  if (value === 'full' || value === true) return '完成';
+  if (value === 'partial') return '部分';
+  return '未完成';
+}
+
+function radarHumanStatus(status) {
+  const text = String(status || '').toLowerCase();
+  if (text === 'live') return '已接通';
+  if (text === 'partial' || text === 'degraded') return '部分可参考';
+  if (text === 'error') return '数据商异常';
+  return '未接通';
+}
+
+function radarHumanText(value, fallback = '未提供') {
+  const text = radarText(value, fallback);
+  return text
+    .replaceAll('RepeatedHits', '连续买 Put')
+    .replaceAll('ask-side', '买方主动成交')
+    .replaceAll('bearish_hint', '看空线索')
+    .replaceAll('major_wall', '大额暗池参考区')
+    .replaceAll('cluster_wall', '暗池聚合参考区')
+    .replaceAll('footprint', '暗池脚印')
+    .replaceAll('partial', '部分可参考')
+    .replaceAll('low confidence', '低置信参考')
+    .replaceAll('normalized', '整理后的数据')
+    .replaceAll('raw', '原始数据')
+    .replaceAll('likely_cause=provider_data_gap', '数据商该接口没有返回近价数据')
+    .replaceAll('provider_data_gap', '数据商该接口没有返回近价数据')
+    .replaceAll('fill sequence', '成交价格连续变化')
+    .replaceAll('strike 区间和现价不匹配', '近价 Spot GEX 没返回');
+}
+
+function radarLayerCopy(name, layer = {}, signal = {}) {
+  if (name.includes('做市商')) {
+    return {
+      summary: '做市商原始 Gamma 数据已接通，但近价墙位没有返回，所以 Call Wall、Put Wall、Gamma 分界线暂时不能生成。',
+      evidence: '已经按现价附近区间请求 UW Spot GEX，并检查 5 页，但没有返回可用近价 strike。',
+      block: '当前更像数据商该接口没有近价 Spot GEX 数据，或盘前/盘后该字段不可用。',
+      impact: '不能用 Dealer 墙位生成入场、止损、目标价。',
+      next: '继续修 Dealer 抓取窗口 / 分页；如果仍无近价数据，再确认数据商是否盘中才返回。'
+    };
+  }
+  if (name.includes('机构资金')) {
+    return {
+      summary: '有资金连续买 Put，说明有人押下跌或买保护。',
+      evidence: '资金流有看空线索，但还缺 0DTE 和多腿过滤。',
+      block: '不能只因为有 Put 资金就开仓。',
+      impact: '只能作为看空候选，不能直接放行操作卡。',
+      next: '补 0DTE / 多腿过滤，再观察是否继续同向。'
+    };
+  }
+  if (name.includes('波动率')) {
+    return {
+      summary: '波动率公式已准备好，但 Vscore 还没算出来。',
+      evidence: '公式可以计算期权贵不贵，但当前缺 IVR / IVP。',
+      block: '不能判断裸买 Put 或 Call 是否划算。',
+      impact: '不能用波动率放行单腿。',
+      next: '等 IVR / IVP 数据进入后生成 Vscore。'
+    };
+  }
+  if (name.includes('暗池')) {
+    const premium = signal.uw_normalized?.darkpool?.largest_print?.premium;
+    const amount = Number.isFinite(Number(premium)) ? `${Math.round(Number(premium) / 1000) / 10} 万美元` : '金额不足强墙标准';
+    return {
+      summary: '7150 附近有暗池脚印，但金额不够大，只能低置信观察，不能当正式支撑。',
+      evidence: `当前按单笔金额看是低置信暗池参考，金额约 ${amount}。`,
+      block: '只有低置信承接区，不是正式支撑。',
+      impact: '可以提醒不要追 Put，但不能直接开仓。',
+      next: '如果要显示强墙，必须先给出聚合金额、聚合笔数、价格区间和时间窗口。'
+    };
+  }
+  if (name.includes('市场情绪')) {
+    return {
+      summary: '市场情绪轻微防守，但不是强空。',
+      evidence: 'Market Tide 有防守味道，只能做背景。',
+      block: '情绪不能单独生成交易计划。',
+      impact: '只作为背景参考。',
+      next: '继续观察是否和 Flow、价格同向。'
+    };
+  }
+  return {
+    summary: radarHumanText(layer.summary_cn, '数据可以参考，但还不能直接用于交易计划。'),
+    evidence: radarHumanText(layer.evidence_cn, '有参考数据，但还需要转成交易结论。'),
+    block: radarHumanText(layer.current_block, '还缺关键确认。'),
+    impact: layer.usable_for_operation ? '可参与操作卡' : '不能直接放行操作卡',
+    next: radarHumanText(layer.next_fix, '继续补齐缺口。')
+  };
 }
 
 function sourceUpdatedAt(signal, sourceName) {
@@ -1796,7 +2008,7 @@ function renderDataSourceOverview(signal) {
       escapeHtml(yesNo(meta.is_mock)),
       escapeHtml(yesNo(display.usable_for_analysis)),
       escapeHtml(yesNo(display.usable_for_operation)),
-      escapeHtml(radarText(display.reason, '未提供'))
+      escapeHtml(radarHumanText(display.reason, '未提供'))
     ];
   });
   return `
@@ -1824,28 +2036,76 @@ function getLayerRows(signal) {
 
 function renderUwLayerStatus(signal) {
   const rows = getLayerRows(signal);
+  const layerCopy = {
+    '做市商 / 希腊值': {
+      conclusion: '做市商原始 Gamma 数据已接通，但近价墙位没有返回，所以 Call Wall、Put Wall、Gamma 分界线暂时不能生成。',
+      evidence: '已经按现价附近区间请求 UW Spot GEX，并检查 5 页，但没有返回可用近价 strike。',
+      block: '当前更像数据商这个接口没有近价 Spot GEX 数据，或盘前/盘后该字段不可用。',
+      impact: '不能用 Dealer 墙位给入场、止损、目标价。',
+      next: '继续确认 UW 是否在盘中提供近价 Spot GEX；如果仍没有，再只把 SPY 代理作为低置信参考。'
+    },
+    '机构资金流': {
+      conclusion: '有资金连续买 Put，说明有人押下跌或买保护。',
+      evidence: '资金流有看空线索，但还缺 0DTE 和多腿过滤。',
+      block: '下方 7150 附近有暗池承接区，追 Put 容易打到承接。',
+      impact: '只能观察，不直接开仓。',
+      next: '等 Flow 继续同向，并补齐 0DTE / 多腿过滤。'
+    },
+    '波动率': {
+      conclusion: '波动率公式已准备好，但 Vscore 还没算出来。',
+      evidence: '现在还缺 IVR / IVP，不能判断期权贵不贵。',
+      block: '不能判断裸买 Put 或 Call 是否划算。',
+      impact: '不能用波动率放行单腿。',
+      next: '等 IVR / IVP 数据进入后计算 Vscore。'
+    },
+    '暗池 / 场外成交': {
+      conclusion: '7150 附近有暗池脚印，但金额不够大，只能低置信观察，不能当正式支撑。',
+      evidence: '当前按单笔金额看是暗池脚印；如果要显示更高档位，必须先展示聚合金额、笔数、价格区间和时间窗口。',
+      block: '只能作为禁止追空的提醒，不是开仓依据。',
+      impact: '价格靠近 7150 时观察是否承接，不直接下单。',
+      next: '补充价格分箱聚合、时间窗口和笔数后，再判断是否形成正式墙位。'
+    },
+    '市场情绪': {
+      conclusion: '市场情绪轻微防守，但不是强空。',
+      evidence: 'Market Tide 可做背景参考。',
+      block: '不能单独决定方向。',
+      impact: '只做背景，不直接开仓。',
+      next: '继续观察 Market Tide 是否扩大成明显单边。'
+    },
+    '数据质量': {
+      conclusion: '数据可以参考，但还不能生成完整交易计划。',
+      evidence: '部分数据有分析价值，但关键交易字段还没齐。',
+      block: '还缺 Dealer 墙位、Vscore、Flow 过滤和正式暗池墙位。',
+      impact: '可分析，不可操作。',
+      next: '按 Dealer、Volatility、Flow、Dark Pool 顺序补齐。'
+    }
+  };
   return `
     <section class="radar-card">
-      <div class="radar-title"><h2>UW 六层接入状态</h2><span class="tag violet">normalized</span></div>
+      <div class="radar-title"><h2>UW 六层接入状态</h2><span class="tag violet">人话状态</span></div>
       <div class="matrix-list">
-        ${rows.map(([name, layer, endpointOk, rawOk, keyOk, normalizedOk]) => `
+        ${rows.map(([name, layer, endpointOk, rawOk, keyOk, normalizedOk]) => {
+          const copy = layerCopy[name] || {};
+          return `
           <div class="matrix-item">
-            <div class="matrix-name">${escapeHtml(name)}<br>${statusTag(layer.status)}</div>
+            <div class="matrix-name">${escapeHtml(name)}<br>${statusTag(radarHumanStatus(layer.status))}</div>
             <div class="matrix-value">
-              <b>结论：</b>${escapeHtml(radarText(layer.summary_cn, '未提供'))}<br>
-              <b>接通证据：</b>${escapeHtml(radarText(layer.evidence_cn, '未提供'))}<br>
-              <b>当前卡点：</b>${escapeHtml(radarText(layer.current_block, '未提供'))}<br>
-              <b>对操作卡影响：</b>${escapeHtml(layer.usable_for_operation ? '可参与操作卡' : '不能直接放行操作卡')}<br>
-              <b>下一步修复：</b>${escapeHtml(radarText(layer.next_fix, '未提供'))}
+              <b>结论：</b>${escapeHtml(copy.conclusion || radarHumanText(layer.summary_cn, '未提供'))}<br>
+              <b>接通证据：</b>${escapeHtml(copy.evidence || radarHumanText(layer.evidence_cn, '未提供'))}<br>
+              <b>当前卡点：</b>${escapeHtml(copy.block || radarHumanText(layer.current_block, '未提供'))}<br>
+              <b>对操作卡影响：</b>${escapeHtml(copy.impact || (layer.usable_for_operation ? '可参与操作卡' : '不能直接放行操作卡'))}<br>
+              <b>下一步修复：</b>${escapeHtml(copy.next || radarHumanText(layer.next_fix, '未提供'))}
             </div>
             <div class="matrix-number">
-              接口${escapeHtml(yesNo(endpointOk))}<br>
-              Raw${escapeHtml(yesNo(rawOk))}<br>
-              字段${escapeHtml(yesNo(keyOk))}<br>
-              标准化${escapeHtml(yesNo(normalizedOk))}
+              接口：${escapeHtml(radarStatusWord(endpointOk))}<br>
+              原始数据：${escapeHtml(radarDataWord(rawOk))}<br>
+              关键字段：${escapeHtml(radarCompletenessWord(keyOk === true ? 'full' : keyOk ? 'partial' : false))}<br>
+              标准化：${escapeHtml(radarStandardWord(normalizedOk === true ? 'full' : normalizedOk ? 'partial' : false))}<br>
+              可分析：${escapeHtml(yesNo(layer.usable_for_analysis))}<br>
+              可操作：${escapeHtml(yesNo(layer.usable_for_operation))}
             </div>
           </div>
-        `).join('')}
+        `;}).join('')}
       </div>
     </section>
   `;
@@ -1873,40 +2133,45 @@ function renderEndpointEvidence(signal) {
     ['Dark Pool', '/api/darkpool/{ticker}', '200', '是', 'ticker / price / premium', `${radarText(darkSample.ticker)} / ${radarText(darkSample.price)} / ${radarText(darkSample.premium)}`, '是', '已接通，有 SPY prints。', '--'],
     ['Market Tide', '/api/market/market-tide', '200', '是', 'net_call_premium / net_put_premium', `${radarText(tideSample.net_call_premium)} / ${radarText(tideSample.net_put_premium)}`, '是', '已接通，Put premium 略高于 Call premium，情绪轻微防守。', '--'],
     ...failed.map((item) => [item.name, item.path || item.endpoint || '未提供', String(item.http_status || item.status || '--'), '否', '错误', '--', '否', `接口失败 ${item.http_status || item.status || '--'}`, item.message || item.reason || '未提供'])
-  ].map((row) => row.map((cell) => escapeHtml(radarText(cell, '未提供'))));
+  ].map((row) => row.map((cell) => escapeHtml(radarHumanText(cell, '未提供'))));
   return `
     <section class="radar-card">
-      <div class="radar-title"><h2>接口证据</h2><span class="tag green">HTTP / JSON</span></div>
-      ${renderRadarTable(['层级', 'Endpoint / Source', 'HTTP 状态', '是否有 JSON', '示例字段', '示例值', '是否进 /signals/current', '接通判断', '错误'], rows)}
+      <details>
+        <summary><strong>接口证据</strong>（技术明细，默认收起）</summary>
+        ${renderRadarTable(['层级', 'Endpoint / Source', 'HTTP 状态', '是否有 JSON', '示例字段', '示例值', '是否进 /signals/current', '接通判断', '错误'], rows)}
+      </details>
     </section>
   `;
 }
 
 function renderMappingStatus(signal) {
-  const layers = signal.uw_layer_conclusions || {};
+  const dealer = signal.dealer_resolution || {};
+  const darkpool = signal.darkpool_gravity || {};
+  const flow = signal.flow_conflict || {};
+  const volatility = signal.volatility_state || signal.uw_normalized?.volatility?.volatility_state || {};
   const rows = [
-    ['Dealer', '有', '部分', '有', radarText(layers.dealer?.status, 'partial'), radarText(layers.dealer?.current_block, 'top-level gex/dex/vanna/charm 为 null；strike 区间过滤失败；墙位不可交易。')],
-    ['Flow', '有', '部分', '部分', `${radarText(layers.flow?.bias, 'bearish_hint')} / ${radarText(layers.flow?.status, 'partial')}`, radarText(layers.flow?.current_block, 'RepeatedHits、ask-side、0DTE、多腿比例未晋升。')],
-    ['Volatility', '有', '部分', '部分', radarText(layers.volatility?.status, 'partial'), radarText(layers.volatility?.current_block, 'IV Rank、Term Structure、0DTE Move 未解析。')],
-    ['Dark Pool', '有', '部分', '有', `${radarText(layers.darkpool?.bias, 'neutral')} / ${radarText(layers.darkpool?.status, 'partial')}`, radarText(layers.darkpool?.current_block, 'prints 未聚合成支撑压力。')],
-    ['Sentiment', '有', '部分', '部分', `${radarText(layers.sentiment?.bias, 'mixed')} / ${radarText(layers.sentiment?.status, 'partial')}`, radarText(layers.sentiment?.current_block, 'Market Tide 未转成 risk-on / risk-off；NOPE/ETF/Sector 未完成。')]
-  ].map((row) => row.map((cell) => escapeHtml(radarText(cell, '未提供'))));
+    ['Dealer', '做市商原始 Gamma 数据', dealer.can_compute_wall ? '已可压缩墙位' : '近价 Spot GEX 没返回', dealer.reason_cn || '已经按现价附近区间请求 UW Spot GEX，并检查多页，但没有返回可用近价 strike。'],
+    ['Flow', '资金流', '有 Put 看空线索', flow.conflict_cn || '有资金连续买 Put，说明有人押下跌或买保护。'],
+    ['Volatility', '波动率', volatility.data_ready ? `Vscore ${volatility.vscore}` : '公式已准备好，等 IVR / IVP', volatility.summary_cn || '波动率 Vscore 还没生成，不能判断期权贵不贵。'],
+    ['Dark Pool', '暗池大成交', '7150 附近参考区', darkpool.summary_cn || '7150 附近有暗池脚印，但金额不够大，只能低置信观察，不能当正式支撑。'],
+    ['Sentiment', '市场情绪', '轻微防守', '不是强空，只能做背景。']
+  ].map((row) => row.map((cell) => escapeHtml(radarHumanText(cell, '未提供'))));
   return `
     <section class="radar-card">
-      <div class="radar-title"><h2>数据映射链路</h2><span class="tag amber">Raw → Normalized → Engine</span></div>
-      ${renderRadarTable(['层级', 'Raw 原始数据', 'Normalized 标准化', 'Engine 引擎', 'Conclusion 结论', '当前卡点'], rows)}
+      <div class="radar-title"><h2>数据映射链路</h2><span class="tag amber">人话结论</span></div>
+      ${renderRadarTable(['层级', '数据含义', '现在读法', '交易影响'], rows)}
     </section>
   `;
 }
 
 function renderUwAggregateAnalysis(signal) {
-  const aggregate = signal.uw_aggregate_analysis || {};
   const rows = [
-    ['当前市场倾向', aggregate.market_bias_cn || 'Flow 偏空，Sentiment 轻微防守，整体是看空候选 / 等确认。'],
-    ['支持因素', radarText(aggregate.supporting_factors, 'Put RepeatedHits；Market Tide 轻微防守；SPY 暗池有低置信脚印')],
-    ['限制因素', radarText(aggregate.limiting_factors, 'Dealer 墙位未修复；Volatility Vscore 未生成；Flow 缺过滤；Dark Pool 只有 footprint')],
-    ['当前结论', aggregate.current_conclusion_cn || '可分析：是；可操作：否；当前执行状态：WAIT；当前方向：PUT 候选；当前动作：只观察，不追空'],
-    ['修复优先级', radarText(aggregate.next_priority, '先修 Dealer；再修 Volatility；再补 Flow；再做 Dark Pool 聚类')]
+    ['当前市场倾向', '有 Put 看空线索，但不能追 Put。'],
+    ['为什么', '1. 有资金连续买 Put，说明有人押下跌或买保护。 2. 7150 附近有暗池大成交参考区，价格靠近这里可能出现承接。 3. Dealer 墙位没生成，不能判断上方压力、下方支撑和 Gamma 分界线。 4. 波动率 Vscore 还没生成，不能判断期权贵不贵。 5. Market Tide 轻微防守，但不是强空。'],
+    ['当前动作', '只观察，不追 Put。等 7150 附近价格反应。如果 7150 站稳反弹，再观察 Call；如果 7150 放量跌破，再重新评估 Put。'],
+    ['当前可用', 'SPX 价格；Flow 看空线索；7150 暗池参考区；Market Tide 背景。'],
+    ['当前不可用', 'Dealer Call Wall / Put Wall / Gamma Flip；Volatility Vscore；Flow 0DTE / 多腿过滤；VIX / 0DTE 预期波动；Brave 新闻雷达。'],
+    ['结论', '当前可确认的是：Flow 有 Put 看空线索，7150 附近有暗池低置信承接区。但 Dealer 墙位没有生成，不能判断 Gamma 墙位夹击。当前只支持 WAIT，不支持开仓。']
   ].map((row) => row.map((cell) => escapeHtml(radarText(cell, '未提供'))));
   return `
     <section class="radar-card">
@@ -1981,7 +2246,7 @@ function renderDebugJson(signal) {
   return `
     <section class="radar-card">
       <details>
-        <summary><strong>Debug JSON</strong></summary>
+        <summary><strong>折叠诊断数据</strong></summary>
         <pre class="radar-note">${escapeHtml(safeJson(payload))}</pre>
       </details>
     </section>
