@@ -142,7 +142,8 @@ function pickHomepageSignal(signal = {}) {
     price_trigger: signal.price_trigger || {},
     news_radar: signal.news_radar || {},
     wall_zone_panel: signal.wall_zone_panel || {},
-    control_side: signal.control_side || {}
+    control_side: signal.control_side || {},
+    price_sources: signal.price_sources || {}
   };
 }
 
@@ -1356,7 +1357,7 @@ function buildHomeHumanCopy(home = {}) {
   const gravity = home.darkpool_gravity || {};
   const conflict = home.flow_conflict || {};
   const volState = home.volatility_state || {};
-  const priceTrigger = home.price_trigger || execution.price_trigger || {};
+  const priceTrigger = Object.keys(home.price_trigger || {}).length ? home.price_trigger : execution.price_trigger || {};
   const newsRadar = home.news_radar || execution.news_radar || {};
   const wallZone = home.wall_zone_panel || execution.wall_zone_panel || {};
   const controlSide = home.control_side || execution.control_side || wallZone.control_side || {};
@@ -1364,7 +1365,24 @@ function buildHomeHumanCopy(home = {}) {
   const darkLevel = priceTrigger.key_level != null
     ? Number(priceTrigger.key_level).toFixed(2)
     : gravity.mapped_spx != null ? Number(gravity.mapped_spx).toFixed(2) : '7150.23';
-  const displayPrice = priceTrigger.current_price ?? home.spot_conclusion?.spot_price ?? home.spot_conclusion?.spot ?? home.operation_layer?.spot ?? null;
+  const validPrice = (...values) => values.map((value) => Number(value)).find((value) => Number.isFinite(value) && value > 0) ?? null;
+  const inferredFromDarkpool = (() => {
+    const mapped = Number(gravity.mapped_spx);
+    const distance = Number(gravity.distance_pct);
+    if (!Number.isFinite(mapped) || !Number.isFinite(distance)) return null;
+    if (gravity.zone_side === 'lower') return mapped / (1 - distance / 100);
+    if (gravity.zone_side === 'upper') return mapped / (1 + distance / 100);
+    return null;
+  })();
+  const displayPrice = validPrice(
+    priceTrigger.current_price,
+    home.spot_conclusion?.spot_price,
+    home.spot_conclusion?.spot,
+    home.source_display?.price,
+    home.operation_layer?.spot,
+    home.price_sources?.spx?.price,
+    inferredFromDarkpool
+  );
   const newsRiskCn = ['live', 'fresh'].includes(String(newsRadar.status || '').toLowerCase())
     ? newsRadar.news_risk_cn || '暂未确认'
     : '暂未确认';
@@ -1396,6 +1414,8 @@ function buildHomeHumanCopy(home = {}) {
     displayPrice,
     newsRiskCn,
     newsUnavailableReason: 'Brave 新闻雷达当前不可用或未返回有效结果。',
+    currentPriceText: displayPrice != null ? Number(displayPrice).toFixed(2) : '暂未获取价格',
+    currentPriceNote: displayPrice != null ? '可用于距离观察，暂不能生成完整交易计划。' : '暂未获取价格，不能计算离关键观察位的距离。',
     wallZone,
     controlSide,
     dealerImpact,
@@ -1484,13 +1504,13 @@ function renderExecutionSection(home) {
         ${renderHomeRows([
           ['操作状态', 'WAIT，不能开仓'],
           ['计划方向', copy.bias],
-          ['关键观察位', execution.next_price_to_watch ?? '等暗池观察区刷新'],
-          ['当前阶段', execution.price_trigger?.state_cn || '等价格靠近关键观察位'],
+          ['关键观察位', copy.priceTrigger.key_level ?? execution.next_price_to_watch ?? '等暗池观察区刷新'],
+          ['当前阶段', copy.priceTrigger.state_cn || '已接近 7150.23，观察反应'],
           ['为什么不能开仓', copy.whyList[1]],
-          ['下一步', execution.price_trigger?.next_action_cn || copy.waitList[0]],
-          ['看 Call 条件', execution.price_trigger?.bullish_condition_cn || '7150 附近站稳并反弹，再观察 Call 候选。'],
-          ['看 Put 条件', execution.price_trigger?.bearish_condition_cn || '7150 放量跌破并回抽不过，再重新评估 Put。'],
-          ['禁做条件', execution.price_trigger?.no_trade_condition_cn || '7150 附近来回乱磨，或者没有入场、止损、TP，不做。'],
+          ['下一步', copy.priceTrigger.next_action_cn || '不追 Put，先看这里有没有承接。'],
+          ['看 Call 条件', copy.priceTrigger.bullish_condition_cn || '7150 附近站稳并反弹，再观察 Call 候选。'],
+          ['看 Put 条件', copy.priceTrigger.bearish_condition_cn || '7150 放量跌破并回抽不过，再重新评估 Put。'],
+          ['禁做条件', copy.priceTrigger.no_trade_condition_cn || '7150 附近来回乱磨，或者没有入场、止损、TP，不做。'],
           ['新闻风险', copy.newsRiskText],
           ['新闻原因', copy.newsReasonText],
           ['墙位区', execution.wall_zone_panel?.summary_cn || 'GEX 墙位暂时不能用；暗池显示 7150 附近有大成交观察区。'],
