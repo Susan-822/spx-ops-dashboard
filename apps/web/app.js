@@ -1475,14 +1475,16 @@ function renderExecutionSection(home) {
         ${renderHomeRows([
           ['操作状态', 'WAIT，不能开仓'],
           ['计划方向', copy.bias],
-          ['买什么', '还没有具体合约，不能下单'],
-          ['入场', '还没有入场价'],
-          ['止损', '还没有止损位'],
-          ['TP1', '还没有第一目标'],
-          ['TP2', '还没有第二目标'],
+          ['关键观察位', execution.next_price_to_watch ?? '等暗池观察区刷新'],
+          ['当前阶段', execution.price_trigger?.state_cn || '等价格靠近关键观察位'],
           ['为什么不能开仓', copy.whyList[1]],
-          ['下一步等什么', copy.waitList[0]],
-          ['禁止做什么', copy.doNotList[0]]
+          ['下一步', execution.price_trigger?.next_action_cn || copy.waitList[0]],
+          ['看 Call 条件', execution.price_trigger?.bullish_condition_cn || '7150 附近站稳并反弹，再观察 Call 候选。'],
+          ['看 Put 条件', execution.price_trigger?.bearish_condition_cn || '7150 放量跌破并回抽不过，再重新评估 Put。'],
+          ['禁做条件', execution.price_trigger?.no_trade_condition_cn || '7150 附近来回乱磨，或者没有入场、止损、TP，不做。'],
+          ['新闻风险', execution.news_radar?.news_risk_cn || '低'],
+          ['墙位区', execution.wall_zone_panel?.summary_cn || 'GEX 墙位暂时不能用；暗池显示 7150 附近有大成交观察区。'],
+          ['入场 / 止损 / TP', '还没有入场、止损、目标价，不能下单']
         ])}
       </article>
 
