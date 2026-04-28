@@ -159,7 +159,7 @@ function homepageState(signal = {}) {
     direction,
     dataHealth: String(dataHealth || 'partial').toLowerCase() === 'live' ? 'Live' : 'Partial',
     lockText: ready ? '关闭' : '开启',
-    coreReason: finalDecision.reason || master.summary_cn || '有 Put 资金线索，但墙位、波动率、暗池、TV 未确认。'
+    coreReason: master.summary_cn || '有 Put 资金线索，但墙位、波动率、暗池、TV 未确认。'
   };
 }
 
@@ -1157,7 +1157,9 @@ function renderGoldenDecision(home) {
   const vol = home.uw_layer_conclusions.volatility;
   const marketMechanism = home.dataHealth === 'Partial' || String(vol.status || '').toLowerCase() !== 'live' ? '未确认' : '已确认';
   return `
+    <div class="home-section-heading">黄金决策区</div>
     <section class="home-golden-grid">
+      <div class="section-label home-section-span">黄金决策区</div>
       <article class="matrix-panel">
         <div class="matrix-title"><div class="section-label">Market Regime</div><span class="tag ${homeTagClass(marketMechanism)}">${escapeHtml(marketMechanism)}</span></div>
         ${renderHomeKv([
@@ -1273,7 +1275,9 @@ function renderAnalysisTiles(home) {
     ]]
   ];
   return `
+    <div class="home-section-heading">五个分析瓦片</div>
     <section class="home-five-grid">
+      <div class="section-label home-section-span">五个分析瓦片</div>
       ${tiles.map(([title, rows]) => `
         <article class="strategy-card watch">
           <div class="strategy-headline">
