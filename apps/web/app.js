@@ -695,7 +695,7 @@ function renderSourceStrip(signal) {
       <div class="section-label">Source State</div>
       <div class="footer-note">数据健康度：${escapeHtml(safeText(summary.label, 'BLOCKED'))} ${escapeHtml(parts)}</div>
       <div class="source-list">
-        ${(signal.source_status || []).filter((item) => ['tradingview', 'fmp_event', 'fmp_price', 'theta_core', 'theta_full_chain', 'uw', 'telegram', 'dashboard'].includes(item.source)).map((item) => `
+        ${(signal.source_status || []).filter((item) => item.show_in_data_gaps === true || ['tradingview', 'fmp_event', 'fmp_price', 'theta_core', 'theta_full_chain', 'uw', 'telegram', 'dashboard'].includes(item.source)).map((item) => `
           <span class="source-chip ${statusClassForSource(item)}">
             ${escapeHtml(label(item))} · ${sourceStateLabel(item.state)} · ${minutesAgo(item.last_updated)}
           </span>
@@ -945,19 +945,13 @@ function renderLevelMatrix(signal) {
 }
 
 function renderIntelMatrix(signal) {
-  const items = [
-    ['Theta', signal.theta_conclusion?.status || 'disabled', 'EM 辅助，不做 Dealer 主源'],
-    ['TradingView', signal.tv_sentinel?.event_type || signal.signals?.tv_signal || '等待结构确认', '最终确认，不单独定方向'],
-    ['UW Flow', uwSafeValue(signal, 'flow'), '主动流向'],
-    ['Strategy', Object.entries(signal.strategy_permissions || {}).map(([key, value]) => `${key}:${value?.permission || 'wait'}`).join(' / '), '策略权限'],
-    ['等效价', signal.cross_asset_projection?.target_instrument || 'ES', signal.cross_asset_projection?.plain_chinese || '跨资产投射'],
-    ['Dark Pool', signal.darkpool_summary?.bias || uwSafeValue(signal, 'darkpool'), signal.darkpool_summary?.plain_chinese || '资金区'],
-    ['Dealer', signal.dealer_engine?.behavior || dealerDecisionText(signal), signal.dealer_engine?.plain_chinese || '做市商路径'],
-    ['UW Greek', signal.uw_conclusion?.greek_exposure_status || signal.dealer_engine?.status || 'unavailable', signal.dealer_engine?.plain_chinese || 'Greek Exposure'],
-    ['量比', signal.volume_pressure?.level || 'unavailable', signal.volume_pressure?.plain_chinese || '推动强度'],
-    ['波动启动', signal.volatility_activation?.strength || signal.volatility_activation?.state || 'unavailable', signal.volatility_activation?.plain_chinese || '波动状态'],
-    ['反射', signal.reflection?.confidence_score ?? 0, signal.reflection?.plain_chinese || '反射分析不可用'],
-    ['FMP', signal.event_context?.event_note || eventRiskLabel(signal.event_context?.event_risk), '事件过滤']
+  const sourceRules = signal.source_display_rules || {};
+  const sourceItems = Object.entries(sourceRules)
+    .filter(([, rule]) => rule.show_on_homepage === true)
+    .map(([name, rule]) => [name.toUpperCase(), rule.status, rule.reason]);
+  const items = sourceItems.length > 0 ? sourceItems : [
+    ['UW', signal.uw_conclusion?.status || 'unavailable', signal.uw_conclusion?.plain_chinese || '主数据源'],
+    ['TV', signal.tv_sentinel?.event_type || signal.tv_sentinel?.status || 'waiting', '最终确认，不单独定方向']
   ];
   return `
     <section class="matrix-panel">
@@ -992,9 +986,12 @@ function renderHome(signal) {
 
 function buildDataQualityGuardText(signal, spotSourceText) {
   if (signal.data_quality_guard?.plain_chinese) {
+    const gapItems = Object.entries(signal.source_status || {})
+      .filter(([, source]) => source?.show_in_data_gaps)
+      .map(([name, source]) => `${name.toUpperCase()}：${source.reason || source.status}`);
     return {
       title: signal.data_quality_guard.title || '数据质量：可观察，等待结构确认。',
-      items: signal.data_quality_guard.items || [signal.data_quality_guard.plain_chinese]
+      items: gapItems.length > 0 ? gapItems : signal.data_quality_guard.items || [signal.data_quality_guard.plain_chinese]
     };
   }
   return {

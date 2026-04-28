@@ -830,7 +830,8 @@ test('health endpoint still exposes all seven scenarios', async () => {
   try {
     const response = await fetch(`${baseUrl}/health`);
     const json = await response.json();
-    assert.equal(json.mode, 'mock-master-engine');
+    assert.equal(json.mode, 'live');
+    assert.equal(json.is_mock, false);
     assert.equal(Array.isArray(json.available_scenarios), true);
     assert.equal(json.available_scenarios.length, 7);
   } finally {

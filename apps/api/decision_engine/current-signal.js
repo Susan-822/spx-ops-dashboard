@@ -190,6 +190,60 @@ function buildEventConclusion({ fmpConclusion = {}, uwConclusion = {} } = {}) {
   };
 }
 
+function normalizeSourceStatus(value, fallback = 'unavailable') {
+  const text = String(value || fallback).toLowerCase();
+  if (['live', 'real'].includes(text)) return 'live';
+  if (['partial', 'degraded', 'delayed'].includes(text)) return 'partial';
+  if (['stale'].includes(text)) return 'stale';
+  if (['error', 'down', 'failed'].includes(text)) return 'error';
+  if (['mock'].includes(text)) return 'mock';
+  return 'unavailable';
+}
+
+function sourceDisplay(status, reason = '') {
+  const normalized = normalizeSourceStatus(status);
+  return {
+    status: normalized,
+    show_on_homepage: ['live', 'partial'].includes(normalized),
+    show_in_data_gaps: ['partial', 'stale', 'error', 'mock', 'unavailable'].includes(normalized),
+    usable_for_analysis: ['live', 'partial'].includes(normalized),
+    usable_for_operation: normalized === 'live',
+    reason
+  };
+}
+
+function buildUnifiedSourceStatus({ uwProvider = {}, thetaConclusion = {}, fmpConclusion = {}, tvSentinel = {} } = {}) {
+  return {
+    uw: sourceDisplay(uwProvider.status, uwProvider.plain_chinese || ''),
+    theta: sourceDisplay(thetaConclusion.status, thetaConclusion.status === 'disabled' ? 'ThetaData 当前不可用，不参与 Dealer 主源判断。' : thetaConclusion.plain_chinese || ''),
+    fmp: sourceDisplay(fmpConclusion.status, fmpConclusion.status === 'unavailable' ? 'FMP 当前不可用，价格/事件风险降级。' : fmpConclusion.plain_chinese || ''),
+    tradingview: sourceDisplay(tvSentinel.status === 'stale' ? 'stale' : tvSentinel.status === 'waiting' ? 'partial' : 'live', tvSentinel.plain_chinese || '')
+  };
+}
+
+function applySourceDisplayRules(sourceStatus = [], unified = {}) {
+  const map = {
+    uw: 'uw',
+    theta_core: 'theta',
+    theta_full_chain: 'theta',
+    fmp_event: 'fmp',
+    fmp_price: 'fmp',
+    tradingview: 'tradingview'
+  };
+  return (sourceStatus || []).map((item) => {
+    const display = unified[map[item.source]] || sourceDisplay(item.state, item.message);
+    return {
+      ...item,
+      display_status: display.status,
+      show_on_homepage: display.show_on_homepage,
+      show_in_data_gaps: display.show_in_data_gaps,
+      usable_for_analysis: display.usable_for_analysis,
+      usable_for_operation: display.usable_for_operation,
+      display_reason: display.reason || item.message || ''
+    };
+  });
+}
+
 function buildBasisTracker(priceSources = {}) {
   const es = priceSources.es || {};
   const spx = priceSources.spx || {};
@@ -1659,6 +1713,13 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
       plain_chinese: rawNoteV2.final_decision.reason
     }
   };
+  finalOutput.source_display = buildUnifiedSourceStatus({
+    uwProvider,
+    thetaConclusion: finalOutput.theta_conclusion,
+    fmpConclusion: finalOutput.fmp_conclusion,
+    tvSentinel: finalOutput.tv_sentinel
+  });
+  finalOutput.source_status = applySourceDisplayRules(finalOutput.source_status, finalOutput.source_display);
 
   return replaceUndefined(scrubLegacyDecisionStrings(sanitizeUwPromotedStrings(finalOutput, uwProvider.status === 'live')));
 }

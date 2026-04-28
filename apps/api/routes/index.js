@@ -161,12 +161,13 @@ export async function handleApiRoute(req, res) {
   const scenario = url.searchParams.get('scenario');
 
   if (req.method === 'GET' && url.pathname === '/health') {
+    const mockMode = process.env.MOCK_MODE === 'true';
     return sendJson(res, 200, {
       ok: true,
       service: 'spx-ops-dashboard-api',
-      mode: 'mock-master-engine',
+      mode: mockMode ? 'mock' : 'live',
       available_scenarios: getScenarioNames(),
-      is_mock: true,
+      is_mock: mockMode,
       ...getBuildMetadata()
     });
   }
