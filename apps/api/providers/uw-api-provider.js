@@ -168,6 +168,113 @@ function endpointUrl(definition, config) {
   return url;
 }
 
+function sanitizeUwRequestUrl(url) {
+  const safe = new URL(String(url));
+  safe.searchParams.delete('apikey');
+  return safe.toString();
+}
+
+function endpointRows(body = {}) {
+  if (Array.isArray(body?.data?.data)) return body.data.data;
+  if (Array.isArray(body?.data)) return body.data;
+  if (Array.isArray(body?.results)) return body.results;
+  if (Array.isArray(body)) return body;
+  return [];
+}
+
+function summarizeStrikeRows(rows = []) {
+  const strikes = rows
+    .map((row) => Number(row?.strike ?? row?.price ?? row?.level))
+    .filter((value) => Number.isFinite(value));
+  return {
+    response_rows: rows.length,
+    returned_min_strike: strikes.length ? Math.min(...strikes) : null,
+    returned_max_strike: strikes.length ? Math.max(...strikes) : null
+  };
+}
+
+async function fetchUwJson({ fetchImpl, url, apiKey }) {
+  const response = await fetchImpl(url, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: 'application/json'
+    }
+  });
+  const body = await response.json().catch(() => ({}));
+  return { response, body, rows: endpointRows(body) };
+}
+
+async function fetchSpotGexDiagnostics({ fetchImpl, config, now }) {
+  const spot = numberOrNull(config.currentSpot);
+  const baseDefinition = UW_API_ENDPOINTS.spot_gex;
+  const oldUrl = endpointUrl({ ...baseDefinition, page: 1 }, { ...config, currentSpot: null });
+  const oldResult = await fetchUwJson({ fetchImpl, url: oldUrl, apiKey: config.apiKey });
+  const oldSummary = summarizeStrikeRows(oldResult.rows);
+  const oldRequest = {
+    endpoint: baseDefinition.requestedPath,
+    ticker: config.ticker,
+    query_params: Object.fromEntries(oldUrl.searchParams.entries()),
+    page: 1,
+    limit: Number(oldUrl.searchParams.get('limit') || 500),
+    min_strike: oldUrl.searchParams.get('min_strike') ? Number(oldUrl.searchParams.get('min_strike')) : null,
+    max_strike: oldUrl.searchParams.get('max_strike') ? Number(oldUrl.searchParams.get('max_strike')) : null,
+    date: now.toISOString().slice(0, 10),
+    ...oldSummary
+  };
+
+  const dynamicRows = [];
+  const pageRequests = [];
+  if (spot != null) {
+    for (let page = 1; page <= 5; page += 1) {
+      const url = endpointUrl({ ...baseDefinition, page }, config);
+      const result = await fetchUwJson({ fetchImpl, url, apiKey: config.apiKey });
+      const rowSummary = summarizeStrikeRows(result.rows);
+      pageRequests.push({
+        endpoint: baseDefinition.requestedPath,
+        ticker: config.ticker,
+        query_params: Object.fromEntries(url.searchParams.entries()),
+        page,
+        limit: Number(url.searchParams.get('limit') || 500),
+        min_strike: Number(url.searchParams.get('min_strike')),
+        max_strike: Number(url.searchParams.get('max_strike')),
+        date: now.toISOString().slice(0, 10),
+        ...rowSummary
+      });
+      dynamicRows.push(...result.rows.map((row) => ({ ...row, page })));
+      const hasNear = result.rows.some((row) => {
+        const strike = Number(row?.strike ?? row?.price ?? row?.level);
+        return Number.isFinite(strike) && Math.abs(strike - spot) / spot <= 0.15;
+      });
+      if (hasNear) break;
+    }
+  }
+
+  const spyDefinition = { ...baseDefinition, ticker: 'SPY', page: 1 };
+  const spyUrl = endpointUrl(spyDefinition, config);
+  const spyResult = await fetchUwJson({ fetchImpl, url: spyUrl, apiKey: config.apiKey });
+  const spySummary = summarizeStrikeRows(spyResult.rows);
+  const spyRequest = {
+    endpoint: baseDefinition.requestedPath,
+    ticker: 'SPY',
+    query_params: Object.fromEntries(spyUrl.searchParams.entries()),
+    page: 1,
+    limit: Number(spyUrl.searchParams.get('limit') || 500),
+    min_strike: null,
+    max_strike: null,
+    date: now.toISOString().slice(0, 10),
+    ...spySummary
+  };
+
+  return {
+    oldRequest,
+    pageRequests,
+    spyRequest,
+    dynamicRows,
+    spyRows: spyResult.rows,
+    fetchedAt: now.toISOString()
+  };
+}
+
 function rows(value) {
   if (Array.isArray(value)) return value;
   if (Array.isArray(value?.data?.data)) return value.data.data;
@@ -375,7 +482,7 @@ export function buildUwEndpointCoverage(provider = {}) {
 }
 
 export async function fetchUwApiSnapshot(options = {}) {
-  const config = { ...getUwApiConfig(), ...(options.config || {}) };
+  const config = { ...getUwApiConfig(), ...(options.config || {}), currentSpot: options.currentSpot ?? options.config?.currentSpot };
   const now = options.now ? new Date(options.now) : new Date();
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   const previous = await readUwApiSnapshot({ now, staleSeconds: config.staleSeconds });
@@ -412,6 +519,7 @@ export async function fetchUwApiSnapshot(options = {}) {
     per_minute_limit: null,
     remaining: null
   };
+  const spotGexDiagnostics = [];
 
   for (const [name, definition] of Object.entries(UW_API_ENDPOINTS)) {
     const cached = previous?.raw?.[name];
@@ -423,7 +531,8 @@ export async function fetchUwApiSnapshot(options = {}) {
     }
 
     try {
-      const response = await fetchImpl(endpointUrl(definition, config), {
+      const url = endpointUrl(definition, config);
+      const response = await fetchImpl(url, {
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
           Accept: 'application/json'
@@ -450,9 +559,51 @@ export async function fetchUwApiSnapshot(options = {}) {
         path: definition.requestedPath || definition.path,
         status: response.status,
         fetched_at: now.toISOString(),
+        request_url: sanitizeUwRequestUrl(url),
         data: body
       };
       endpointsOk.push(name);
+      if (name === 'spot_gex') {
+        spotGexDiagnostics.push(summarizeSpotGexRequest({
+          label: 'old_request',
+          ticker: config.ticker,
+          url,
+          page: Number(url.searchParams.get('page') || 1),
+          limit: Number(url.searchParams.get('limit') || 500),
+          body
+        }));
+        const dynamic = await fetchSpotGexDiagnostics({ fetchImpl, config, now });
+        raw.spot_gex_paged = {
+          path: definition.requestedPath || definition.path,
+          status: response.status,
+          fetched_at: dynamic.fetchedAt,
+          pages: dynamic.pageRequests,
+          meta: { pages_checked: dynamic.pageRequests.length },
+          data: dynamic.dynamicRows
+        };
+        raw.spot_gex_spy_proxy = {
+          path: '/api/stock/SPY/spot-exposures/strike',
+          status: response.status,
+          fetched_at: dynamic.fetchedAt,
+          request: dynamic.spyRequest,
+          data: dynamic.spyRows
+        };
+        raw.spot_gex_request_audit = {
+          old_request: dynamic.oldRequest,
+          dynamic_window_request: dynamic.pageRequests[0] || null,
+          pages_checked: dynamic.pageRequests.length,
+          spx_result: {
+            rows_total: dynamic.dynamicRows.length,
+            rows_near_spot: countRowsNearSpot(dynamic.dynamicRows, config.currentSpot),
+            pages: dynamic.pageRequests
+          },
+          spy_proxy_result: {
+            rows_total: dynamic.spyRows.length,
+            rows_near_spot: countRowsNearSpot(dynamic.spyRows.map((row) => ({ ...row, strike: numberOrNull(row.strike ?? row.price ?? row.level) * 10 })), config.currentSpot),
+            request: dynamic.spyRequest
+          }
+        };
+      }
     } catch (error) {
       endpointsFailed.push({
         name,
@@ -500,7 +651,7 @@ export async function fetchUwApiSnapshot(options = {}) {
 }
 
 export async function readUwProvider(options = {}) {
-  const config = { ...getUwApiConfig(), ...(options.config || {}) };
+  const config = { ...getUwApiConfig(), ...(options.config || {}), currentSpot: options.currentSpot ?? options.config?.currentSpot };
   if (config.mode === 'api' && config.apiKey && options.refresh !== false) {
     const snapshot = await fetchUwApiSnapshot(options);
     return {

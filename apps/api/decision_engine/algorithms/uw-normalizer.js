@@ -156,6 +156,7 @@ function buildDealerDiagnostics({ spotPrice, spotRows = [], pagedRows = [], spyR
     requested_max_strike: requestedMax,
     rows_total: spxRows.length,
     rows_near_spot: rowsNearSpot,
+    spy_rows_near_spot: spyRowsNearSpot,
     pages_checked: pagesChecked,
     spx_has_near_spot: rowsNearSpot > 0,
     spy_proxy_has_near_spot: spyRowsNearSpot > 0,
@@ -171,6 +172,60 @@ function buildDealerDiagnostics({ spotPrice, spotRows = [], pagedRows = [], spyR
             : likelyCause === 'provider_data_gap'
               ? 'provider 当前没有返回可用 strike rows。'
               : '继续比对 SPX/SPY 分页与字段。'
+  };
+}
+
+function requestSummary(endpoint = {}, ticker, fallbackPage = 1) {
+  const endpointRows = rows(endpoint);
+  const strikes = endpointRows.map((row) => normalizeStrikeValue(row.strike ?? row.price ?? row.level)).filter((value) => value != null);
+  const params = endpoint.query_params || {};
+  return {
+    endpoint: endpoint.path || null,
+    ticker,
+    query_params: params,
+    page: numberOrNull(params.page) ?? fallbackPage,
+    limit: numberOrNull(params.limit),
+    min_strike: numberOrNull(params.min_strike),
+    max_strike: numberOrNull(params.max_strike),
+    date: endpoint.fetched_at || null,
+    response_rows: endpointRows.length,
+    returned_min_strike: strikes.length ? Math.min(...strikes) : null,
+    returned_max_strike: strikes.length ? Math.max(...strikes) : null
+  };
+}
+
+function buildDealerResolution({ diagnostics = {}, raw = {}, spotRows = [], pagedRows = [], spyRows = [] } = {}) {
+  const dynamicPages = raw.spot_gex_paged?.pages || [];
+  const dynamicWindowRequest = dynamicPages[0] ? requestSummary(dynamicPages[0], 'SPX', 1) : requestSummary(raw.spot_gex_paged, 'SPX', 1);
+  const spyProxyRequest = requestSummary(raw.spot_gex_spy_proxy, 'SPY', 1);
+  const spxResult = {
+    rows_total: pagedRows.length || spotRows.length,
+    rows_near_spot: diagnostics.rows_near_spot,
+    returned_min_strike: dynamicWindowRequest.returned_min_strike,
+    returned_max_strike: dynamicWindowRequest.returned_max_strike,
+    has_near_spot: diagnostics.spx_has_near_spot
+  };
+  const spyProxyResult = {
+    rows_total: spyRows.length,
+    rows_near_spot: diagnostics.spy_rows_near_spot || 0,
+    returned_min_strike_x10: spyRows.length ? Math.min(...spyRows.map((row) => normalizeStrikeValue(row.strike ?? row.price ?? row.level, 10)).filter((value) => value != null)) : null,
+    returned_max_strike_x10: spyRows.length ? Math.max(...spyRows.map((row) => normalizeStrikeValue(row.strike ?? row.price ?? row.level, 10)).filter((value) => value != null)) : null,
+    has_near_spot: diagnostics.spy_proxy_has_near_spot
+  };
+  const canComputeWall = diagnostics.rows_near_spot > 0 && diagnostics.rows_total > 0 && diagnostics.spx_has_near_spot === true;
+  return {
+    old_request: requestSummary(raw.spot_gex, 'SPX', 1),
+    dynamic_window_request: dynamicWindowRequest,
+    pages_checked: diagnostics.pages_checked,
+    spx_result: spxResult,
+    spy_proxy_result: spyProxyResult,
+    likely_cause: diagnostics.likely_cause,
+    fixed: diagnostics.spx_has_near_spot === true || diagnostics.spy_proxy_has_near_spot === true,
+    can_compute_wall: canComputeWall,
+    reason_cn: canComputeWall
+      ? '动态窗口已拿到现价附近 strike，但墙位算法仍需 rows_used 和 freshness 通过后才计算。'
+      : `现价附近 strike 仍不足，主因判定为 ${diagnostics.likely_cause}。`,
+    next_action: diagnostics.next_fix
   };
 }
 
@@ -242,11 +297,20 @@ function normalizeVolatility(raw = {}, provider = {}) {
       iv_rank_normalized: ivRankNormalized,
       iv_percentile_normalized: ivPercentileNormalized,
       term_structure_state: termStructureState,
+      state: classifyVscore(vscore),
       classification: classifyVscore(vscore),
       summary_cn: vscore == null
-        ? 'Vscore 公式已就绪，等 IV Rank / IV Percentile 数据进入即可计算。'
-        : `Vscore=${vscore}，波动状态为 ${classifyVscore(vscore)}。`,
-      reason_cn: 'Vscore = IVR * 0.3 + IVP * 0.7；IVR/IVP 小于等于 1 时按百分比放大。',
+        ? '公式已就绪，等 IVR / IVP 数据进入即可计算。'
+        : classifyVscore(vscore) === 'long_gamma_friendly'
+          ? '期权相对便宜，可以等待单腿触发。'
+          : classifyVscore(vscore) === 'normal'
+            ? '期权价格正常，需要 Flow 和价格确认。'
+            : classifyVscore(vscore) === 'expensive'
+              ? '期权偏贵，裸买单腿要谨慎。'
+              : '期权很贵，禁止追单腿，防杀估值。',
+      reason_cn: vscore == null
+        ? '公式已就绪，等 IVR / IVP 数据进入即可计算。'
+        : 'Vscore = IVR * 0.3 + IVP * 0.7；IVR/IVP 小于等于 1 时按百分比放大。',
       missing_fields: [
         ivRankNormalized == null ? 'IV Rank' : null,
         ivPercentileNormalized == null ? 'IV Percentile' : null
@@ -356,6 +420,7 @@ function normalizeDarkpool(raw = {}, context = {}) {
     major_threshold: majorThreshold,
     cluster_threshold: clusterThreshold,
     tier,
+    state: [...bins.values()].some((bin) => bin.tier === 'cluster_wall') ? 'cluster_wall' : tier,
     tier_cn: tierCn,
     largest_print: largestPrint,
     mapped_spx: mappedSpx,
@@ -366,11 +431,20 @@ function normalizeDarkpool(raw = {}, context = {}) {
     nearest_resistance: null,
     parser_status: prints.length > 0 ? 'partial' : 'failed',
     missing_fields: ['nearest_support', 'nearest_resistance', 'SPX 支撑压力映射'],
+    reason_cn: prints.length > 0
+      ? `金额约 ${Math.round((largestPrint.premium ?? 0) / 1000) / 10} 万美元，低于强墙阈值时不能定义正式支撑 / 压力。`
+      : '暗池 raw 暂无可用样本。',
     current_block_cn: prints.length > 0
       ? '有低置信空间参考，但不能作为墙位。'
       : '暗池 raw 暂无可用样本。',
     summary_cn: prints.length > 0
-      ? `当前最大样本为 ${tier} / ${tierCn} / 低置信参考。有低置信空间参考，但不能作为墙位。`
+      ? tier === 'footprint'
+        ? '有 SPY 暗池零星脚印，可作为低置信参考。'
+        : tier === 'watch_zone'
+          ? '暗池观察区，值得盯。'
+          : tier === 'major_wall'
+            ? '强支撑 / 压力候选，但仍需聚合确认。'
+            : '有低置信空间参考，但不能作为墙位。'
       : '暗池 raw 暂无可用样本。'
   };
 }
@@ -401,6 +475,13 @@ function normalizeDealer(raw = {}, context = {}) {
     spyRows,
     raw
   });
+  const dealerResolution = buildDealerResolution({
+    diagnostics: dealerDiagnostics,
+    raw,
+    spotRows,
+    pagedRows,
+    spyRows
+  });
   return {
     status: hasGreek || spotRows.length > 0 ? 'partial' : 'unavailable',
     has_data: hasGreek || spotRows.length > 0,
@@ -417,6 +498,7 @@ function normalizeDealer(raw = {}, context = {}) {
     max_strike: strikes.length ? Math.max(...strikes) : null,
     rows_near_spot: rowsNearSpot,
     dealer_diagnostics: dealerDiagnostics,
+    dealer_resolution: dealerResolution,
     rows_used: 0,
     wall_algorithm_allowed: false,
     parser_status: hasGreek || spotRows.length > 0 ? 'partial' : 'failed',

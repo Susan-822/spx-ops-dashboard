@@ -268,6 +268,7 @@ function applySourceDisplayRules(sourceStatus = [], unified = {}) {
 
 function buildExecutionCardDiagnostics(uwNormalized = {}, layerConclusions = {}) {
   const dealerDiagnostics = uwNormalized.dealer?.dealer_diagnostics || {};
+  const dealerResolution = uwNormalized.dealer?.dealer_resolution || {};
   const volatilityState = uwNormalized.volatility?.volatility_state || {};
   const darkpool = uwNormalized.darkpool || {};
   const dealerText = dealerDiagnostics.rows_near_spot === 0
@@ -282,10 +283,82 @@ function buildExecutionCardDiagnostics(uwNormalized = {}, layerConclusions = {})
     ? `Dark Pool：${darkpool.tier} / ${darkpool.tier_cn || '空间参考'}，有低置信空间参考，但不能作为墙位。`
     : layerConclusions.darkpool?.summary_cn || 'Dark Pool：暂不可用。';
   return {
-    status: 'waiting',
+    status: 'WAIT',
+    direction: 'PUT',
+    direction_cn: '看空候选',
+    can_trade: false,
+    safety_lock: true,
+    headline_cn: '有 Put 偏空线索，但还不能开仓。',
+    action_cn: '只观察，不追空。',
+    why_cn: [
+      'Flow 有 Put RepeatedHits，说明空头资金有动作。',
+      dealerDiagnostics.rows_near_spot === 0
+        ? `Dealer 现价附近 strike 未抓到，原因正在按抓取窗口 / 分页 / ticker 映射排查：${dealerDiagnostics.likely_cause || 'unknown'}。`
+        : 'Dealer 动态窗口已拿到现价附近 strike，但墙位算法仍未放行。',
+      volatilityState.data_ready === true
+        ? `Volatility 已生成 Vscore=${volatilityState.vscore}。`
+        : 'Volatility 公式已就绪，等 IVR / IVP 数据进入即可计算 Vscore。',
+      darkpool.tier && darkpool.tier !== 'none'
+        ? `Dark Pool 有 SPY 暗池${darkpool.tier_cn || '空间参考'}，映射约 ${darkpool.mapped_spx ?? '--'}，但金额不足以单独定义正式墙位。`
+        : 'Dark Pool 暂无足够空间参考。',
+      '价格确认只降低置信度，不阻断网站自主分析。'
+    ],
+    wait_for_cn: [
+      '等价格确认。',
+      '等 Flow 继续同向。',
+      '等 0DTE / 多腿过滤确认。',
+      '等 Volatility 生成 Vscore。',
+      '等 operation_layer ready。'
+    ],
+    do_not_cn: [
+      '不追空。',
+      '不提前买 Put。',
+      '不根据单一 Flow 信号开仓。',
+      '没有入场、止损、TP 前不下单。'
+    ],
+    trade: {
+      entry: '--',
+      stop: '--',
+      tp1: '--',
+      tp2: '--'
+    },
     dealer: dealerText,
     volatility: volatilityText,
-    darkpool: darkpoolText
+    darkpool: darkpoolText,
+    dealer_resolution: dealerResolution
+  };
+}
+
+function buildUwAggregateAnalysis(uwNormalized = {}, layerConclusions = {}, operationLayer = {}) {
+  const darkpool = uwNormalized.darkpool || {};
+  const volatility = uwNormalized.volatility?.volatility_state || {};
+  const dealer = uwNormalized.dealer?.dealer_resolution || {};
+  return {
+    market_bias_cn: 'Flow 偏空，Sentiment 轻微防守，但 Dealer 墙位、Volatility Vscore、Dark Pool 聚类都还没完全放行，整体是看空候选 / 等确认。',
+    supporting_factors_cn: [
+      'Put RepeatedHits',
+      'Market Tide 轻微防守',
+      darkpool.state && darkpool.state !== 'none' ? 'SPY 暗池有低置信脚印' : 'SPY 暗池等待有效脚印'
+    ],
+    limiting_factors_cn: [
+      dealer.can_compute_wall ? 'Dealer 已拿到近现价 strike，但墙位算法仍未放行' : 'Dealer 现价附近 strike 未抓到',
+      volatility.data_ready ? `Volatility 已生成 Vscore=${volatility.vscore}` : 'Volatility 缺 IVR / IVP 或 Vscore 未生成',
+      'Flow 缺 0DTE / 多腿过滤',
+      darkpool.state === 'footprint' ? 'Dark Pool 只有 footprint，不是墙' : 'Dark Pool 仍需聚类确认'
+    ],
+    conclusion_cn: [
+      '可分析：是',
+      '可操作：否',
+      `当前执行状态：${String(operationLayer.status || 'wait').toUpperCase()}`,
+      '当前方向：PUT 候选',
+      '当前动作：只观察，不追空'
+    ],
+    next_priority_cn: [
+      '先修 Dealer 抓取窗口 / 分页',
+      '再修 Volatility Vscore',
+      '再补 Flow 0DTE / 多腿过滤',
+      '再做 Dark Pool 聚类'
+    ]
   };
 }
 
@@ -1179,11 +1252,6 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   };
   const snapshot = await getTradingViewSnapshot();
   const thetaSnapshot = await getThetaSnapshot();
-  const {
-    snapshot: uwSnapshot,
-    sourceStatus: uwSourceStatus,
-    provider: uwProvider
-  } = await readUwProvider();
   const fmpSnapshot = await getFmpSnapshot(options.fmp);
   const enrichedScenario = applyTradingViewPriceFallback(
     applyFmpPriceSnapshot(
@@ -1195,6 +1263,12 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     ),
     snapshot
   );
+  const providerSpot = numberOrNull(enrichedScenario.external_spot ?? enrichedScenario.spot);
+  const {
+    snapshot: uwSnapshot,
+    sourceStatus: uwSourceStatus,
+    provider: uwProvider
+  } = await readUwProvider({ currentSpot: providerSpot });
   const finalScenario = applyThetaSnapshot(
     enrichedScenario,
     thetaSnapshot
@@ -1758,7 +1832,9 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     fmp_price_audit: fmpSnapshot.price?.audit || null,
     uw_normalized: uwNormalized,
     dealer_diagnostics: uwNormalized.dealer?.dealer_diagnostics || {},
+    dealer_resolution: uwNormalized.dealer?.dealer_resolution || {},
     execution_card: buildExecutionCardDiagnostics(uwNormalized, uwLayerConclusions),
+    uw_aggregate_analysis: buildUwAggregateAnalysis(uwNormalized, uwLayerConclusions),
     uw_layer_conclusions: {
       dealer: uwLayerConclusions.gex_engine,
       flow: uwLayerConclusions.flow_aggression_engine,

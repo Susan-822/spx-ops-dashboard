@@ -140,6 +140,7 @@ function pickHomepageSignal(signal = {}) {
 function homepageState(signal = {}) {
   const home = pickHomepageSignal(signal);
   const operation = home.operation_layer;
+  const executionCard = signal.execution_card || {};
   const finalDecision = home.final_decision;
   const master = home.uw_layer_conclusions.master;
   const flow = home.uw_layer_conclusions.flow;
@@ -158,6 +159,7 @@ function homepageState(signal = {}) {
     direction,
     dataHealth: String(dataHealth || 'partial').toLowerCase() === 'live' ? 'Live' : 'Partial',
     lockText: ready ? '关闭' : '开启',
+    execution_card: executionCard,
     coreReason: '有 Put 资金线索，但墙位、波动率、暗池、TV 未确认。'
   };
 }
@@ -1145,6 +1147,7 @@ function renderStatusPill(label, value, tone) {
 }
 
 function renderGoldenDecision(home) {
+  const execution = home.execution_card || {};
   const spot = home.spot_conclusion;
   const vol = home.uw_layer_conclusions.volatility;
   const marketMechanism = home.dataHealth === 'Partial' || String(vol.status || '').toLowerCase() !== 'live' ? '未确认' : '已确认';
@@ -1162,16 +1165,16 @@ function renderGoldenDecision(home) {
       <article class="home-panel home-decision-card">
         <div class="home-decision-head">
           <span>盘中决策卡</span>
-          <strong>WAIT</strong>
+          <strong>${escapeHtml(homeSanitize(execution.status || 'WAIT'))}</strong>
         </div>
         ${renderHomeRows([
-          ['当前结论', '等待'],
-          ['方向倾向', '偏空线索'],
-          ['盘面解释', '有 Put 资金线索，但 Dealer、波动率、暗池、TV 都未确认。'],
-          ['Gamma', '墙位不可用'],
+          ['当前结论', execution.headline_cn || '有 Put 偏空线索，但还不能开仓。'],
+          ['方向倾向', execution.direction_cn || '看空候选'],
+          ['盘面解释', execution.why_cn?.[0] || 'Flow 有 Put RepeatedHits，说明空头资金有动作。'],
+          ['Gamma', execution.why_cn?.[1] || 'Dealer 现价附近 strike 正在排查。'],
           ['Flip', '不可用'],
-          ['资金', 'Put 偏空线索'],
-          ['操作', '等待，不追单']
+          ['资金', execution.why_cn?.[0] || 'Put 偏空线索'],
+          ['操作', execution.action_cn || '只观察，不追空。']
         ])}
       </article>
 
@@ -1192,6 +1195,7 @@ function renderGoldenDecision(home) {
 
 function renderExecutionSection(home) {
   const operation = home.operation_layer;
+  const execution = home.execution_card || {};
   const masterSignal = homeMasterSignal(operation, home.final_decision);
   const waiting = operation.status !== 'ready';
   return `
@@ -1199,14 +1203,16 @@ function renderExecutionSection(home) {
       <article class="home-card execution-card">
         <div class="home-card-title"><span>操作执行卡</span><b>${waiting ? '等待' : '可执行'}</b></div>
         ${renderHomeRows([
-          ['操作状态', '等待'],
-          ['计划方向', waiting ? 'Put 候选 / --' : homeSanitize(operation.direction)],
+          ['操作状态', execution.status || 'WAIT'],
+          ['计划方向', execution.direction_cn || '看空候选'],
           ['买什么', '--'],
-          ['入场', '--'],
-          ['止损', '--'],
-          ['TP1', '--'],
-          ['TP2', '--'],
-          ['禁止原因', '数据只支持分析，不支持开仓']
+          ['入场', execution.trade?.entry || '--'],
+          ['止损', execution.trade?.stop || '--'],
+          ['TP1', execution.trade?.tp1 || '--'],
+          ['TP2', execution.trade?.tp2 || '--'],
+          ['为什么不能开仓', execution.why_cn?.[1] || 'Dealer / Volatility / Dark Pool 还不能放行。'],
+          ['下一步等什么', execution.wait_for_cn?.[0] || '等价格确认。'],
+          ['禁止做什么', execution.do_not_cn?.[0] || '不追空。']
         ])}
       </article>
 
@@ -1636,6 +1642,23 @@ function renderMappingStatus(signal) {
   `;
 }
 
+function renderUwAggregateAnalysis(signal) {
+  const aggregate = signal.uw_aggregate_analysis || {};
+  const rows = [
+    ['当前市场倾向', aggregate.market_bias_cn || 'Flow 偏空，Sentiment 轻微防守，整体是看空候选 / 等确认。'],
+    ['支持因素', radarText(aggregate.supporting_factors, 'Put RepeatedHits；Market Tide 轻微防守；SPY 暗池有低置信脚印')],
+    ['限制因素', radarText(aggregate.limiting_factors, 'Dealer 墙位未修复；Volatility Vscore 未生成；Flow 缺过滤；Dark Pool 只有 footprint')],
+    ['当前结论', aggregate.current_conclusion_cn || '可分析：是；可操作：否；当前执行状态：WAIT；当前方向：PUT 候选；当前动作：只观察，不追空'],
+    ['修复优先级', radarText(aggregate.next_priority, '先修 Dealer；再修 Volatility；再补 Flow；再做 Dark Pool 聚类')]
+  ].map((row) => row.map((cell) => escapeHtml(radarText(cell, '未提供'))));
+  return `
+    <section class="radar-card">
+      <div class="radar-title"><h2>UW 聚合分析</h2><span class="tag amber">analysis</span></div>
+      ${renderRadarTable(['项目', '内容'], rows)}
+    </section>
+  `;
+}
+
 function renderDataGaps(signal) {
   const failed = signal.uw_provider?.endpoints_failed || [];
   const legacy = (signal.source_status || []).filter((item) => item.is_mock || ['uw_dom', 'uw_screenshot', 'scheduler_health'].includes(item.source));
@@ -1716,6 +1739,7 @@ function renderRadar(signal) {
         ${renderUwLayerStatus(signal)}
         ${renderEndpointEvidence(signal)}
         ${renderMappingStatus(signal)}
+        ${renderUwAggregateAnalysis(signal)}
         ${renderDataGaps(signal)}
         ${renderDebugJson(signal)}
       </section>
