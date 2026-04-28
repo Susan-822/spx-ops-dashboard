@@ -1126,6 +1126,7 @@ function renderHome(signal) {
 function renderHomeTopMood(home) {
   return `
     <section class="home-mood-strip">
+      <div class="section-label home-mood-title">顶部情绪条</div>
       ${renderMoodItem('市场状态', home.operationStatus)}
       ${renderMoodItem('方向倾向', home.direction)}
       ${renderMoodItem('数据健康', home.dataHealth)}
