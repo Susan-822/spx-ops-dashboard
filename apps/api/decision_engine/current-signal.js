@@ -1274,7 +1274,14 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     ),
     snapshot
   );
-  const providerSpot = numberOrNull(enrichedScenario.external_spot ?? enrichedScenario.spot);
+  const providerSpot = numberOrNull(
+    enrichedScenario.external_spot
+    ?? enrichedScenario.spot
+    ?? snapshot?.spx_equivalent
+    ?? snapshot?.price
+    ?? fmpSnapshot.price?.spot
+    ?? fmpSnapshot.price?.price
+  );
   const {
     snapshot: uwSnapshot,
     sourceStatus: uwSourceStatus,

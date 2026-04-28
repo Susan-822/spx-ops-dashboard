@@ -10,6 +10,7 @@ export function buildTradeExecutionCard({
   const direction = flow_conflict.flow_wall_state === 'stalling' ? 'CALL_WATCH' : 'NONE';
   const directionCn = direction === 'CALL_WATCH' ? '回踩多头观察' : '震荡等待';
   const nextPrice = flow_conflict.next_price_to_watch ?? darkpool_gravity.mapped_spx ?? dealer_wall_map.lower_barrier ?? '--';
+  const hasDealerWalls = dealer_wall_map.call_wall != null || dealer_wall_map.put_wall != null || dealer_wall_map.gamma_flip != null;
   return {
     status: ready ? 'READY' : 'WAIT',
     status_cn: ready ? '可执行' : '等确认',
@@ -24,7 +25,9 @@ export function buildTradeExecutionCard({
     flow_state_cn: flow_conflict.flow_state_cn || '资金线索不足',
     prohibit_direction: flow_conflict.prohibit_direction || null,
     next_price_to_watch: nextPrice,
-    headline_cn: '当前不是追空环境，价格可能被下方暗池减速区和上方 Gamma 墙夹住。',
+    headline_cn: hasDealerWalls
+      ? '当前不是追空环境，价格可能被下方暗池减速区和上方 Gamma 墙夹住。'
+      : '下方暗池减速区限制追空，Dealer 墙位尚未生成。',
     action_cn: `禁止追 Put；等 ${nextPrice} 附近回踩反应。`,
     why_cn: [
       'Put RepeatedHits 说明空头资金有动作。',
