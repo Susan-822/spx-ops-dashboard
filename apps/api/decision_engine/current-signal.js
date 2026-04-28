@@ -1643,6 +1643,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   });
   const basisTracker = buildBasisTracker(priceSourcesV2);
   const uwLayerConclusions = buildUwLayerConclusions({
+    uw_normalized: uwNormalized,
     uw_provider: uwProvider,
     uw_conclusion: uwConclusionV2.uw_conclusion,
     uw_wall_diagnostics: uwConclusionV2.uw_wall_diagnostics,
