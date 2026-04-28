@@ -1648,7 +1648,10 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   const uwNormalized = buildUwNormalized({
     raw: uwSnapshot?.raw || uwApi.uw_raw,
     provider: uwProvider,
-    spot_price: priceSourcesV2.spx?.price ?? null
+    context: {
+      spot_price: priceSourcesV2.spx?.price ?? null,
+      current_spx: priceSourcesV2.spx?.price ?? null
+    }
   });
   const uwConclusionV2 = buildUwConclusionV2({
     provider: uwProvider,
