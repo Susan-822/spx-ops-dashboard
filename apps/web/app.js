@@ -169,7 +169,7 @@ function homepageState(signal = {}) {
     dataHealth: String(dataHealth || 'partial').toLowerCase() === 'live' ? '数据能参考，但还不能直接出交易计划' : '部分数据能参考，还不能直接出交易计划',
     lockText: ready ? '关闭' : '开启',
     execution_card: executionCard,
-    coreReason: '有 Put 资金线索，但墙位、波动率、暗池、TV 未确认。'
+    coreReason: '有 Put 看空线索，但 7150 附近有暗池承接区，不能追 Put；Dealer 墙位和波动率 Vscore 还没完成。'
   };
 }
 
@@ -177,7 +177,7 @@ function renderHomeRows(rows = []) {
   return `
     <div class="home-field-list">
       ${rows.map(([label, value]) => `
-        <div class="home-field-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(humanHomeText(value, '还没有足够信息，不能用于下单。'))}</b></div>
+        <div class="home-field-row ${['操作状态', '关键观察位', '入场', '止损', 'TP1', 'TP2', '入场 / 止损 / TP'].includes(label) ? 'emphasis' : ''}"><span>${escapeHtml(label)}</span><b>${escapeHtml(humanHomeText(value, '还没有足够信息，不能用于下单。'))}</b></div>
       `).join('')}
     </div>
   `;
@@ -1295,8 +1295,8 @@ function renderHome(signal) {
   return `
     <main class="page home-v1">
       ${renderHomeTopMood(home)}
-      ${renderGoldenDecision(home)}
       ${renderExecutionSection(home)}
+      ${renderGoldenDecision(home)}
       ${renderAnalysisTiles(home)}
       ${renderBottomPlaceholders(home)}
     </main>
@@ -1364,6 +1364,10 @@ function buildHomeHumanCopy(home = {}) {
   const darkLevel = priceTrigger.key_level != null
     ? Number(priceTrigger.key_level).toFixed(2)
     : gravity.mapped_spx != null ? Number(gravity.mapped_spx).toFixed(2) : '7150.23';
+  const displayPrice = priceTrigger.current_price ?? home.spot_conclusion?.spot_price ?? home.spot_conclusion?.spot ?? home.operation_layer?.spot ?? null;
+  const newsRiskCn = ['live', 'fresh'].includes(String(newsRadar.status || '').toLowerCase())
+    ? newsRadar.news_risk_cn || '暂未确认'
+    : '暂未确认';
   const mainConclusion = execution.status === 'READY'
     ? 'READY，可以按完整计划执行。'
     : 'WAIT，不能开仓。';
@@ -1389,6 +1393,9 @@ function buildHomeHumanCopy(home = {}) {
     action: gravity.mapped_spx != null ? `禁止追 Put，等 ${darkLevel} 附近回踩反应。` : '只观察，不追空。',
     priceTrigger,
     newsRadar,
+    displayPrice,
+    newsRiskCn,
+    newsUnavailableReason: 'Brave 新闻雷达当前不可用或未返回有效结果。',
     wallZone,
     controlSide,
     dealerImpact,
@@ -1427,7 +1434,8 @@ function renderGoldenDecision(home) {
       <article class="home-panel home-panel-side">
         <div class="home-panel-title"><span>黄金决策区</span><b>市场机制</b></div>
         ${renderHomeRows([
-          ['实时价格', spot.spot ?? spot.price ?? '还没有拿到可用于计划的实时价格'],
+          ['实时价格', copy.currentPriceText],
+          ['说明', copy.currentPriceNote],
           ['市场机制', copy.dealerImpact],
           ['解释', '做市商墙位还没生成，所以暂时不能判断大盘是在震荡区，还是容易单边加速。']
         ])}
@@ -1483,7 +1491,8 @@ function renderExecutionSection(home) {
           ['看 Call 条件', execution.price_trigger?.bullish_condition_cn || '7150 附近站稳并反弹，再观察 Call 候选。'],
           ['看 Put 条件', execution.price_trigger?.bearish_condition_cn || '7150 放量跌破并回抽不过，再重新评估 Put。'],
           ['禁做条件', execution.price_trigger?.no_trade_condition_cn || '7150 附近来回乱磨，或者没有入场、止损、TP，不做。'],
-          ['新闻风险', execution.news_radar?.news_risk_cn || '低'],
+          ['新闻风险', copy.newsRiskText],
+          ['新闻原因', copy.newsReasonText],
           ['墙位区', execution.wall_zone_panel?.summary_cn || 'GEX 墙位暂时不能用；暗池显示 7150 附近有大成交观察区。'],
           ['入场 / 止损 / TP', '还没有入场、止损、目标价，不能下单']
         ])}
@@ -1540,7 +1549,8 @@ function renderBottomPlaceholders() {
           <h3>Brave 市场雷达</h3>
         </div>
         ${renderHomeRows([
-          ['新闻风险', news.news_risk_cn || '新闻只做背景参考'],
+          ['新闻风险', news.status === 'live' || news.status === 'fresh' ? news.news_risk_cn : '暂未确认'],
+          ['原因', news.status === 'live' || news.status === 'fresh' ? news.macro_event_cn : 'Brave 新闻雷达当前不可用或未返回有效结果。'],
           ['宏观事件', news.macro_event_cn || '没有确认的宏观冲击'],
           ['财报预告', news.earnings_event_cn || '没有确认的重大财报临近'],
           ['科技权重', news.mega_cap_cn || '科技权重暂未给出额外方向'],
@@ -1913,6 +1923,16 @@ function radarHumanStatus(status) {
   return '未接通';
 }
 
+function radarLayerStatusLabel(name) {
+  if (name.includes('做市商')) return '部分可用';
+  if (name.includes('机构资金')) return '部分可用';
+  if (name.includes('波动率')) return '公式就绪';
+  if (name.includes('暗池')) return '低置信参考';
+  if (name.includes('市场情绪')) return '背景可用';
+  if (name.includes('数据质量')) return '可分析，不可操作';
+  return '部分可参考';
+}
+
 function radarHumanText(value, fallback = '未提供') {
   const text = radarText(value, fallback);
   return text
@@ -2113,7 +2133,7 @@ function renderUwLayerStatus(signal) {
           const copy = layerCopy[name] || {};
           return `
           <div class="matrix-item">
-            <div class="matrix-name">${escapeHtml(name)}<br>${statusTag(radarHumanStatus(layer.status))}</div>
+            <div class="matrix-name">${escapeHtml(name)}<br>${statusTag(radarLayerStatusLabel(name))}</div>
             <div class="matrix-value">
               <b>结论：</b>${escapeHtml(copy.conclusion || radarHumanText(layer.summary_cn, '未提供'))}<br>
               <b>接通证据：</b>${escapeHtml(copy.evidence || radarHumanText(layer.evidence_cn, '未提供'))}<br>
@@ -2282,11 +2302,11 @@ function renderRadar(signal) {
   return `
     <main class="page">
       <section class="radar-layout">
+        ${renderUwAggregateAnalysis(signal)}
         ${renderDataSourceOverview(signal)}
         ${renderUwLayerStatus(signal)}
-        ${renderEndpointEvidence(signal)}
         ${renderMappingStatus(signal)}
-        ${renderUwAggregateAnalysis(signal)}
+        ${renderEndpointEvidence(signal)}
         ${renderDataGaps(signal)}
         ${renderDebugJson(signal)}
       </section>
