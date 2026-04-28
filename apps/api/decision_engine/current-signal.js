@@ -243,9 +243,10 @@ function applySourceDisplayRules(sourceStatus = [], unified = {}) {
     telegram: 'Telegram 是输出通道，不是行情或分析数据源，不参与首页主判断，不参与操作。'
   };
   return (sourceStatus || []).map((item) => {
+    const diagnosticReason = diagnosticOnly[item.source] || '';
     const display = diagnosticOnly[item.source]
       ? {
-          ...sourceDisplay('unavailable', diagnosticOnly[item.source]),
+          ...sourceDisplay('unavailable', diagnosticReason),
           show_on_homepage: false,
           show_in_data_gaps: true,
           usable_for_analysis: false,
@@ -254,6 +255,7 @@ function applySourceDisplayRules(sourceStatus = [], unified = {}) {
       : unified[map[item.source]] || sourceDisplay(item.state, item.message);
     return {
       ...item,
+      message: diagnosticReason || item.message || '',
       display_status: display.status,
       show_on_homepage: display.show_on_homepage,
       show_in_data_gaps: display.show_in_data_gaps,

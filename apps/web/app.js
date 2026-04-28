@@ -1276,7 +1276,7 @@ function renderUwLayerStatus(signal) {
           <div class="matrix-item">
             <div class="matrix-name">${escapeHtml(name)}<br>${statusTag(layer.status)}</div>
             <div class="matrix-value">
-              <b>大白话结论：</b>${escapeHtml(radarText(layer.summary_cn, '未提供'))}<br>
+              <b>结论：</b>${escapeHtml(radarText(layer.summary_cn, '未提供'))}<br>
               <b>接通证据：</b>${escapeHtml(radarText(layer.evidence_cn, '未提供'))}<br>
               <b>当前卡点：</b>${escapeHtml(radarText(layer.current_block, '未提供'))}<br>
               <b>对操作卡影响：</b>${escapeHtml(layer.usable_for_operation ? '可参与操作卡' : '不能直接放行操作卡')}<br>
