@@ -1297,12 +1297,334 @@ function renderIntelMatrix(signal) {
   `;
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   L2.5 HUD — FOUR BATTLE ZONES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function fmtLevel(v) {
+  if (v == null) return '--';
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toFixed(0) : '--';
+}
+function fmtPrem(v) {
+  if (v == null) return '--';
+  const m = Number(v) / 1_000_000;
+  const sign = m >= 0 ? '+' : '';
+  return `${sign}$${Math.abs(m).toFixed(1)}M`;
+}
+function distanceLabel(spot, wall) {
+  if (spot == null || wall == null) return '--';
+  const d = wall - spot;
+  const sign = d >= 0 ? '+' : '';
+  return `${sign}${d.toFixed(1)} pts`;
+}
+function isSniperZone(spot, wall, threshold = 2) {
+  if (spot == null || wall == null) return false;
+  return Math.abs(spot - wall) <= threshold;
+}
+
+// Zone 1: Gamma Battlefield
+function renderHudZoneGamma(signal) {
+  const gr = signal.gamma_regime_engine || {};
+  const atm = signal.atm_engine || {};
+  const spot = (signal.price_contract && signal.price_contract.live_price != null)
+    ? signal.price_contract.live_price
+    : (signal.observation_price && signal.observation_price.value != null ? signal.observation_price.value : null);
+  const regime = gr.gamma_regime || 'unknown';
+  const regimeLabelMap = { positive: '正 GAMMA 环境', negative: '负 GAMMA 环境', transitional: '过渡区', unknown: '数据待接入' };
+  const regimeLabel = regimeLabelMap[regime] || regime;
+  const regimeSubMap = { positive: '做市商阻尼 · 均值回归 · 卖权策略占优', negative: '做市商放波 · 趋势加速 · 买权策略占优', transitional: '环境切换中，谨慎双向', unknown: '等待 UW 数据' };
+  const regimeSub = regimeSubMap[regime] || '';
+  const score = (gr.scores && gr.scores.execution_confidence != null) ? gr.scores.execution_confidence : 0;
+  const callWall = gr.call_wall != null ? gr.call_wall : null;
+  const putWall  = gr.put_wall  != null ? gr.put_wall  : null;
+  const gammaFlip = gr.gamma_flip != null ? gr.gamma_flip : null;
+  const atmVal = atm.atm != null ? atm.atm : null;
+  const atmTrend = atm.atm_trend || 'stable';
+  const pinRisk = atm.pin_risk != null ? atm.pin_risk : 0;
+  const trendArrow = atmTrend === 'rising' ? '↑' : atmTrend === 'falling' ? '↓' : '→';
+  const badge = regime === 'positive' ? 'green' : regime === 'negative' ? 'red' : regime === 'transitional' ? 'amber' : 'gray';
+  const flipClass = spot != null && gammaFlip != null ? (spot > gammaFlip ? 'bullish' : 'bearish') : 'neutral';
+  return `
+    <div class="hud-zone gamma-battlefield">
+      <div class="hud-zone-header">
+        <div class="hud-zone-title">
+          <span class="hud-zone-number">ZONE 01</span>
+          <span class="hud-zone-name">Gamma 战场</span>
+        </div>
+        <span class="hud-zone-badge ${badge}">${regimeLabel}</span>
+      </div>
+      <div class="gamma-regime-banner ${regime}">
+        <div>
+          <div class="gamma-regime-label">${regimeLabel}</div>
+          <div class="gamma-regime-sub">${regimeSub}</div>
+        </div>
+        <div class="gamma-regime-score">
+          <div class="gamma-regime-score-val">${score}</div>
+          <div class="gamma-regime-score-label">执行置信度</div>
+        </div>
+      </div>
+      <div class="gamma-flip-bar">
+        <div class="gamma-flip-item">
+          <div class="gamma-flip-label">Gamma Flip</div>
+          <div class="gamma-flip-value ${flipClass}">${fmtLevel(gammaFlip)}</div>
+          <div class="gamma-flip-sub">${spot != null && gammaFlip != null ? (spot > gammaFlip ? '现价在翻转点上方' : '现价在翻转点下方') : '--'}</div>
+        </div>
+        <div class="gamma-flip-item">
+          <div class="gamma-flip-label">Call Wall</div>
+          <div class="gamma-flip-value bearish">${fmtLevel(callWall)}</div>
+          <div class="gamma-flip-sub">${distanceLabel(spot, callWall)}</div>
+        </div>
+        <div class="gamma-flip-item">
+          <div class="gamma-flip-label">Put Wall</div>
+          <div class="gamma-flip-value bullish">${fmtLevel(putWall)}</div>
+          <div class="gamma-flip-sub">${distanceLabel(spot, putWall)}</div>
+        </div>
+      </div>
+      <div class="atm-magnet-row">
+        <span class="atm-magnet-label">ATM 磁吸中轴</span>
+        <span class="atm-magnet-value">${fmtLevel(atmVal)}</span>
+        <span class="atm-magnet-trend">${trendArrow} ${atmTrend === 'rising' ? '上移' : atmTrend === 'falling' ? '下移' : '稳定'}</span>
+        ${pinRisk >= 70 ? `<span class="atm-pin-warning">⚠ ATM 吸附 ${pinRisk}/100</span>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+// Zone 2: Execution Matrix
+function renderHudZoneExecution(signal) {
+  const gr = signal.gamma_regime_engine || {};
+  const dp = signal.darkpool_gravity || {};
+  const pc = signal.price_contract || {};
+  const dw = signal.dealer_wall_map || {};
+  const spot = pc.live_price != null ? pc.live_price : (signal.observation_price && signal.observation_price.value != null ? signal.observation_price.value : null);
+  const callWall  = gr.call_wall  != null ? gr.call_wall  : (dw.call_wall  != null ? dw.call_wall  : null);
+  const putWall   = gr.put_wall   != null ? gr.put_wall   : (dw.put_wall   != null ? dw.put_wall   : null);
+  const gammaFlip = gr.gamma_flip != null ? gr.gamma_flip : (dw.gamma_flip != null ? dw.gamma_flip : null);
+  const dpSupport = dp.nearest_support != null ? dp.nearest_support : (dp.mapped_spx != null ? dp.mapped_spx : null);
+  const walls = [
+    { type: 'call-wall',      label: '上限阻力 Call Wall', level: callWall,  sniper: isSniperZone(spot, callWall) },
+    { type: 'put-wall',       label: '下限支撑 Put Wall',  level: putWall,   sniper: isSniperZone(spot, putWall) },
+    { type: 'darkpool-wall',  label: '暗盘防线 Dark Pool', level: dpSupport, sniper: isSniperZone(spot, dpSupport) },
+    { type: 'gamma-flip-wall',label: 'Gamma 翻转点',       level: gammaFlip, sniper: isSniperZone(spot, gammaFlip) }
+  ];
+  const anySniperActive = walls.some(w => w.sniper && w.level != null);
+  const wallRows = walls.map(w => {
+    const distClass = (w.level != null && spot != null && Math.abs(w.level - spot) <= 5) ? 'danger' : 'safe';
+    const sniperCls = (w.sniper && w.level != null) ? ' sniper-active' : '';
+    return `
+      <div class="wall-item ${w.type}${sniperCls}">
+        <div><div class="wall-item-type">${w.label}</div></div>
+        <div class="wall-item-level">${fmtLevel(w.level)}</div>
+        <div class="wall-item-distance ${distClass}">${distanceLabel(spot, w.level)}</div>
+      </div>`;
+  }).join('');
+  return `
+    <div class="hud-zone execution-matrix">
+      <div class="hud-zone-header">
+        <div class="hud-zone-title">
+          <span class="hud-zone-number">ZONE 02</span>
+          <span class="hud-zone-name">执行边界与墙</span>
+        </div>
+        <span class="hud-zone-badge ${anySniperActive ? 'red' : 'blue'}">${anySniperActive ? '⚡ 狙击状态' : '监控中'}</span>
+      </div>
+      ${anySniperActive ? `<div class="sniper-alert"><div class="sniper-alert-dot"></div><span class="sniper-alert-text">现价进入关键位 ±2 点范围 — 进入狙击状态</span></div>` : ''}
+      <div class="wall-stack">${wallRows}</div>
+    </div>
+  `;
+}
+
+// Zone 3: Order Flow X-Ray
+function renderHudZoneFlow(signal) {
+  const fb = signal.flow_behavior_engine || {};
+  const behavior = fb.behavior || 'neutral';
+  const behaviorLabel = fb.behavior_label || '无明显资金流';
+  const behaviorIcon = fb.behavior_icon || '—';
+  const reason = fb.reason || '';
+  const netPrem  = fb.net_premium  != null ? fb.net_premium  : null;
+  const callPrem = fb.call_premium != null ? fb.call_premium : null;
+  const putPrem  = fb.put_premium  != null ? fb.put_premium  : null;
+  const acc = fb.acceleration || {};
+  const pcExtreme = fb.pc_extreme || {};
+  const aggScore = fb.aggression_score != null ? fb.aggression_score : 0;
+  const aggClass = aggScore >= 70 ? 'high' : aggScore >= 40 ? 'medium' : 'low';
+  const accDir = acc.direction || 'flat';
+  const accLabel = acc.acceleration_label || '--';
+  const pcRatio = fb.put_call_ratio != null ? fb.put_call_ratio : null;
+  const pcClass = (pcExtreme.type || 'normal').replace(/_/g, '-');
+  const netPremClass = netPrem == null ? 'neutral' : netPrem >= 0 ? 'positive' : 'negative';
+  return `
+    <div class="hud-zone flow-xray">
+      <div class="hud-zone-header">
+        <div class="hud-zone-title">
+          <span class="hud-zone-number">ZONE 03</span>
+          <span class="hud-zone-name">资金微观 X-Ray</span>
+        </div>
+        <span class="hud-zone-badge ${fb.behavior_color || 'gray'}">${behaviorLabel}</span>
+      </div>
+      <div class="flow-behavior-banner ${behavior}">
+        <div>
+          <div class="flow-behavior-label">${behaviorIcon} ${behaviorLabel}</div>
+          <div class="flow-behavior-reason">${reason}</div>
+        </div>
+        <span class="hud-zone-badge ${fb.behavior_color || 'gray'}">${fb.confidence || '--'}</span>
+      </div>
+      <div class="net-prem-row">
+        <div class="net-prem-card">
+          <div class="net-prem-card-label">净权利金 Net Prem</div>
+          <div class="net-prem-card-value ${netPremClass}">${fmtPrem(netPrem)}</div>
+        </div>
+        <div class="net-prem-card">
+          <div class="net-prem-card-label">Call / Put 权利金</div>
+          <div class="net-prem-card-value positive">${fmtPrem(callPrem)}</div>
+          <div style="font-size:10px;color:var(--ink-4);margin-top:2px">${fmtPrem(putPrem)}</div>
+        </div>
+      </div>
+      <div class="acceleration-card">
+        <div>
+          <div class="acceleration-label">15分钟加速度 ★ 核心指标</div>
+          <div class="acceleration-value ${accDir}">${accLabel}</div>
+        </div>
+        <span class="acceleration-tag">${acc.is_accelerating ? '加速中' : '平稳'}</span>
+      </div>
+      <div class="pc-ratio-row">
+        <span class="pc-ratio-label">P/C 情绪极值</span>
+        <span class="pc-ratio-value ${pcClass}">${pcRatio != null ? Number(pcRatio).toFixed(2) : '--'}</span>
+        <span class="pc-ratio-tag">${pcExtreme.label || '--'}</span>
+      </div>
+      <div class="aggression-meter">
+        <div class="aggression-meter-label">
+          <span>资金侵略性</span>
+          <span>${fb.aggression_label || '--'} (${aggScore}/100)</span>
+        </div>
+        <div class="aggression-meter-bar">
+          <div class="aggression-meter-fill ${aggClass}" style="width:${aggScore}%"></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Zone 4: Command Generator
+function renderHudZoneCommand(signal) {
+  const ab = signal.ab_order_engine || {};
+  const status = ab.status || 'waiting';
+  const headline = ab.headline || '等待信号确认...';
+  const planA = ab.plan_a || null;
+  const planB = ab.plan_b || null;
+  const confidence = ab.execution_confidence != null ? ab.execution_confidence : 0;
+  const confClass = confidence >= 70 ? 'high' : confidence >= 40 ? 'medium' : 'low';
+  const headlineClass = status === 'blocked' ? 'blocked' : status === 'waiting' ? 'waiting' : '';
+  function renderPlan(plan, tag, cls) {
+    if (!plan) {
+      return `<div class="plan-card ${cls}"><div class="plan-card-header"><span class="plan-card-tag">${tag}</span><span class="plan-card-direction NEUTRAL">等待</span></div><div class="plan-card-rationale">暂无预案</div></div>`;
+    }
+    return `
+      <div class="plan-card ${cls}">
+        <div class="plan-card-header">
+          <span class="plan-card-tag">${tag}</span>
+          <span class="plan-card-direction ${plan.direction || 'NEUTRAL'}">${plan.direction_cn || plan.direction || '--'}</span>
+        </div>
+        <div class="plan-card-instrument">${plan.instrument || '--'}</div>
+        <div class="plan-card-rationale">${plan.rationale || ''}</div>
+        <div class="plan-kv-grid">
+          <div class="plan-kv-row"><span class="plan-kv-key">入场</span><span class="plan-kv-val entry">${plan.entry || '--'}</span></div>
+          <div class="plan-kv-row"><span class="plan-kv-key">止损</span><span class="plan-kv-val stop">${plan.stop || '--'}</span></div>
+          <div class="plan-kv-row"><span class="plan-kv-key">TP1</span><span class="plan-kv-val tp">${plan.tp1 || '--'}</span></div>
+          <div class="plan-kv-row"><span class="plan-kv-key">TP2</span><span class="plan-kv-val tp">${plan.tp2 || '--'}</span></div>
+          <div class="plan-kv-row"><span class="plan-kv-key">失效</span><span class="plan-kv-val invalid">${plan.invalid || '--'}</span></div>
+        </div>
+        ${plan.condition ? `<div class="plan-condition">${plan.condition}</div>` : ''}
+      </div>
+    `;
+  }
+  return `
+    <div class="hud-zone command-generator">
+      <div class="hud-zone-header">
+        <div class="hud-zone-title">
+          <span class="hud-zone-number">ZONE 04</span>
+          <span class="hud-zone-name">指令生成器</span>
+        </div>
+        <span class="hud-zone-badge ${status === 'ready' ? 'blue' : status === 'blocked' ? 'red' : 'amber'}">${status === 'ready' ? '预案就绪' : status === 'blocked' ? '执行锁定' : '等待确认'}</span>
+      </div>
+      <div class="command-headline ${headlineClass}">${headline}</div>
+      ${ab.pin_warning ? `<div class="pin-warning-banner"><span class="pin-warning-text">${ab.pin_warning}</span></div>` : ''}
+      <div class="confidence-row">
+        <span class="confidence-label">执行置信度</span>
+        <div class="confidence-bar-wrap"><div class="confidence-bar-fill ${confClass}" style="width:${confidence}%"></div></div>
+        <span class="confidence-value">${confidence}/100</span>
+      </div>
+      <div class="plan-grid">
+        ${renderPlan(planA, 'PLAN A', 'plan-a')}
+        ${renderPlan(planB, 'PLAN B', 'plan-b')}
+      </div>
+    </div>
+  `;
+}
+
+// HUD Price Strip
+function renderHudPriceStrip(signal) {
+  const pc = signal.price_contract || {};
+  const obs = signal.observation_price || {};
+  const dc = signal.data_clock || {};
+  const sd = signal.source_display || {};
+  const spot = pc.live_price != null ? pc.live_price : (obs.value != null ? obs.value : null);
+  const sourceClass = pc.source === 'fmp' ? 'real' : (pc.is_degraded ? 'degraded' : 'mock');
+  const sourceLabel = pc.source_label || pc.source || '--';
+  const uwStatus = (sd.uw && sd.uw.status) ? sd.uw.status : 'unknown';
+  const clockDotClass = uwStatus === 'live' ? '' : (uwStatus === 'partial' ? 'stale' : 'offline');
+  const fmpAudit = signal.fmp_price_audit || {};
+  const dayChange = fmpAudit.day_change != null ? fmpAudit.day_change : null;
+  const dayChangePct = fmpAudit.day_change_percent != null ? fmpAudit.day_change_percent : null;
+  const changeClass = dayChange == null ? 'flat' : (dayChange > 0 ? 'up' : (dayChange < 0 ? 'down' : 'flat'));
+  const changeStr = dayChange != null
+    ? `${dayChange > 0 ? '+' : ''}${Number(dayChange).toFixed(2)} (${dayChangePct != null ? (dayChangePct > 0 ? '+' : '') + Number(dayChangePct).toFixed(2) + '%' : ''})`
+    : '--';
+  return `
+    <div class="hud-price-strip">
+      <div>
+        <div class="hud-price-label">SPX 现价</div>
+        <div class="hud-price-main">${spot != null ? Number(spot).toFixed(2) : '--'}</div>
+      </div>
+      <div class="hud-price-change ${changeClass}">${changeStr}</div>
+      <div class="hud-price-divider"></div>
+      <div class="hud-price-meta">
+        <div class="hud-price-source ${sourceClass}">价格来源: ${sourceLabel}</div>
+        <div style="font-size:10px;color:var(--ink-4)">${pc.is_degraded ? '⚠ 价格降级' : (pc.is_contaminated ? '⚠ 价格受污染' : '价格有效')}</div>
+      </div>
+      <div class="hud-price-divider"></div>
+      <div class="hud-price-meta">
+        <div>UW: <span class="hud-price-source ${uwStatus === 'live' ? 'real' : (uwStatus === 'partial' ? 'mock' : 'degraded')}">${uwStatus}</span></div>
+        <div style="font-size:10px;color:var(--ink-4)">FMP: ${(sd.fmp && sd.fmp.status) ? sd.fmp.status : '--'}</div>
+      </div>
+      <div class="hud-data-clock">
+        <div class="hud-data-clock-dot ${clockDotClass}"></div>
+        <span>${shortTime(dc.now)}</span>
+      </div>
+    </div>
+  `;
+}
+
+// Main HUD Panel — assembles all four zones
+function renderHudPanel(signal) {
+  return `
+    <div id="sniper-overlay" class="sniper-overlay"></div>
+    ${renderHudPriceStrip(signal)}
+    <div class="hud-layout">
+      ${renderHudZoneGamma(signal)}
+      ${renderHudZoneExecution(signal)}
+      ${renderHudZoneFlow(signal)}
+      ${renderHudZoneCommand(signal)}
+    </div>
+  `;
+}
 function renderHome(signal) {
   const home = homepageState(signal);
   return `
     <main class="page home-v1">
+      ${renderHudPanel(signal)}
       ${renderHomeTopMood(home)}
-      ${renderRealtimePriceBox(home)}
       ${renderExecutionSection(home)}
       ${renderGoldenDecision(home)}
       ${renderAnalysisTiles(home)}
@@ -1870,12 +2192,6 @@ function radarConnected(value) {
 
 function radarHasData(value) {
   return value ? '有' : '无';
-}
-
-function radarCompleteness(value) {
-  if (value === true) return '完整';
-  if (value === 'partial') return '部分';
-  return '缺失';
 }
 
 function radarStandardized(value) {
@@ -2485,3 +2801,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderError(error);
   }
 });
+
+// Activate sniper overlay when any wall is in range
+(function activateSniperOverlay() {
+  const overlay = document.getElementById('sniper-overlay');
+  if (!overlay) return;
+  const sniperItems = document.querySelectorAll('.wall-item.sniper-active');
+  if (sniperItems.length > 0) {
+    overlay.classList.add('active');
+  } else {
+    overlay.classList.remove('active');
+  }
+})();
+

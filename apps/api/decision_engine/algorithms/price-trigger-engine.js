@@ -1,3 +1,17 @@
+/**
+ * price-trigger-engine.js
+ *
+ * P0 SAFETY: spot_price (current_price) and key_level are STRICTLY ISOLATED.
+ *
+ * Rules:
+ *  - spot_price MUST come from price_contract.live_price (FMP/TV/manual override only)
+ *  - key_level comes from darkpool_gravity.mapped_spx (reference only) or wall_zone_panel
+ *  - If no valid spot_price → ALL distance/trigger outputs are null, state = 'no_live_price'
+ *  - darkpool_gravity.mapped_spx is NEVER used as spot_price
+ */
+
+import { validateSpxPrice } from './price-contract.js';
+
 function numberOrNull(value) {
   if (value === null || value === undefined || value === '') return null;
   const number = Number(value);
@@ -21,10 +35,24 @@ export function buildPriceTrigger({
   flow_conflict = {},
   operation_layer = {}
 } = {}) {
-  const spot = numberOrNull(spot_price);
-  const keyLevel = numberOrNull(darkpool_gravity.mapped_spx ?? wall_zone_panel.darkpool_zone?.nearest_zone?.center_price);
-  const series = (last_price_series.length ? last_price_series : internal_price_series).map(closeValue).filter((value) => value != null);
-  const distancePct = spot != null && keyLevel != null ? Math.abs(spot - keyLevel) / spot * 100 : null;
+  // P0: Validate spot_price through price_contract — reject SPY prices, out-of-range, etc.
+  const spot = validateSpxPrice(spot_price);
+
+  // key_level is a REFERENCE LEVEL (wall/zone), NOT a live price.
+  // It may come from darkpool_gravity.mapped_spx (SPY×10 reference) or wall_zone_panel.
+  // This is intentional and correct — it's used as a target level, not as current price.
+  const keyLevel = numberOrNull(
+    darkpool_gravity.mapped_spx ?? wall_zone_panel.darkpool_zone?.nearest_zone?.center_price
+  );
+
+  const series = (last_price_series.length ? last_price_series : internal_price_series)
+    .map(closeValue)
+    .filter((value) => value != null);
+
+  const distancePct = spot != null && keyLevel != null
+    ? Math.abs(spot - keyLevel) / spot * 100
+    : null;
+
   const approachZone = 0.5;
   const touchZone = 0.15;
   const breakBuffer = 0.10;
@@ -33,6 +61,7 @@ export function buildPriceTrigger({
 
   const base = {
     key_level: keyLevel,
+    // P0: current_price is ALWAYS the validated SPX live price, never a reference level
     current_price: spot,
     distance_pct: pct(distancePct),
     bullish_condition_cn: `${levelText} 附近站稳并反弹，Put Flow 不再继续增强，再观察 Call 候选。`,
@@ -44,7 +73,18 @@ export function buildPriceTrigger({
     confidence: series.length ? 'medium' : 'low'
   };
 
-  if (spot == null || keyLevel == null || distancePct == null) {
+  // P0: If no valid SPX live price, degrade ALL trigger outputs
+  if (spot == null) {
+    return {
+      ...base,
+      state: 'no_live_price',
+      state_cn: 'SPX 实时价格未接入，无法计算价格触发',
+      next_action_cn: 'SPX 实时价格未接入。不显示距离、不显示"已接近"，不下单。',
+      degraded: true
+    };
+  }
+
+  if (keyLevel == null || distancePct == null) {
     return {
       ...base,
       state: 'waiting_approach',
@@ -61,7 +101,12 @@ export function buildPriceTrigger({
     }
     const range = Math.max(...recent) - Math.min(...recent);
     if (crosses >= 3 || range / keyLevel * 100 <= touchZone) {
-      return { ...base, state: 'chop_wait', state_cn: `${levelText} 附近乱磨`, next_action_cn: '不做，等方向出来。' };
+      return {
+        ...base,
+        state: 'chop_wait',
+        state_cn: `${levelText} 附近乱磨`,
+        next_action_cn: '不做，等方向出来。'
+      };
     }
   }
 

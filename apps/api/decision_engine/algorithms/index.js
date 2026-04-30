@@ -17,3 +17,9 @@ export { buildWallZonePanel } from './wall-zone-engine.js';
 export { buildControlSide } from './control-side-engine.js';
 export { numberOrNull, hasNumber, present, compact } from './safe-number.js';
 export * as ALGORITHM_CONSTANTS from './constants.js';
+// ─── L2.5 Institutional Engines ──────────────────────────────────────────────
+export { buildPriceContract, validateSpxPrice, safeSpxDistance } from './price-contract.js';
+export { buildAtmEngine } from './atm-engine.js';
+export { buildGammaRegimeEngine } from './gamma-regime-engine.js';
+export { buildFlowBehaviorEngine } from './flow-behavior-engine.js';
+export { buildAbOrderEngine } from './ab-order-engine.js';

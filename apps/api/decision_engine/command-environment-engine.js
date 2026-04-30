@@ -25,7 +25,12 @@ export function runCommandEnvironmentEngine({
     blockers.push(normalized.theta_execution_constraint.reason || 'ThetaData dealer 不可执行');
   }
   if (dataCoherence?.executable === false) {
-    blockers.push(dataCoherence.reason || '价格地图冲突');
+    // dataCoherence returns `reasons` (array) and `plain_chinese`, not a singular `reason`
+    const coherenceReason = dataCoherence.plain_chinese
+      || (Array.isArray(dataCoherence.reasons) && dataCoherence.reasons.length > 0
+        ? dataCoherence.reasons.join('；')
+        : '价格地图冲突');
+    blockers.push(coherenceReason);
   }
 
   if (blockers.length > 0) {
@@ -90,7 +95,12 @@ export function runCommandEnvironmentEngine({
     (setup) => !allowed_setups.includes(setup)
   );
 
-  const key_support = Number.isFinite(Number(gammaWall?.distance_to_put_wall)) ? marketRegime?.flip_distance != null ? undefined : undefined : undefined;
+  // Derive key_support from put wall level if available, else fall back to flip level
+  const key_support = gammaWall?.put_wall != null
+    ? gammaWall.put_wall
+    : marketRegime?.flip_level != null
+      ? marketRegime.flip_level
+      : null;
   const preferred_strategy =
     regime_bias === 'income'
       ? 'iron_condor'
@@ -116,8 +126,12 @@ export function runCommandEnvironmentEngine({
     allowed_setups,
     blocked_setups,
     preferred_strategy,
-    key_support: gammaWall?.distance_to_put_wall != null ? 'put_wall' : null,
-    key_resistance: gammaWall?.distance_to_call_wall != null ? 'call_wall' : null,
+    key_support,
+    key_resistance: gammaWall?.call_wall != null
+      ? gammaWall.call_wall
+      : marketRegime?.flip_level != null
+        ? marketRegime.flip_level
+        : null,
     forbidden_zone: marketRegime.market_state === 'flip_chop' ? 'middle_chop' : 'none',
     confidence_score: conflict?.adjusted_confidence ?? 0,
     data_mode: normalized?.engines?.data_coherence?.data_mode || normalized?.data_coherence?.data_mode || (dataHealth?.state === 'healthy' ? 'live' : dataHealth?.state === 'degraded' ? 'partial' : 'mixed'),

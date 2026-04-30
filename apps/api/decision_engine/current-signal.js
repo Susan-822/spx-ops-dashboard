@@ -41,7 +41,13 @@ import {
   buildWallZonePanel,
   buildControlSide,
   buildUwLayerConclusions,
-  buildUwNormalized
+  buildUwNormalized,
+  // L2.5 Institutional Engines
+  buildPriceContract,
+  buildAtmEngine,
+  buildGammaRegimeEngine,
+  buildFlowBehaviorEngine,
+  buildAbOrderEngine
 } from './algorithms/index.js';
 import { getLiveRefreshLog } from '../scheduler/live-refresh-scheduler.js';
 
@@ -144,13 +150,17 @@ function replaceUndefined(value) {
 }
 
 function scrubLegacyDecisionStrings(value) {
+  // NOTE: This function performs safe semantic renames of internal enum strings.
+  // Rules:
+  //  - 'price_map_conflict' → 'final_decision_wait': internal rule-engine enum renamed
+  //    to the user-visible state label used throughout the decision pipeline.
+  //    This is a required rename; the test suite explicitly validates the output.
+  //  - Replacements that masked real data-availability or execution-block states
+  //    have been removed (e.g. 'Dealer unavailable' → 'Dealer pending' was removed
+  //    because it hid a genuine data gap from the UI).
   if (typeof value === 'string') {
     return value
-      .replaceAll('Dealer unavailable', 'Dealer pending final_decision')
-      .replaceAll('ThetaData unavailable', 'ThetaData EM auxiliary disabled')
-      .replaceAll('price_map_conflict', 'final_decision_wait')
-      .replaceAll('ThetaData Gamma 不完整，Dealer 地图不可执行', 'UW 主线等待 final_decision 确认')
-      .replaceAll('ThetaData Gamma 不完整，Dealer path 仅参考，不可执行。', 'UW 主线等待 final_decision 确认。');
+      .replaceAll('price_map_conflict', 'final_decision_wait');
   }
   if (Array.isArray(value)) return value.map((item) => scrubLegacyDecisionStrings(item));
   if (value && typeof value === 'object') {
@@ -270,22 +280,25 @@ function statusByAge(age, staleMs, downMs) {
 }
 
 function buildObservationPrices({ priceSources = {}, spotConclusion = {}, priceTrigger = {}, now = new Date() } = {}) {
-  const triggerPrice = numberOrNull(priceTrigger.current_price);
+  // P0 FIX: price_trigger.current_price is NO LONGER used as the observation value.
+  // It was previously given highest priority, but price_trigger.current_price could be
+  // contaminated by darkpool mapped_spx (SPY×10) or other non-SPX sources.
+  // The canonical SPX price must come from priceSources.spx (FMP/TV validated) only.
   const sourcePrice = numberOrNull(priceSources.spx?.price);
   const spot = numberOrNull(spotConclusion.spot ?? spotConclusion.price);
-  const value = triggerPrice && triggerPrice > 0
-    ? triggerPrice
-    : sourcePrice && sourcePrice > 0
-      ? sourcePrice
-      : spot && spot > 0
-        ? spot
-        : null;
+  // Only accept prices in the valid SPX range (6000–8500)
+  const isValidSpx = (v) => v != null && v >= 6000 && v <= 8500;
+  const value = isValidSpx(sourcePrice)
+    ? sourcePrice
+    : isValidSpx(spot)
+      ? spot
+      : null;
   const updatedAt = value == null ? null : priceSources.spx?.last_updated || spotConclusion.last_updated || now.toISOString();
   const age = ageMs(updatedAt, now);
   const status = statusByAge(age, 8000, 20000);
   const observation = {
     value: value ?? null,
-    source: triggerPrice && triggerPrice > 0 ? 'price_trigger' : value == null ? 'unavailable' : priceSources.spx?.source || spotConclusion.source || 'unavailable',
+    source: value == null ? 'unavailable' : priceSources.spx?.source || spotConclusion.source || 'unavailable',
     updated_at: updatedAt,
     age_ms: age,
     status,
@@ -2062,6 +2075,78 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     uwNormalized,
     newsRadar
   });
+  // ─── L2.5 Institutional Engine Computations ────────────────────────────────
+  const liveSpotPrice = priceSourcesV2.spx?.price ?? null;
+  const fmpIsReal = fmpSnapshot.price?.available === true && fmpSnapshot.price?.price != null;
+  const tvIsReal = rawNoteV2.tv_sentinel?.status === 'live';
+
+  // 1. Price Contract — canonical SPX price with contamination detection
+  const priceContract = buildPriceContract({
+    fmp_price: fmpSnapshot.price?.price ?? null,
+    fmp_is_real: fmpIsReal,
+    tv_price: rawNoteV2.tv_sentinel?.price ?? null,
+    tv_is_fresh: tvIsReal,
+    darkpool_mapped_spx: darkpoolGravity.mapped_spx ?? null,
+    manual_override: null
+  });
+
+  // 2. ATM Engine
+  const atmEngine = buildAtmEngine({
+    spot_price: priceContract.live_price,
+    net_gex: rawNoteV2.uw_conclusion?.net_gex ?? null,
+    time_to_close_minutes: 390
+  });
+
+  // 3. Gamma Regime Engine
+  const gammaRegimeEngine = buildGammaRegimeEngine({
+    spot_price: priceContract.live_price,
+    gamma_flip: dealerWallMap.gamma_flip ?? rawNoteV2.uw_conclusion?.zero_gamma ?? null,
+    net_gex: rawNoteV2.uw_conclusion?.net_gex ?? null,
+    call_wall: dealerWallMap.call_wall ?? rawNoteV2.uw_conclusion?.call_wall ?? null,
+    put_wall: dealerWallMap.put_wall ?? rawNoteV2.uw_conclusion?.put_wall ?? null,
+    atm: atmEngine.atm,
+    atm_trend: atmEngine.atm_trend,
+    atm_change: atmEngine.atm_change,
+    put_call_ratio: uwNormalized.flow?.call_put_ratio != null
+      ? (uwNormalized.flow.put_premium_5m ?? 0) / Math.max(uwNormalized.flow.call_premium_5m ?? 1, 1)
+      : null,
+    net_premium: uwNormalized.flow?.net_premium_5m ?? null,
+    pin_risk: atmEngine.pin_risk,
+    uw_status: rawNoteV2.uw_conclusion?.status ?? 'unavailable',
+    fmp_status: fmpIsReal ? 'real' : 'unavailable'
+  });
+
+  // 4. Flow Behavior Engine
+  const flowBehaviorEngine = buildFlowBehaviorEngine({
+    net_premium: uwNormalized.flow?.net_premium_5m ?? null,
+    call_premium: uwNormalized.flow?.call_premium_5m ?? null,
+    put_premium: uwNormalized.flow?.put_premium_5m ?? null,
+    put_call_ratio: gammaRegimeEngine.scores ? null : null, // derived below
+    prem_ticks: [],
+    gamma_regime: gammaRegimeEngine.gamma_regime,
+    spot_position: gammaRegimeEngine.spot_position,
+    darkpool_state: darkpoolGravity.state ?? null,
+    put_wall: dealerWallMap.put_wall ?? rawNoteV2.uw_conclusion?.put_wall ?? null,
+    call_wall: dealerWallMap.call_wall ?? rawNoteV2.uw_conclusion?.call_wall ?? null,
+    spot_price: priceContract.live_price
+  });
+
+  // 5. A/B Order Engine
+  const abOrderEngine = buildAbOrderEngine({
+    spot_price: priceContract.live_price,
+    atm: atmEngine.atm,
+    gamma_flip: dealerWallMap.gamma_flip ?? rawNoteV2.uw_conclusion?.zero_gamma ?? null,
+    call_wall: dealerWallMap.call_wall ?? rawNoteV2.uw_conclusion?.call_wall ?? null,
+    put_wall: dealerWallMap.put_wall ?? rawNoteV2.uw_conclusion?.put_wall ?? null,
+    gamma_regime: gammaRegimeEngine.gamma_regime,
+    flow_behavior: flowBehaviorEngine.behavior,
+    execution_confidence: gammaRegimeEngine.scores?.execution_confidence ?? 0,
+    pin_risk: atmEngine.pin_risk,
+    expiry: '0DTE',
+    degraded: priceContract.is_degraded
+  });
+  // ─────────────────────────────────────────────────────────────────────────────
+
   const finalOutput = {
     ...output,
     ...rawNoteV2,
@@ -2080,6 +2165,12 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     refresh_state: liveRefresh,
     data_clock: dataClock,
     observation_price: observation,
+    // L2.5 Institutional Engine outputs
+    price_contract: priceContract,
+    atm_engine: atmEngine,
+    gamma_regime_engine: gammaRegimeEngine,
+    flow_behavior_engine: flowBehaviorEngine,
+    ab_order_engine: abOrderEngine,
     tradeable_price: tradeable,
     execution_card: executionCard,
     uw_aggregate_analysis: buildUwAggregateAnalysis(uwNormalized, uwLayerConclusions, {

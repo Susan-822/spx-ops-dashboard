@@ -51,7 +51,11 @@ export function buildDarkpoolGravity({ darkpool = {}, spot_price = null } = {}) 
   return {
     source_ticker: largest.ticker || darkpool.source_ticker || 'SPY',
     source_price: sourcePrice,
+    // P0 SAFETY: mapped_spx is a DARKPOOL REFERENCE LEVEL only.
+    // It is SPY darkpool price x10 and MUST NOT be used as SPX live_price / current_price.
+    // Downstream engines must use price_contract.live_price for all spot-price logic.
     mapped_spx: mapped,
+    is_reference_only: true,
     premium,
     tier,
     tier_cn: tierCn,
