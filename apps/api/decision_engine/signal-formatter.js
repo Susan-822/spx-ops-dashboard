@@ -418,10 +418,12 @@ function buildMoneyRead(signal) {
   let mmTalk = '做市商路径不明，等待数据改善。';
   // ── ATM Trigger Engine context for mm_path_card ──────────────────────────
   const ate    = signal.atm_trigger_engine || {};
-  const bull1F = ate.bull_trigger_1_fmt ?? (cwFmt !== '--' ? cwFmt : '--');
-  const bull2F = ate.bull_trigger_2_fmt ?? '--';
-  const bear1F = ate.bear_trigger_1_fmt ?? (pwFmt !== '--' ? pwFmt : '--');
-  const bear2F = ate.bear_trigger_2_fmt ?? '--';
+  // Guard: only use absolute prices (>= 1000 for SPX). Relative offsets (e.g. 5, -5) are invalid.
+  const _ateAbsolute = (v) => (v != null && Number.isFinite(Number(v)) && Math.abs(Number(v)) >= 1000) ? String(Math.round(Number(v))) : null;
+  const bull1F = ate.bull_trigger_1_fmt ?? _ateAbsolute(ate.bull_trigger_1) ?? '--';
+  const bull2F = ate.bull_trigger_2_fmt ?? _ateAbsolute(ate.bull_trigger_2) ?? '--';
+  const bear1F = ate.bear_trigger_1_fmt ?? _ateAbsolute(ate.bear_trigger_1) ?? '--';
+  const bear2F = ate.bear_trigger_2_fmt ?? _ateAbsolute(ate.bear_trigger_2) ?? '--';
   const bt1F   = ate.bull_target_1_fmt  ?? '--';
   const bt2F   = ate.bull_target_2_fmt  ?? '--';
   const brt1F  = ate.bear_target_1_fmt  ?? '--';
@@ -470,15 +472,18 @@ function buildMoneyRead(signal) {
     dual_window_aligned: fb.dual_window_aligned ?? false
   };
   // 做市商会干嘛（资金模块内嵌）
-  let mmWhatToDo = `${atmFmt} 附近不做。等上破 ${cwFmt} 或下破 ${pwFmt}。`;
+  // v3: mmWhatToDo uses ATM trigger lines (bull1F/bear1F), NOT near_call_wall/near_put_wall
+  let mmWhatToDo = `${atmFmt} 附近不做。等上破 ${bull1F} 或下破 ${bear1F}。`;
   if (behavior === 'put_squeezed') {
-    mmWhatToDo = `Put 还重，但价格不跌，说明下方有人托。${atmFmt} 附近不追空，等 ${pwFmt} 真正跌破。`;
+    mmWhatToDo = `Put 还重，但价格不跌，说明下方有人托。${atmFmt} 附近不追空，等 ${bear2F} 真正跌破确认。`;
   } else if (behavior === 'mixed') {
-    mmWhatToDo = `有资金在托，但空头保护盘还没撤。${atmFmt} 附近不做，等 ${cwFmt} 站稳或 ${pwFmt} 跌破。`;
+    mmWhatToDo = `有资金在托，但空头保护盘还没撤。${atmFmt} 附近不做，等 ${bull1F} 站稳或 ${bear1F} 跌破。`;
   } else if (behavior === 'call_effective') {
-    mmWhatToDo = `Call 流入有效，但先等 ${cwFmt} 站稳确认，不要在 ${atmFmt} 附近追多。`;
+    mmWhatToDo = `Call 流入有效，但先等 ${bull1F} 站稳、${bull2F} 确认，不要在 ${atmFmt} 附近追多。`;
   } else if (behavior === 'put_effective') {
-    mmWhatToDo = `Put 流入有效，但先等 ${pwFmt} 跌破确认，不要在 ${atmFmt} 附近追空。`;
+    mmWhatToDo = `Put 流入有效，但先等 ${bear1F} 跌破、${bear2F} 确认，不要在 ${atmFmt} 附近追空。`;
+  } else if (behavior === 'call_capped') {
+    mmWhatToDo = `Call 被压制，${bull1F} 是第一关，站不住就不追多。${atmFmt} 附近卖权占优。`;
   }
   return {
     title, body,

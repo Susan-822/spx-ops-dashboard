@@ -1920,7 +1920,9 @@ function renderHome(signal) {
   const subHead    = pc.sub_headline || '';
   const locked     = pc.locked === true;
   const uwLive     = pc.uw_live === true;
-  const lastUpd    = pc.last_updated ? shortTime(pc.last_updated) : '--';
+  // v3 fix: last_updated is on signal root, not price_contract
+  const _lu = signal.last_updated || {};
+  const lastUpd = _lu.uw ? shortTime(_lu.uw) : (_lu.fmp ? shortTime(_lu.fmp) : '--');
 
   // Sentiment bar
   const sentScore  = sb.score ?? 50;
@@ -3542,10 +3544,54 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     const signal = await loadSignal();
     renderPage(signal);
+    // v3: Auto-polling — refresh based on refresh_policy from backend
+    startAutoPolling(signal);
   } catch (error) {
     renderError(error);
   }
 });
+
+// ── Auto-polling engine ───────────────────────────────────────────────────────
+let _pollTimer = null;
+function startAutoPolling(initialSignal) {
+  if (_pollTimer) clearTimeout(_pollTimer);
+  const policy = (initialSignal && initialSignal.refresh_policy) || {};
+  // Use backend-recommended interval, fallback to 15s for trading hours, 60s otherwise
+  const isMarketHours = (() => {
+    const now = new Date();
+    const utcH = now.getUTCHours();
+    const utcM = now.getUTCMinutes();
+    const utcMins = utcH * 60 + utcM;
+    // NYSE: 13:30-20:00 UTC (9:30am-4:00pm ET)
+    return utcMins >= 810 && utcMins < 1200;
+  })();
+  const recommendedMs = policy.interval_ms || (isMarketHours ? 15000 : 60000);
+  // Turbo mode: if price is near ATM trigger lines, refresh every 5s
+  const ate = initialSignal && initialSignal.atm_trigger_engine;
+  const spot = initialSignal && initialSignal.price_contract && initialSignal.price_contract.live_price;
+  let intervalMs = recommendedMs;
+  if (ate && spot != null) {
+    const bull1 = ate.bull_trigger_1;
+    const bear1 = ate.bear_trigger_1;
+    if ((bull1 != null && Math.abs(spot - bull1) <= 3) ||
+        (bear1 != null && Math.abs(spot - bear1) <= 3)) {
+      intervalMs = 5000; // Turbo: price within 3pts of trigger line
+    }
+  }
+  _pollTimer = setTimeout(async () => {
+    try {
+      const newSignal = await loadSignal();
+      // Only re-render if page is visible (avoid wasted renders in background tabs)
+      if (!document.hidden) {
+        renderPage(newSignal);
+      }
+      startAutoPolling(newSignal); // schedule next poll with updated signal
+    } catch (e) {
+      // On error, retry after 30s
+      _pollTimer = setTimeout(() => startAutoPolling(initialSignal), 30000);
+    }
+  }, intervalMs);
+}
 
 // Activate sniper overlay when any wall is in range
 (function activateSniperOverlay() {

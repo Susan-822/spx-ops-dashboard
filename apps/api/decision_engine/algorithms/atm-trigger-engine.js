@@ -86,9 +86,11 @@ export function buildAtmTriggerEngine({
 } = {}) {
   const spotVal = safeN(spot);
   const atmVal  = safeN(atm);
-
+  // Guard: SPX ATM must be >= 1000. Treat 0 or small values as invalid (non-trading hours).
+  const validAtm  = (atmVal  != null && atmVal  >= 1000) ? atmVal  : null;
+  const validSpot = (spotVal != null && spotVal >= 1000) ? spotVal : null;
   // Fallback: if atm is null but spot is available, compute ATM from spot
-  const effectiveAtm = atmVal ?? (spotVal != null ? Math.round(spotVal / 5) * 5 : null);
+  const effectiveAtm = validAtm ?? (validSpot != null ? Math.round(validSpot / 5) * 5 : null);
 
   if (effectiveAtm == null) {
     return {

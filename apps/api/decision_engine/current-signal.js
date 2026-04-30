@@ -2237,6 +2237,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     gamma_flip: dealerWallMap.gamma_flip ?? rawNoteV2.uw_conclusion?.zero_gamma ?? null,
     call_wall: _callWallGated,
     put_wall: _putWallGated,
+    atm_trigger: atmTriggerEngine ?? null,  // v3: ATM trigger lines for plan text
     gamma_regime: gammaRegimeEngine.gamma_regime,
     flow_behavior: flowBehaviorEngine.behavior,
     execution_confidence: gammaRegimeEngine.scores?.execution_confidence ?? 0,
