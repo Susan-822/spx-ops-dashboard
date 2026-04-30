@@ -215,6 +215,7 @@ async function fetchUwJson({ fetchImpl, url, apiKey }) {
   const response = await fetchImpl(url, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
+      'UW-CLIENT-API-ID': '100001',
       Accept: 'application/json'
     }
   });
@@ -553,6 +554,7 @@ export async function fetchUwApiSnapshot(options = {}) {
       const response = await fetchImpl(url, {
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
+          'UW-CLIENT-API-ID': '100001',
           Accept: 'application/json'
         }
       });

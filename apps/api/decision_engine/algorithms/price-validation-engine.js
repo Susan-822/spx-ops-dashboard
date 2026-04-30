@@ -63,8 +63,15 @@ export function buildPriceValidationEngine({
   const dpLevelsCount = Array.isArray(darkpoolFactors.levels) ? darkpoolFactors.levels.length : 0;
   const dpNearestSupport = darkpoolFactors.nearest_support ?? null;
 
-  const gammaRegimeType = gammaRegime.regime ?? 'unknown';
-  const atmStrike = atmEngine.atm_strike ?? null;
+  // P2 fix: gamma-regime-engine emits 'gamma_regime' (not 'regime')
+  // positive_gamma_pin checks for 'positive_gamma' but engine emits 'positive'
+  const _rawRegime = gammaRegime.gamma_regime ?? gammaRegime.regime ?? 'unknown';
+  // Normalize: 'positive' → 'positive_gamma', 'negative' → 'negative_gamma'
+  const gammaRegimeType = _rawRegime === 'positive' ? 'positive_gamma'
+    : _rawRegime === 'negative' ? 'negative_gamma'
+    : _rawRegime;
+  // P2 fix: atm-engine emits 'atm' (not 'atm_strike')
+  const atmStrike = atmEngine.atm ?? atmEngine.atm_strike ?? null;
   const pinRisk = atmEngine.pin_risk ?? 0;
 
   // Minimum history required for dynamic validation
@@ -286,10 +293,11 @@ export function buildPriceValidationEngine({
       evidence: flowDivergenceEvidence
     },
 
-    // Price context summary
+    // Price context summary (P2 fix: include delta_3m per acceptance criteria)
     price_context: {
       spot_now,
       delta_1m,
+      delta_3m,
       delta_5m,
       delta_15m,
       trend_1m,

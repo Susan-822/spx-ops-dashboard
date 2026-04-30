@@ -170,7 +170,10 @@ export function buildAbOrderEngine({
   degraded = false,
   darkpool_conclusion = null,
   net_premium_millions = null,
-  acceleration_15m = null
+  acceleration_15m = null,
+  // P2: price_validation_engine dominant scene injection
+  dominant_scene = null,
+  alert_level = 'normal'
 } = {}) {
   const spot = safeN(spot_price);
   const dp   = darkpool_conclusion || {};
@@ -197,6 +200,44 @@ export function buildAbOrderEngine({
   const pinWarning = pin_risk >= 70
     ? `⚠ ATM 吸附风险高 (${pin_risk}/100)，禁止在 ${fmt(atm)} ATM 附近买 0DTE 方向单`
     : null;
+
+  // P2: dominant_scene overlay — injects scene-specific warnings into plan
+  const sceneOverlay = (() => {
+    if (!dominant_scene) return null;
+    const overlays = {
+      call_capped: {
+        headline_suffix: '【Call 被压警告】资金偏多但价格不涨，上方强阻力确认。',
+        forbidden_suffix: '禁止在 Call 被压确认前追多；资金流入但价格不涨是假突破信号。',
+        invalidation_suffix: '如果 Call 被压场景持续，多头预案全部失效。'
+      },
+      put_squeezed: {
+        headline_suffix: '【Put 被绞警告】空头情绪极端但价格不跌， Gamma Squeeze 风险高。',
+        forbidden_suffix: '禁止在 Put 被绞确认前追空；空头可能被轧。',
+        invalidation_suffix: '如果 Put 被绞场景持续，空头预案全部失效。'
+      },
+      absorption_failed: {
+        headline_suffix: '【暗盘承接失败警告】机构入场但价格继续下跌，下行风险未解除。',
+        forbidden_suffix: '禁止在承接失败确认后强行做多；暗盘承接失败是重要危险信号。',
+        invalidation_suffix: '承接失败场景持续时，多头预案全部失效。'
+      },
+      bottom_absorption: {
+        headline_suffix: '【底部承接信号】机构在底部吸笹，反弹概率高。',
+        forbidden_suffix: '禁止在底部承接确认前追空；暗盘承接是反弹前兆。',
+        invalidation_suffix: '如果价格有效跌破暗盘支撑，承接预案失效。'
+      },
+      positive_gamma_pin: {
+        headline_suffix: '【正 Gamma 磁吸警告】价格将被钉住，禁做 0DTE 方向单。',
+        forbidden_suffix: '禁止买任何 0DTE 方向单；正 Gamma 磁吸环境中 0DTE 为负期望值交易。',
+        invalidation_suffix: '正 Gamma 磁吸场景持续时，所有 0DTE 方向预案全部失效。'
+      },
+      flow_divergence: {
+        headline_suffix: '【资金背离警告】资金方向与价格走势相反，当前趋势可能是假突破。',
+        forbidden_suffix: '禁止在资金背离确认前追单；资金背离是假突破的重要警告。',
+        invalidation_suffix: '资金背离场景持续时，追单预案全部失效。'
+      }
+    };
+    return overlays[dominant_scene] ?? null;
+  })();
 
   const headline = buildHeadline({
     gamma_regime, flow_behavior, gamma_flip, call_wall, put_wall,
@@ -264,18 +305,40 @@ export function buildAbOrderEngine({
     '不在【失效】条件触发后继续持仓'
   ];
 
+  // P2: Apply scene overlay to plans
+  const applyOverlay = (plan) => {
+    if (!plan || !sceneOverlay) return plan;
+    return {
+      ...plan,
+      forbidden: plan.forbidden
+        ? `${plan.forbidden}；${sceneOverlay.forbidden_suffix}`
+        : sceneOverlay.forbidden_suffix,
+      invalidation: plan.invalidation
+        ? `${plan.invalidation}；${sceneOverlay.invalidation_suffix}`
+        : sceneOverlay.invalidation_suffix
+    };
+  };
+
+  const finalHeadline = sceneOverlay
+    ? `${headline} ${sceneOverlay.headline_suffix}`
+    : headline;
+
   return {
     status: plan_a?.direction !== 'WAIT' ? 'ready' : 'waiting',
     status_cn: plan_a?.direction !== 'WAIT' ? '预案已生成' : '等待确认',
-    headline,
+    headline: finalHeadline,
     judgment,
     pin_warning: pinWarning,
     execution_confidence,
-    plan_a: plan_a ? { ...plan_a, expiry, execution_confidence, do_not: doNotRules } : null,
-    plan_b: plan_b ? { ...plan_b, expiry, execution_confidence, do_not: doNotRules.slice(0, 3) } : null,
+    plan_a: plan_a ? { ...applyOverlay(plan_a), expiry, execution_confidence, do_not: doNotRules } : null,
+    plan_b: plan_b ? { ...applyOverlay(plan_b), expiry, execution_confidence, do_not: doNotRules.slice(0, 3) } : null,
     scenario: `${gamma_regime}_${flow_behavior}`,
     gamma_regime,
     flow_behavior,
+    // P2: dominant scene context
+    dominant_scene,
+    alert_level,
+    scene_overlay_applied: sceneOverlay != null,
     darkpool_context: dp?.behavior ? {
       behavior: dp.behavior,
       behavior_cn: dp.behavior_cn,

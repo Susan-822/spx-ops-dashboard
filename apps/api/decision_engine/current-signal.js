@@ -2086,7 +2086,9 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   const tvIsReal = rawNoteV2.tv_sentinel?.status === 'live';
 
   // 1. Price Contract — canonical SPX price with contamination detection
+  // P0-1 fix: pass uw_raw so UW flow-recent/spot_gex can be used as primary spot source
   const priceContract = buildPriceContract({
+    uw_raw: uwApi?.uw_raw ?? null,
     fmp_price: fmpSnapshot.price?.price ?? null,
     fmp_is_real: fmpIsReal,
     tv_price: rawNoteV2.tv_sentinel?.price ?? null,
@@ -2112,9 +2114,8 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     atm: atmEngine.atm,
     atm_trend: atmEngine.atm_trend,
     atm_change: atmEngine.atm_change,
-    put_call_ratio: uwApi.uw_factors.flow_factors?.call_put_ratio != null
-      ? Number(((uwApi.uw_factors.flow_factors.put_premium_5m ?? 0) / Math.max(uwApi.uw_factors.flow_factors.call_premium_5m ?? 1, 1)).toFixed(2))
-      : null,
+    // P1-1 fix: use normalizer's direct put_call_ratio output (abs(put)/abs(call))
+    put_call_ratio: uwApi.uw_factors.flow_factors?.put_call_ratio ?? null,
     net_premium: uwApi.uw_factors.flow_factors?.net_premium_5m ?? null,
     pin_risk: atmEngine.pin_risk,
     uw_status: rawNoteV2.uw_conclusion?.status ?? 'unavailable',
@@ -2126,12 +2127,11 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   // net_premium_5m / call_premium_5m / put_premium_5m — those fields only exist in
   // /normalizer/uw-api-normalizer.js which is already consumed as uwApi.uw_factors.flow_factors.
   const _ff = uwApi.uw_factors.flow_factors || {};
-  const _netPrem5m  = _ff.net_premium_5m  ?? null;
-  const _callPrem5m = _ff.call_premium_5m ?? null;
-  const _putPrem5m  = _ff.put_premium_5m  ?? null;
-  const _pcRatio    = (_ff.call_put_ratio != null && (_ff.put_premium_5m ?? 0) > 0)
-    ? Number((_ff.put_premium_5m / Math.max(_ff.call_premium_5m ?? 1, 1)).toFixed(2))
-    : null;
+  const _netPrem5m  = _ff.net_premium_5m  ?? _ff.net_premium ?? null;
+  const _callPrem5m = _ff.call_premium_5m ?? _ff.net_call_premium ?? null;
+  const _putPrem5m  = _ff.put_premium_5m  ?? _ff.net_put_premium ?? null;
+  // P1-1 fix: use normalizer's direct put_call_ratio (abs(put)/abs(call)), not manual calculation
+  const _pcRatio    = _ff.put_call_ratio ?? null;
   const flowBehaviorEngine = buildFlowBehaviorEngine({
     net_premium: _netPrem5m,
     call_premium: _callPrem5m,
@@ -2153,13 +2153,31 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     raw_darkpool_spy: uwApi.raw?.darkpool_spy ?? null,
     spot_price: priceContract.live_price
   });
-  // 5. A/B Order Engine — now includes darkpool_conclusion and flow context
+  // 5. Price Validation Engine — MOVED before ab_order_engine (P2 fix)
+  // Must run before ab_order_engine so dominant_scene can be injected
+  const priceHistory = getPriceHistory();
+  const priceValidationEngine = buildPriceValidationEngine({
+    priceHistory,
+    flowFactors: uwApi?.uw_factors?.flow_factors ?? {},
+    darkpoolFactors: uwApi?.uw_factors?.darkpool_factors ?? {},
+    gammaRegime: gammaRegimeEngine ?? {},
+    atmEngine: atmEngine ?? {}
+  });
+
+  // P1-2: Wall gate — null out walls when spot is unavailable
+  const _spotAvailable = priceContract.spot_gate_open === true;
+  const _callWallGated = _spotAvailable ? (dealerWallMap.call_wall ?? rawNoteV2.uw_conclusion?.call_wall ?? null) : null;
+  const _putWallGated  = _spotAvailable ? (dealerWallMap.put_wall  ?? rawNoteV2.uw_conclusion?.put_wall  ?? null) : null;
+  const _wallStatus    = _spotAvailable ? 'valid' : 'unavailable';
+  const _wallErrors    = _spotAvailable ? [] : ['spot_missing'];
+
+  // 5b. A/B Order Engine — now includes dominant_scene from price_validation_engine (P2)
   const abOrderEngine = buildAbOrderEngine({
     spot_price: priceContract.live_price,
     atm: atmEngine.atm,
     gamma_flip: dealerWallMap.gamma_flip ?? rawNoteV2.uw_conclusion?.zero_gamma ?? null,
-    call_wall: dealerWallMap.call_wall ?? rawNoteV2.uw_conclusion?.call_wall ?? null,
-    put_wall: dealerWallMap.put_wall ?? rawNoteV2.uw_conclusion?.put_wall ?? null,
+    call_wall: _callWallGated,
+    put_wall: _putWallGated,
     gamma_regime: gammaRegimeEngine.gamma_regime,
     flow_behavior: flowBehaviorEngine.behavior,
     execution_confidence: gammaRegimeEngine.scores?.execution_confidence ?? 0,
@@ -2168,7 +2186,10 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     degraded: priceContract.is_degraded,
     darkpool_conclusion: darkpoolBehaviorEngine,
     net_premium_millions: _netPrem5m != null ? Number((_netPrem5m / 1_000_000).toFixed(1)) : null,
-    acceleration_15m: null  // injected below after acceleration queue computes
+    acceleration_15m: null,  // injected below after acceleration queue computes
+    // P2: inject dominant_scene from price_validation_engine
+    dominant_scene: priceValidationEngine.dominant_scene ?? null,
+    alert_level: priceValidationEngine.alert_level ?? 'normal'
   });
   // 6. Volatility Engine (async, non-blocking — uses cached VIX + HV20 from price history)
   // fmpSnapshot.price.price = SPX spot (not .spot which may be undefined)
@@ -2206,15 +2227,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     put_call_ratio: _pcRatio
   };
 
-  // 8. Price Validation Engine — dynamic reflection scene detection
-  const priceHistory = getPriceHistory();
-  const priceValidationEngine = buildPriceValidationEngine({
-    priceHistory,
-    flowFactors: uwApi?.uw_factors?.flow_factors ?? {},
-    darkpoolFactors: uwApi?.uw_factors?.darkpool_factors ?? {},
-    gammaRegime: gammaRegimeEngine ?? {},
-    atmEngine: atmEngine ?? {}
-  });
+  // 8. (Price Validation Engine already computed above as step 5 — see P2 fix)
 
   // ─────────────────────────────────────────────────────────────────────────────
   const finalOutput = {
@@ -2224,7 +2237,23 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     uw_normalized: uwNormalized,
     dealer_diagnostics: uwNormalized.dealer?.dealer_diagnostics || {},
     dealer_resolution: uwNormalized.dealer?.dealer_resolution || {},
-    dealer_wall_map: dealerWallMap,
+    // P1-2: Wall gate fields injected into dealer_wall_map
+    dealer_wall_map: {
+      ...dealerWallMap,
+      call_wall: _callWallGated,
+      put_wall: _putWallGated,
+      wall_status: _wallStatus,
+      wall_errors: _wallErrors
+    },
+    // P0-1: Spot source audit
+    spot_audit: {
+      spot: priceContract.spot,
+      spot_source: priceContract.spot_source,
+      spot_status: priceContract.spot_status,
+      spot_age_seconds: priceContract.spot_age_seconds,
+      uw_spot_detail: priceContract.uw_spot_detail,
+      uw_headers_ok: priceContract.uw_headers_ok
+    },
     darkpool_gravity: darkpoolGravity,
     flow_conflict: flowConflict,
     price_trigger: priceTrigger,
