@@ -183,17 +183,22 @@ export function buildAbOrderEngine({
     return {
       status: 'blocked', status_cn: 'SPX 价格未接入，不生成预案',
       plan_a: null, plan_b: null,
-      headline: '【系统降级】SPX 价格数据不可用，所有预案暂停。',
+      headline: '【系统降级】非交易时段 / SPX 价格数据不可用，禁止开仓。',
       blocked_reason: 'SPX 价格数据降级', execution_confidence
     };
   }
   if (execution_confidence < 40) {
+    const _isColdStart = execution_confidence === 0;
+    const _blockedMsg = _isColdStart
+      ? '【冷启动锁定】非交易时段 / 价格历史不足，禁止开仓。开盘后约 10 分钟自动解锁。'
+      : `【置信度不足】当前置信度 ${execution_confidence}/100，低于执行阈值 40，等待数据改善后解锁。`;
     return {
       status: 'blocked',
-      status_cn: `执行置信度不足 (${execution_confidence}/100)，不生成预案`,
+      status_cn: _isColdStart ? '冷启动 / 非交易时段，禁止开仓' : `执行置信度不足 (${execution_confidence}/100)，不生成预案`,
       plan_a: null, plan_b: null,
-      headline: `【置信度不足】当前置信度 ${execution_confidence}/100，低于执行阈值 40，等待数据改善。`,
-      blocked_reason: `置信度 ${execution_confidence}/100 < 40`, execution_confidence
+      headline: _blockedMsg,
+      blocked_reason: _isColdStart ? 'cold_start_or_off_hours' : `置信度 ${execution_confidence}/100 < 40`,
+      execution_confidence
     };
   }
 

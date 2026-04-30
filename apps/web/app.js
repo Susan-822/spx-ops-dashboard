@@ -1901,11 +1901,238 @@ function renderHudPanel(signal) {
   `;
 }
 function renderHome(signal) {
+  const pc  = signal.primary_card  || {};
+  const sb  = signal.sentiment_bar || {};
+  const lv  = signal.levels        || {};
+  const mr  = signal.money_read    || {};
+  const dr  = signal.darkpool_read || {};
+  const vd  = signal.vol_dashboard || {};
+  const vx  = signal.vix_dashboard || {};
+  const fb  = signal.forbidden_bar || {};
+  const dh  = signal.data_health   || {};
+
+  const spot       = pc.spot;
+  const spotFmt    = spot != null ? Number(spot).toFixed(1) : '--';
+  const dirColor   = pc.direction === 'LONG_CALL' ? 'bullish' : pc.direction === 'SHORT_PUT' ? 'bearish' : 'locked';
+  const dirLabel   = pc.direction_label || '锁仓';
+  const badge      = pc.badge || 'LOCKED';
+  const headline   = pc.headline || '--';
+  const subHead    = pc.sub_headline || '';
+  const locked     = pc.locked === true;
+  const uwLive     = pc.uw_live === true;
+  const lastUpd    = pc.last_updated ? shortTime(pc.last_updated) : '--';
+
+  // Sentiment bar
+  const sentScore  = sb.score ?? 50;
+  const sentLabel  = sb.label || '中性';
+  const sentSub    = sb.sub   || '';
+  const pcRatio    = sb.put_call_ratio != null ? sb.put_call_ratio.toFixed(2) : '--';
+  const netPremFmt = mr.net_premium_fmt || '--';
+
+  // Key levels
+  const atmFmt     = lv.atm_fmt     || '--';
+  const bullFmt    = lv.bull_trigger_fmt  || 'unavailable';
+  const bearFmt    = lv.bear_trigger_fmt  || 'unavailable';
+  const ldFmt      = lv.life_death_fmt    || '--';
+  const flipDisp   = lv.gamma_flip_display || '翻转点不可判断';
+  const wallStatus = lv.wall_status || 'unavailable';
+  const pinWarn    = lv.pin_warning;
+  const hint       = lv.hint || '';
+
+  // Plan lines
+  const plan = pc.plan;
+  const planLines = plan ? `
+    <div class="plan-grid">
+      <div class="plan-row"><span class="plan-icon">◎</span><span class="plan-key">状态</span><span class="plan-val">${escapeHtml(plan.state)}</span></div>
+      <div class="plan-row"><span class="plan-icon">◈</span><span class="plan-key">为什么</span><span class="plan-val">${escapeHtml(plan.why)}</span></div>
+      <div class="plan-row"><span class="plan-icon">⊕</span><span class="plan-key">进场</span><span class="plan-val entry-val">${escapeHtml(plan.entry)}</span></div>
+      <div class="plan-row"><span class="plan-icon">◆</span><span class="plan-key">做什么</span><span class="plan-val action-val">${escapeHtml(plan.action)}</span></div>
+      <div class="plan-row"><span class="plan-icon">⊗</span><span class="plan-key">止损</span><span class="plan-val stop-val">${escapeHtml(plan.stop)}</span></div>
+      <div class="plan-row"><span class="plan-icon">◎</span><span class="plan-key">目标</span><span class="plan-val target-val">${escapeHtml(plan.target)}</span></div>
+      <div class="plan-row full-row"><span class="plan-icon">⊘</span><span class="plan-key">禁忌</span><span class="plan-val forbidden-val">${escapeHtml(plan.forbidden)}</span></div>
+    </div>` : `<div class="plan-locked-msg">${escapeHtml(pc.locked_reason || '等待条件满足')}</div>`;
+
+  // Darkpool levels
+  const dpLevels = (dr.levels || []).slice(0, 2).map((l) =>
+    `<div class="dp-level-row"><span class="dp-level-num">${escapeHtml(l.level_fmt)}</span><span class="dp-level-prem">${escapeHtml(l.premium_fmt)}</span><span class="dp-level-tag ${l.behavior === 'breakout' ? 'bearish' : 'bullish'}">${escapeHtml(l.label)}</span></div>`
+  ).join('');
+
+  // IV gauge needle (0-100%)
+  const ivRankVal  = vd.iv_rank ?? 0;
+  const ivNeedlePct = Math.min(100, ivRankVal);
+  const iv30Fmt    = vd.iv30_fmt || '--';
+  const ivRankFmt  = vd.iv_rank_fmt || '--';
+  const buyerRisk  = vd.buyer_risk || '--';
+  const buyerColor = vd.buyer_risk_color || 'gray';
+  const volComment = vd.commentary || '--';
+
+  // VIX gauge
+  const vixVal     = vx.vix;
+  const vixFmt     = vx.vix_fmt || '--';
+  const vixSent    = vx.risk_sentiment || '正常';
+  const vixColor   = vx.risk_color || 'green';
+  const vixComment = vx.commentary || '--';
+  const vixNeedle  = vixVal != null ? Math.min(100, (vixVal / 50) * 100) : 0;
+
+  // Forbidden bar
+  const hasForbidden = fb.has_warning === true;
+  const forbidMsg    = fb.primary_warning || '';
+
+  // Data health for topbar indicator
+  const dhScore = dh.score ?? 0;
+
   return `
-    <main class="page home-v1">
-      ${renderTopCommandStrip(signal)}
-      ${renderHudPanel(signal)}
-      ${renderVolatilityDashboard(signal)}
+    <main class="page home-v2">
+      <!-- TOP HEADER STRIP -->
+      <header class="home-header">
+        <div class="home-header-left">
+          <div class="home-bear-icon ${dirColor}">🐻</div>
+          <div class="home-title-block">
+            <div class="home-headline">
+              <span class="home-spot">SPX ${escapeHtml(spotFmt)}</span>
+              <span class="home-sep">｜</span>
+              <span class="home-direction ${dirColor}">${escapeHtml(dirLabel)}</span>
+              ${badge !== 'LOCKED' ? `<span class="home-sep">｜</span><span class="home-badge ${dirColor}">${escapeHtml(badge === 'LONG_CALL' ? '做 Call' : '做 Put')}</span>` : ''}
+            </div>
+            <div class="home-subhead">${escapeHtml(subHead || headline)}</div>
+          </div>
+        </div>
+        <div class="home-header-right">
+          <span class="uw-status-dot ${uwLive ? 'live' : 'stale'}"></span>
+          <span class="uw-status-label">${uwLive ? 'UW 实时' : 'UW 非实时'}</span>
+          <span class="home-update-time">更新 ${escapeHtml(lastUpd)}</span>
+        </div>
+      </header>
+
+      <!-- SENTIMENT BAR -->
+      <section class="sentiment-section">
+        <div class="sentiment-bar-wrap">
+          <span class="sentiment-label-left">跌 (空头)</span>
+          <div class="sentiment-track">
+            <div class="sentiment-fill" style="width:${sentScore}%"></div>
+            <div class="sentiment-thumb" style="left:${sentScore}%">
+              <span class="sentiment-score">${sentScore}</span>
+            </div>
+          </div>
+          <span class="sentiment-label-right">涨 (多头)</span>
+        </div>
+        <div class="sentiment-right">
+          <div class="sentiment-score-big ${sentScore >= 60 ? 'bullish' : sentScore <= 40 ? 'bearish' : 'neutral'}">${sentScore >= 60 ? '偏多' : sentScore <= 40 ? '偏空' : '中性'} ${sentScore}/100</div>
+          <div class="sentiment-sub">${escapeHtml(sentSub)}</div>
+        </div>
+      </section>
+
+      <!-- MAIN CONTENT GRID -->
+      <div class="home-grid">
+        <!-- LEFT: Primary Card -->
+        <section class="primary-card ${dirColor}">
+          <div class="primary-card-header">
+            <div class="primary-card-icon ${dirColor}">🎯</div>
+            <div class="primary-card-title">主控卡片 ｜ ${escapeHtml(badge === 'LONG_CALL' ? 'CALL' : badge === 'SHORT_PUT' ? 'PUT' : 'LOCKED')}</div>
+          </div>
+          ${planLines}
+        </section>
+
+        <!-- RIGHT: Key Levels -->
+        <section class="key-levels-card">
+          <div class="key-levels-header">
+            <span class="key-levels-title">关键线</span>
+            <span class="key-levels-link">🔗</span>
+          </div>
+          <div class="key-levels-grid">
+            <div class="kl-row"><span class="kl-icon eye">👁</span><span class="kl-label">盘眼 ATM：</span><span class="kl-val neutral">${escapeHtml(atmFmt)}</span></div>
+            <div class="kl-row"><span class="kl-icon bull">↗</span><span class="kl-label">多头触发：</span><span class="kl-val ${bullFmt !== 'unavailable' ? 'bullish' : 'unavail'}">${escapeHtml(bullFmt)}</span></div>
+            <div class="kl-row"><span class="kl-icon bear">↘</span><span class="kl-label">空头触发：</span><span class="kl-val ${bearFmt !== 'unavailable' ? 'bearish' : 'unavail'}">${escapeHtml(bearFmt)}</span></div>
+            <div class="kl-row"><span class="kl-icon life">⊗</span><span class="kl-label">生死线：</span><span class="kl-val neutral">${escapeHtml(ldFmt)}</span></div>
+          </div>
+          ${hint ? `<div class="kl-hint">💡 ${escapeHtml(hint)}</div>` : ''}
+          <div class="kl-flip-note">${escapeHtml(flipDisp)}</div>
+          ${wallStatus === 'unavailable' ? '<div class="kl-wall-warn">⚠ 墙位校验失败，不显示 Call Wall / Put Wall</div>' : ''}
+        </section>
+      </div>
+
+      <!-- BOTTOM CARDS ROW -->
+      <div class="home-bottom-row">
+        <!-- Money Read -->
+        <section class="bottom-card money-read-card">
+          <div class="bottom-card-header">
+            <span class="bottom-card-icon">👥</span>
+            <span class="bottom-card-title">资金人话</span>
+          </div>
+          <div class="bottom-card-big-title">${escapeHtml(mr.title || '--')}</div>
+          <div class="bottom-card-body">${escapeHtml(mr.body || '--')}</div>
+          <div class="bottom-card-stats">
+            <span class="stat-item">P/C：<strong>${escapeHtml(pcRatio)}</strong></span>
+            <span class="stat-sep">｜</span>
+            <span class="stat-item">Net Premium：<strong>${escapeHtml(netPremFmt)}</strong></span>
+          </div>
+        </section>
+
+        <!-- Darkpool Read -->
+        <section class="bottom-card darkpool-read-card">
+          <div class="bottom-card-header">
+            <span class="bottom-card-icon">👁</span>
+            <span class="bottom-card-title">暗盘人话</span>
+          </div>
+          <div class="bottom-card-big-title">${escapeHtml(dr.title || '--')}</div>
+          <div class="bottom-card-body">${escapeHtml(dr.body || '--')}</div>
+          <div class="dp-levels">${dpLevels || '<span class="data-missing">暗盘数据待接入</span>'}</div>
+        </section>
+
+        <!-- Vol Dashboard -->
+        <section class="bottom-card vol-card">
+          <div class="bottom-card-header">
+            <span class="bottom-card-icon">〜</span>
+            <span class="bottom-card-title">波动率仪表盘</span>
+          </div>
+          <div class="gauge-wrap">
+            <div class="gauge-arc">
+              <svg viewBox="0 0 120 70" class="gauge-svg">
+                <path d="M10,65 A55,55,0,0,1,110,65" fill="none" stroke="#e5e7eb" stroke-width="10" stroke-linecap="round"/>
+                <path d="M10,65 A55,55,0,0,1,110,65" fill="none" stroke="${ivRankVal > 60 ? '#ef4444' : ivRankVal > 30 ? '#f59e0b' : '#22c55e'}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${ivNeedlePct * 1.73} 173"/>
+              </svg>
+              <div class="gauge-center-val">${escapeHtml(ivRankFmt)}</div>
+              <div class="gauge-center-label">IV Rank</div>
+            </div>
+          </div>
+          <div class="vol-stats">
+            <div class="vol-stat-row"><span class="vol-stat-label">IV Rank</span><span class="vol-stat-val">${escapeHtml(ivRankFmt)}</span></div>
+            <div class="vol-stat-row"><span class="vol-stat-label">IV30</span><span class="vol-stat-val">${escapeHtml(iv30Fmt)}</span></div>
+            <div class="vol-stat-row"><span class="vol-stat-label">买方风险</span><span class="vol-stat-val ${buyerColor}">${escapeHtml(buyerRisk)}</span></div>
+          </div>
+          <div class="vol-comment">${escapeHtml(volComment)}</div>
+        </section>
+
+        <!-- VIX Dashboard -->
+        <section class="bottom-card vix-card">
+          <div class="bottom-card-header">
+            <span class="bottom-card-icon">⚡</span>
+            <span class="bottom-card-title">VIX 仪表盘</span>
+          </div>
+          <div class="gauge-wrap">
+            <div class="gauge-arc">
+              <svg viewBox="0 0 120 70" class="gauge-svg">
+                <path d="M10,65 A55,55,0,0,1,110,65" fill="none" stroke="#e5e7eb" stroke-width="10" stroke-linecap="round"/>
+                <path d="M10,65 A55,55,0,0,1,110,65" fill="none" stroke="${vixColor === 'red' ? '#ef4444' : vixColor === 'amber' ? '#f59e0b' : '#22c55e'}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${vixNeedle * 1.73} 173"/>
+              </svg>
+              <div class="gauge-center-val ${vx.status === 'missing' ? 'missing' : ''}">${vx.status === 'missing' ? '--' : escapeHtml(vixFmt)}</div>
+              <div class="gauge-center-label">VIX</div>
+            </div>
+          </div>
+          <div class="vol-stats">
+            <div class="vol-stat-row"><span class="vol-stat-label">VIX</span><span class="vol-stat-val ${vixColor}">${escapeHtml(vixFmt)}</span></div>
+            <div class="vol-stat-row"><span class="vol-stat-label">风险情绪</span><span class="vol-stat-val ${vixColor}">${escapeHtml(vixSent)}</span></div>
+          </div>
+          <div class="vol-comment">${vx.status === 'missing' ? `<span class="data-missing">VIX 数据不可用（${escapeHtml(vx.source_status || 'unavailable')}），当前不参与判断</span>` : escapeHtml(vixComment)}</div>
+        </section>
+      </div>
+
+      <!-- FORBIDDEN BAR -->
+      ${hasForbidden ? `
+      <div class="forbidden-bar">
+        <span class="forbidden-icon">⚠</span>
+        <span class="forbidden-msg">禁做提醒：${escapeHtml(forbidMsg)}</span>
+      </div>` : ''}
     </main>
   `;
 }
@@ -2624,19 +2851,348 @@ function renderDebugJson(signal) {
 }
 
 function renderRadar(signal) {
+  const dh  = signal.data_health   || {};
+  const pc  = signal.price_contract || {};
+  const lv  = signal.levels        || {};
+  const gr  = signal.gamma_regime_engine || {};
+  const atm = signal.atm_engine    || {};
+  const fb  = signal.flow_behavior_engine || {};
+  const uf  = signal.uw_factors    || {};
+  const ff  = uf.flow_factors      || {};
+  const df  = uf.dealer_factors    || {};
+  const vf  = uf.volatility_factors || {};
+  const dp  = signal.darkpool_behavior_engine || {};
+  const vd  = signal.vol_dashboard || {};
+  const vx  = signal.vix_dashboard || {};
+  const pve = signal.price_validation_engine || {};
+  const sb  = signal.strike_battle || {};
+  const vc  = signal.vanna_charm   || {};
+  const sd  = signal.source_display || {};
+
+  const spot = pc.spot ?? pc.live_price ?? null;
+  const spotFmt = spot != null ? Number(spot).toFixed(1) : '--';
+
+  function statusBadge(status) {
+    const map = { LIVE: 'live', PARTIAL: 'partial', MISSING: 'missing', COLD_START: 'cold' };
+    const cls = map[status] || 'missing';
+    return `<span class="radar-status-badge ${cls}">${status || 'MISSING'}</span>`;
+  }
+
+  // ── 1. Price Source Radar ──────────────────────────────────────────────────
+  const priceStatus = dh.spot?.status || 'MISSING';
+  const priceBlock = `
+    <article class="radar-module">
+      <div class="radar-module-header">
+        <span class="radar-module-title">价格源雷达</span>
+        ${statusBadge(priceStatus)}
+      </div>
+      <div class="radar-price-big">${escapeHtml(spotFmt)}</div>
+      <div class="radar-price-source">主价格 ｜ ${escapeHtml(pc.spot_source || '--')}</div>
+      <div class="radar-source-list">
+        <div class="radar-src-row ${pc.spot_source === 'uw_flow_recent' ? 'active' : ''}">
+          <span class="radar-src-dot"></span>UW spot_gex: ${escapeHtml(String(df.spot_gex_price ?? '--'))}
+          ${pc.spot_source !== 'uw_flow_recent' ? '<span class="radar-src-tag amber">偏离过大</span>' : ''}
+        </div>
+        <div class="radar-src-row ${pc.spot_source === 'uw_iv_rank_close' ? 'active' : ''}">
+          <span class="radar-src-dot"></span>iv_rank.close: ${escapeHtml(String(vf.iv_rank_close ?? '--'))}
+          <span class="radar-src-tag gray">昨收</span>
+        </div>
+        <div class="radar-src-row missing">
+          <span class="radar-src-dot red"></span>FMP: unavailable
+          <span class="radar-src-tag red">Limit Reach</span>
+        </div>
+      </div>
+      <div class="radar-note">当前优先使用 UW Flow 价格，FMP 今日不参与判断。</div>
+    </article>`;
+
+  // ── 2. Gamma / GEX Radar ──────────────────────────────────────────────────
+  const gexRows = df.gex_by_strike || [];
+  const gexStatus = dh.gex?.status || 'MISSING';
+  const gammaRegime = gr.gamma_regime || 'unknown';
+  const netGex = df.net_gex;
+  const gammaFlip = lv.gamma_flip;
+  const nearCallWall = lv.bull_trigger;
+  const nearPutWall  = lv.bear_trigger;
+  const wallSt = lv.wall_status || 'unavailable';
+
+  const gexBlock = `
+    <article class="radar-module">
+      <div class="radar-module-header">
+        <span class="radar-module-title">Gamma / GEX 雷达</span>
+        ${statusBadge(gexStatus)}
+      </div>
+      <div class="radar-gex-row">
+        <div class="radar-gex-item"><div class="radar-gex-label">Gamma 环境</div><div class="radar-gex-val ${gammaRegime}">${gammaRegime === 'positive' ? '正 Gamma' : gammaRegime === 'negative' ? '负 Gamma' : '--'}</div></div>
+        <div class="radar-gex-item"><div class="radar-gex-label">Net GEX</div><div class="radar-gex-val">${netGex != null ? (netGex >= 0 ? '+' : '') + Number(netGex).toLocaleString() : '--'}</div></div>
+        <div class="radar-gex-item"><div class="radar-gex-label">GEX by Strike</div><div class="radar-gex-val">${gexRows.length} 行</div></div>
+        <div class="radar-gex-item"><div class="radar-gex-label">Gamma Flip</div><div class="radar-gex-val">${gammaFlip != null ? Number(gammaFlip).toFixed(0) : '--'}</div></div>
+      </div>
+      <div class="radar-wall-row">
+        <div class="radar-wall-box call ${wallSt === 'valid' && nearCallWall != null ? 'valid' : 'unavail'}">
+          <div class="radar-wall-label">Call Wall</div>
+          <div class="radar-wall-val">${wallSt === 'valid' && nearCallWall != null ? Number(nearCallWall).toFixed(0) : 'unavailable'}</div>
+        </div>
+        <div class="radar-wall-mid">
+          <div class="radar-wall-mid-label">ATM</div>
+          <div class="radar-wall-mid-val">${atm.atm != null ? Number(atm.atm).toFixed(0) : '--'}</div>
+        </div>
+        <div class="radar-wall-box put ${wallSt === 'valid' && nearPutWall != null ? 'valid' : 'unavail'}">
+          <div class="radar-wall-label">Put Wall</div>
+          <div class="radar-wall-val">${wallSt === 'valid' && nearPutWall != null ? Number(nearPutWall).toFixed(0) : 'unavailable'}</div>
+        </div>
+      </div>
+      ${lv.global_gex_clusters && lv.global_gex_clusters.length > 0 ? `
+      <div class="radar-global-gex">
+        <span class="radar-global-label">Global GEX Cluster（仅 Radar 参考）：</span>
+        ${lv.global_gex_clusters.slice(0,3).map(c => `<span class="radar-cluster-tag">${Number(c.strike).toFixed(0)} (${c.net_gex >= 0 ? '+' : ''}${Number(c.net_gex).toFixed(1)})</span>`).join(' ')}
+      </div>` : ''}
+      <div class="radar-note">${escapeHtml(lv.gamma_flip_display || '--')}</div>
+    </article>`;
+
+  // ── 3. Flow 资金雷达 ───────────────────────────────────────────────────────
+  const flowStatus = dh.flow?.status || 'MISSING';
+  const netPremM   = ff.net_premium_5m != null ? (ff.net_premium_5m / 1e6).toFixed(1) : null;
+  const callPremM  = ff.call_premium_5m != null ? (ff.call_premium_5m / 1e6).toFixed(1) : null;
+  const putPremM   = ff.put_premium_5m  != null ? (Math.abs(ff.put_premium_5m) / 1e6).toFixed(1) : null;
+  const pcVol      = ff.put_call_volume_ratio != null ? ff.put_call_volume_ratio.toFixed(2) : null;
+  const pcPrem     = ff.put_call_premium_ratio != null ? ff.put_call_premium_ratio.toFixed(1) : null;
+
+  const flowBlock = `
+    <article class="radar-module">
+      <div class="radar-module-header">
+        <span class="radar-module-title">Flow 资金雷达</span>
+        ${statusBadge(flowStatus)}
+      </div>
+      <div class="radar-flow-conclusion">资金结论：<strong>${escapeHtml(fb.behavior_label || fb.behavior || '--')}</strong></div>
+      <div class="radar-flow-stats">
+        <div class="radar-flow-stat"><span class="rfs-label">Net Premium</span><span class="rfs-val ${netPremM != null && Number(netPremM) >= 0 ? 'bullish' : 'bearish'}">${netPremM != null ? (Number(netPremM) >= 0 ? '+' : '') + netPremM + 'M' : '--'}</span></div>
+        <div class="radar-flow-stat"><span class="rfs-label">Call Premium</span><span class="rfs-val bullish">${callPremM != null ? '+' + callPremM + 'M' : '--'}</span></div>
+        <div class="radar-flow-stat"><span class="rfs-label">Put Premium</span><span class="rfs-val bearish">${putPremM != null ? '+' + putPremM + 'M' : '--'}</span></div>
+        <div class="radar-flow-stat"><span class="rfs-label">P/C Premium</span><span class="rfs-val">${pcPrem != null ? pcPrem : 'unavailable'}</span></div>
+        <div class="radar-flow-stat"><span class="rfs-label">P/C Volume</span><span class="rfs-val">${pcVol != null ? pcVol : 'unavailable'}</span></div>
+      </div>
+      <div class="radar-note">资金偏空，但没有成量 P/C，方向结论降级。</div>
+    </article>`;
+
+  // ── 4. Strike 战场 ────────────────────────────────────────────────────────
+  const sbStatus = sb.status === 'partial' ? 'PARTIAL' : 'MISSING';
+  const sbRows = (sb.rows || []).map((r) => `
+    <tr>
+      <td>${r.strike}</td>
+      <td class="${r.call_gex_level === '高' ? 'bearish' : r.call_gex_level === '中' ? 'amber' : 'gray'}">${r.call_gex_level}</td>
+      <td class="${r.put_gex_level === '高' ? 'bullish' : r.put_gex_level === '中' ? 'amber' : 'gray'}">${r.put_gex_level}</td>
+      <td class="${r.conclusion === '强压区' ? 'bearish' : r.conclusion === '下方目标' ? 'bullish' : 'neutral'}">${r.conclusion}</td>
+    </tr>`).join('');
+
+  const strikeBlock = `
+    <article class="radar-module">
+      <div class="radar-module-header">
+        <span class="radar-module-title">Strike 战场</span>
+        ${statusBadge(sbStatus)}
+      </div>
+      ${sbRows ? `
+      <table class="radar-table">
+        <thead><tr><th>Strike</th><th>Call</th><th>Put</th><th>结论</th></tr></thead>
+        <tbody>${sbRows}</tbody>
+      </table>` : '<div class="radar-note">Strike 数据不足。</div>'}
+      <div class="radar-note">${escapeHtml(sb.note || '--')}</div>
+    </article>`;
+
+  // ── 5. 暗盘 / Dark Pool 雷达 ──────────────────────────────────────────────
+  const dpStatus = dh.dark_pool?.status || 'MISSING';
+  const dpClusters = dp.clusters || [];
+  const dpBlock = `
+    <article class="radar-module">
+      <div class="radar-module-header">
+        <span class="radar-module-title">暗盘 / Dark Pool 雷达</span>
+        ${statusBadge(dpStatus)}
+      </div>
+      ${dpClusters.slice(0,3).map((c) => `
+      <div class="radar-dp-row">
+        <span class="radar-dp-level">${c.spx_level != null ? Number(c.spx_level).toFixed(0) : '--'}</span>
+        <span class="radar-dp-prem">${c.total_premium_millions != null ? '$' + c.total_premium_millions.toFixed(1) + 'M' : '--'}</span>
+        <span class="radar-dp-tag ${c.behavior === 'breakout' ? 'bearish' : 'bullish'}">${escapeHtml(c.behavior_cn || c.behavior || '--')}</span>
+      </div>`).join('') || '<div class="radar-note">暗盘数据待接入。</div>'}
+      <div class="radar-note">若现价站不回这些区域，反弹容易被压。</div>
+    </article>`;
+
+  // ── 6. Vanna / Charm 雷达 ─────────────────────────────────────────────────
+  const vcStatus = vc.status === 'partial' ? 'PARTIAL' : 'MISSING';
+  const vcRows = (vc.rows || []).map((r) => `
+    <tr>
+      <td>${r.strike}</td>
+      <td class="${r.net_vanna_label === '正' ? 'bullish' : r.net_vanna_label === '负' ? 'bearish' : 'neutral'}">${r.net_vanna_label}</td>
+      <td class="${r.net_charm_label === '正' ? 'bullish' : r.net_charm_label === '负' ? 'bearish' : 'neutral'}">${r.net_charm_label}</td>
+      <td>${escapeHtml(r.talk)}</td>
+    </tr>`).join('');
+
+  const vannaBlock = `
+    <article class="radar-module">
+      <div class="radar-module-header">
+        <span class="radar-module-title">Vanna / Charm 雷达</span>
+        ${statusBadge(vcStatus)}
+      </div>
+      ${vcRows ? `
+      <table class="radar-table">
+        <thead><tr><th>Strike</th><th>Net Vanna</th><th>Net Charm</th><th>入话</th></tr></thead>
+        <tbody>${vcRows}</tbody>
+      </table>` : '<div class="radar-note">Vanna/Charm 数据不足。</div>'}
+      <div class="radar-note">${escapeHtml(vc.note || '--')}</div>
+    </article>`;
+
+  // ── 7. 波动率仪表盘 ───────────────────────────────────────────────────────
+  const ivStatus = dh.iv?.status || 'MISSING';
+  const iv30Val  = vd.iv30;
+  const ivRankV  = vd.iv_rank;
+  const ivPctV   = vd.iv_percentile;
+  const ivNeedle = Math.min(100, ivRankV ?? 0);
+
+  const volBlock = `
+    <article class="radar-module">
+      <div class="radar-module-header">
+        <span class="radar-module-title">波动率仪表盘</span>
+        ${statusBadge(ivStatus)}
+      </div>
+      <div class="radar-vol-gauge">
+        <svg viewBox="0 0 200 110" class="radar-gauge-svg">
+          <path d="M20,100 A80,80,0,0,1,180,100" fill="none" stroke="#e5e7eb" stroke-width="14" stroke-linecap="round"/>
+          <path d="M20,100 A80,80,0,0,1,180,100" fill="none" stroke="${ivRankV > 60 ? '#ef4444' : ivRankV > 30 ? '#f59e0b' : '#22c55e'}" stroke-width="14" stroke-linecap="round" stroke-dasharray="${ivNeedle * 2.51} 251"/>
+          <text x="100" y="88" text-anchor="middle" class="gauge-big-text">${iv30Val != null ? iv30Val.toFixed(1) + '%' : '--'}</text>
+          <text x="100" y="105" text-anchor="middle" class="gauge-small-text">IV30</text>
+        </svg>
+      </div>
+      <div class="radar-vol-stats">
+        <div class="rvs-row"><span class="rvs-label">IV Rank</span><span class="rvs-val">${ivRankV != null ? ivRankV.toFixed(1) : '--'}</span></div>
+        <div class="rvs-row"><span class="rvs-label">IV Percentile</span><span class="rvs-val">${ivPctV != null ? ivPctV.toFixed(1) + '%' : '--'}</span></div>
+        <div class="rvs-row"><span class="rvs-label">买方风险</span><span class="rvs-val ${vd.buyer_risk_color || 'gray'}">${escapeHtml(vd.buyer_risk || '--')}</span></div>
+      </div>
+      <div class="radar-note">${escapeHtml(vd.commentary || '--')}</div>
+    </article>`;
+
+  // ── 8. VIX 仪表盘 ─────────────────────────────────────────────────────────
+  const vixStatus = dh.vix?.status || 'MISSING';
+  const vixNeedle = Math.min(100, vx.vix != null ? (vx.vix / 50) * 100 : 0);
+
+  const vixBlock = `
+    <article class="radar-module">
+      <div class="radar-module-header">
+        <span class="radar-module-title">VIX 仪表盘</span>
+        ${statusBadge(vixStatus)}
+      </div>
+      <div class="radar-vol-gauge">
+        <svg viewBox="0 0 200 110" class="radar-gauge-svg">
+          <path d="M20,100 A80,80,0,0,1,180,100" fill="none" stroke="#e5e7eb" stroke-width="14" stroke-linecap="round"/>
+          <path d="M20,100 A80,80,0,0,1,180,100" fill="none" stroke="${vx.risk_color === 'red' ? '#ef4444' : vx.risk_color === 'amber' ? '#f59e0b' : '#22c55e'}" stroke-width="14" stroke-linecap="round" stroke-dasharray="${vixNeedle * 2.51} 251"/>
+          <text x="100" y="88" text-anchor="middle" class="gauge-big-text">${vx.status === 'missing' ? '--' : escapeHtml(vx.vix_fmt || '--')}</text>
+          <text x="100" y="105" text-anchor="middle" class="gauge-small-text">VIX</text>
+        </svg>
+      </div>
+      <div class="radar-vol-stats">
+        <div class="rvs-row"><span class="rvs-label">来源</span><span class="rvs-val">FMP</span></div>
+        <div class="rvs-row"><span class="rvs-label">状态</span><span class="rvs-val ${vx.status === 'missing' ? 'red' : 'green'}">${vx.status === 'missing' ? 'Limit Reach' : 'LIVE'}</span></div>
+      </div>
+      <div class="radar-note">${vx.status === 'missing' ? 'VIX 数据不可用，无法提供波动情绪参考。' : escapeHtml(vx.commentary || '--')}</div>
+    </article>`;
+
+  // ── 9. 动态反射验证 / Price Validation ───────────────────────────────────
+  const pvStatus = dh.price_validation?.status || 'COLD_START';
+  const pvBufSize = pve.buffer_size ?? 0;
+  const pvEta     = dh.price_validation?.cold_start_eta_min ?? 0;
+  const pvScenes  = [
+    { key: 'put_squeezed',      label: 'Put 被绞',    icon: '🛡' },
+    { key: 'call_capped',       label: 'Call 被压',   icon: '🔴' },
+    { key: 'bottom_absorption', label: '底部承接',    icon: '❄' },
+    { key: 'positive_gamma_pin',label: '正 Gamma 磁吸', icon: '🧲' }
+  ];
+  const pvSceneHtml = pvScenes.map((s) => {
+    const sceneData = pve[s.key] || {};
+    const detected  = sceneData.detected === true;
+    const conf      = sceneData.confidence ?? 0;
+    return `
+    <div class="pv-scene ${detected ? 'active' : 'inactive'}">
+      <span class="pv-scene-icon">${s.icon}</span>
+      <div class="pv-scene-body">
+        <div class="pv-scene-label">${s.label}</div>
+        <div class="pv-scene-status">${detected ? '已激活' : '未激活'}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const pvBlock = `
+    <article class="radar-module pv-module">
+      <div class="radar-module-header">
+        <span class="radar-module-title">动态反射验证 / Price Validation</span>
+        ${statusBadge(pvStatus)}
+      </div>
+      <div class="pv-scenes">${pvSceneHtml}</div>
+      <div class="pv-cold-start">
+        <span class="pv-clock">⏱</span>
+        价格点 ${pvBufSize} / 10 · 预计 ${pvEta} 分钟后可用
+      </div>
+      <div class="radar-note">动态验证仍在冷启动，但正 Gamma 磁吸已提示 ATM 附近不宜做 0DTE。</div>
+    </article>`;
+
+  // ── Data Health sidebar ────────────────────────────────────────────────────
+  const dhItems = [
+    { label: 'UW API',           status: dh.uw_api?.status },
+    { label: 'Spot',             status: dh.spot?.status },
+    { label: 'Flow',             status: dh.flow?.status },
+    { label: 'GEX',              status: dh.gex?.status },
+    { label: 'Dark Pool',        status: dh.dark_pool?.status },
+    { label: 'IV',               status: dh.iv?.status },
+    { label: 'VIX',              status: dh.vix?.status },
+    { label: 'Price Validation', status: dh.price_validation?.status }
+  ];
+  const dhHtml = dhItems.map((item) => {
+    const cls = item.status === 'LIVE' ? 'live' : item.status === 'PARTIAL' ? 'partial' : item.status === 'COLD_START' ? 'cold' : 'missing';
+    return `<div class="dh-row"><span class="dh-dot ${cls}"></span><span class="dh-label">${item.label}</span><span class="dh-status ${cls}">${item.status || 'MISSING'}</span></div>`;
+  }).join('');
+
+  const dataHealthBlock = `
+    <article class="radar-module data-health-module">
+      <div class="radar-module-header">
+        <span class="radar-module-title">数据健康</span>
+        ${statusBadge(dh.score >= 70 ? 'LIVE' : dh.score >= 40 ? 'PARTIAL' : 'MISSING')}
+      </div>
+      <div class="dh-score-bar">
+        <div class="dh-score-fill" style="width:${dh.score || 0}%"></div>
+      </div>
+      <div class="dh-score-label">数据完整度 ${dh.score || 0}/100</div>
+      <div class="dh-list">${dhHtml}</div>
+      ${dh.homepage_locked ? `<div class="dh-locked-note">🔒 首页状态：锁仓<br><small>${escapeHtml(dh.homepage_locked_reason || '')}</small></div>` : ''}
+      <div class="radar-note">有些模块缺字段，但第二页仍然保留可参考信息。</div>
+    </article>`;
+
   return `
-    <main class="page">
-      <section class="radar-layout">
-        ${renderUwAggregateAnalysis(signal)}
-        ${renderDataClock(signal)}
-        ${renderDataSourceOverview(signal)}
-        ${renderUwLayerStatus(signal)}
-        ${renderMappingStatus(signal)}
-        ${renderEndpointEvidence(signal)}
-        ${renderDataGaps(signal)}
-        ${renderDebugJson(signal)}
-      </section>
-      <div class="footer-note">Radar 是数据管理页，只显示数据接入、字段质量和映射状态。首页才负责交易分析和操作指令。Radar 不生成独立交易信号。</div>
+    <main class="page radar-v2">
+      <div class="radar-header">
+        <div class="radar-header-left">
+          <h1 class="radar-title">SPX 数据雷达 ｜ Evidence Board</h1>
+          <p class="radar-subtitle">第一页锁仓时，这里继续给你证据</p>
+        </div>
+        <div class="radar-header-center">
+          <div class="radar-completeness">
+            <span class="rc-label">数据完整度 ${dh.score || 0}/100</span>
+            <div class="rc-bar"><div class="rc-fill" style="width:${dh.score || 0}%"></div></div>
+          </div>
+        </div>
+        <div class="radar-header-right">
+          ${dh.homepage_locked ? `<div class="radar-locked-badge">🔒 首页状态：锁仓<br><small>${escapeHtml(dh.homepage_locked_reason || '')}</small></div>` : '<div class="radar-unlocked-badge">✅ 首页已解锁</div>'}
+        </div>
+      </div>
+
+      <div class="radar-grid">
+        ${priceBlock}
+        ${gexBlock}
+        ${dataHealthBlock}
+        ${flowBlock}
+        ${strikeBlock}
+        ${dpBlock}
+        ${vannaBlock}
+        ${volBlock}
+        ${vixBlock}
+        ${pvBlock}
+      </div>
     </main>
   `;
 }

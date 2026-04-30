@@ -93,6 +93,17 @@ function classifyFlowBehavior({
       };
     }
 
+    // P1-1 fix: if put_premium > call_premium AND P/C > 1, downgrade (资金偏多但 Put 仍重)
+    const absPut = putPrem != null ? Math.abs(putPrem) : 0;
+    const absCall = callPrem != null ? Math.abs(callPrem) : 0;
+    if (absPut > absCall && pcRatio != null && pcRatio > 1) {
+      return {
+        behavior: 'mixed',
+        confidence: 'medium',
+        reason: `资金偏多但 Put 仍重（Put ${(absPut/1e6).toFixed(1)}M > Call ${(absCall/1e6).toFixed(1)}M，P/C ${pcRatio.toFixed(2)}），方向降级`
+      };
+    }
+
     return {
       behavior: 'call_effective',
       confidence: 'high',

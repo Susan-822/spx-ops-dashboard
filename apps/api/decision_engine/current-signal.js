@@ -55,6 +55,7 @@ import {
 } from './algorithms/index.js';
 import { getPriceHistory } from '../state/price-history-buffer.js';
 import { getLiveRefreshLog } from '../scheduler/live-refresh-scheduler.js';
+import { buildSignalFormatter } from './signal-formatter.js';
 
 export {
   buildProjectionPrices,
@@ -1990,13 +1991,57 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     cross_asset_projection: crossAssetProjection,
     uw_wall_diagnostics: uwConclusionV2.uw_wall_diagnostics
   });
+  // Extract UW spot price early (before buildPriceContract) for wall/darkpool calculations
+  // Mirrors the logic in price-contract.js extractUwSpotPrice
+  function _extractEarlySpot(uwRaw) {
+    const SPX_MIN = 6000, SPX_MAX = 8500;
+    function _asArr(obj) {
+      if (Array.isArray(obj)) return obj;
+      if (!obj || typeof obj !== 'object') return [];
+      const d = obj.data;
+      if (Array.isArray(d)) return d;
+      if (d && typeof d === 'object') {
+        for (const k of ['data', 'results', 'items']) {
+          if (Array.isArray(d[k])) return d[k];
+        }
+      }
+      return [];
+    }
+    function _valid(v) {
+      const n = Number(v);
+      return Number.isFinite(n) && n >= SPX_MIN && n <= SPX_MAX ? n : null;
+    }
+    // 1. flow_recent[0].underlying_price
+    const flowRows = _asArr(uwRaw?.flow_recent);
+    for (const r of flowRows) {
+      const p = _valid(r.underlying_price);
+      if (p) return p;
+    }
+    // 2. spot_gex[0].price
+    const spotGexRows = _asArr(uwRaw?.spot_gex);
+    for (const r of spotGexRows) {
+      const p = _valid(r.price);
+      if (p) return p;
+    }
+    // 3. options_flow[0].underlying_price
+    const optFlowRows = _asArr(uwRaw?.options_flow);
+    for (const r of optFlowRows) {
+      const p = _valid(r.underlying_price ?? r.price);
+      if (p) return p;
+    }
+    return null;
+  }
+  const _wallSpot = _extractEarlySpot(uwApi.uw_raw)
+    ?? priceSourcesV2.spx?.price
+    ?? null;
   const dealerWallMap = buildDealerWallMap({
     dealer: uwNormalized.dealer,
-    spot_price: priceSourcesV2.spx?.price ?? null
+    spot_price: _wallSpot,
+    gex_rows: uwApi.uw_factors?.dealer_factors?.gex_by_strike ?? null
   });
   const darkpoolGravity = buildDarkpoolGravity({
     darkpool: uwNormalized.darkpool,
-    spot_price: priceSourcesV2.spx?.price ?? null
+    spot_price: _wallSpot
   });
   const flowConflict = buildFlowConflict({
     flow: uwNormalized.flow,
@@ -2164,12 +2209,13 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     atmEngine: atmEngine ?? {}
   });
 
-  // P1-2: Wall gate — null out walls when spot is unavailable
+  // P1-2: Wall gate — use dealerWallMap.wall_status (near wall validation) + spot gate
   const _spotAvailable = priceContract.spot_gate_open === true;
-  const _callWallGated = _spotAvailable ? (dealerWallMap.call_wall ?? rawNoteV2.uw_conclusion?.call_wall ?? null) : null;
-  const _putWallGated  = _spotAvailable ? (dealerWallMap.put_wall  ?? rawNoteV2.uw_conclusion?.put_wall  ?? null) : null;
-  const _wallStatus    = _spotAvailable ? 'valid' : 'unavailable';
-  const _wallErrors    = _spotAvailable ? [] : ['spot_missing'];
+  const _nearWallValid = dealerWallMap.wall_status === 'valid';
+  const _callWallGated = (_spotAvailable && _nearWallValid) ? dealerWallMap.near_call_wall ?? null : null;
+  const _putWallGated  = (_spotAvailable && _nearWallValid) ? dealerWallMap.near_put_wall  ?? null : null;
+  const _wallStatus    = _spotAvailable === false ? 'unavailable' : dealerWallMap.wall_status ?? 'unavailable';
+  const _wallErrors    = _spotAvailable === false ? ['spot_missing'] : (dealerWallMap.wall_errors ?? []);
 
   // 5b. A/B Order Engine — now includes dominant_scene from price_validation_engine (P2)
   const abOrderEngine = buildAbOrderEngine({
@@ -2352,5 +2398,19 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   finalOutput.analysis_layer = layerOutput.analysis_layer;
   finalOutput.operation_layer = layerOutput.operation_layer;
 
+
+  // UI formatter — builds all structured fields for frontend rendering
+  const signalFormatter = buildSignalFormatter(finalOutput);
+  finalOutput.primary_card  = signalFormatter.primary_card;
+  finalOutput.sentiment_bar = signalFormatter.sentiment_bar;
+  finalOutput.levels        = signalFormatter.levels;
+  finalOutput.money_read    = signalFormatter.money_read;
+  finalOutput.darkpool_read = signalFormatter.darkpool_read;
+  finalOutput.vol_dashboard = signalFormatter.vol_dashboard;
+  finalOutput.vix_dashboard = signalFormatter.vix_dashboard;
+  finalOutput.forbidden_bar = signalFormatter.forbidden_bar;
+  finalOutput.data_health   = signalFormatter.data_health;
+  finalOutput.strike_battle = signalFormatter.strike_battle;
+  finalOutput.vanna_charm   = signalFormatter.vanna_charm;
   return replaceUndefined(scrubLegacyDecisionStrings(sanitizeUwPromotedStrings(finalOutput, uwProvider.status === 'live')));
 }
