@@ -1368,7 +1368,7 @@ function renderHudZoneGamma(signal) {
       <div class="gamma-flip-bar">
         <div class="gamma-flip-item">
           <div class="gamma-flip-label">Gamma Flip</div>
-          <div class="gamma-flip-value ${flipClass}">${fmtLevel(gammaFlip)}</div>
+          <div class="gamma-flip-value ${flipClass}">${gammaFlip != null && gammaFlip !== 0 ? fmtLevel(gammaFlip) : '<span class="data-missing">暂无</span>'}</div>
           <div class="gamma-flip-sub">${spot != null && gammaFlip != null ? (spot > gammaFlip ? '现价在翻转点上方' : '现价在翻转点下方') : '--'}</div>
         </div>
         <div class="gamma-flip-item">
@@ -1403,11 +1403,15 @@ function renderHudZoneExecution(signal) {
   const putWall   = gr.put_wall   != null ? gr.put_wall   : (dw.put_wall   != null ? dw.put_wall   : null);
   const gammaFlip = gr.gamma_flip != null ? gr.gamma_flip : (dw.gamma_flip != null ? dw.gamma_flip : null);
   const dpSupport = dp.nearest_support != null ? dp.nearest_support : (dp.mapped_spx != null ? dp.mapped_spx : null);
+  // Frontend guard: if Put Wall > Call Wall, mark as inverted (data error)
+  const wallInverted = (callWall != null && putWall != null && putWall > callWall);
+  const callWallDisplay = wallInverted ? null : callWall;
+  const putWallDisplay  = wallInverted ? null : putWall;
   const walls = [
-    { type: 'call-wall',      label: '上限阻力 Call Wall', level: callWall,  sniper: isSniperZone(spot, callWall) },
-    { type: 'put-wall',       label: '下限支撑 Put Wall',  level: putWall,   sniper: isSniperZone(spot, putWall) },
+    { type: 'call-wall',      label: '上限阻力 Call Wall', level: callWallDisplay, sniper: isSniperZone(spot, callWallDisplay), inverted: wallInverted },
+    { type: 'put-wall',       label: '下限支撑 Put Wall',  level: putWallDisplay,  sniper: isSniperZone(spot, putWallDisplay),  inverted: wallInverted },
     { type: 'darkpool-wall',  label: '暗盘防线 Dark Pool', level: dpSupport, sniper: isSniperZone(spot, dpSupport) },
-    { type: 'gamma-flip-wall',label: 'Gamma 翻转点',       level: gammaFlip, sniper: isSniperZone(spot, gammaFlip) }
+    { type: 'gamma-flip-wall',label: 'Gamma 翻转点',       level: (gammaFlip != null && gammaFlip !== 0) ? gammaFlip : null, sniper: isSniperZone(spot, gammaFlip) }
   ];
   const anySniperActive = walls.some(w => w.sniper && w.level != null);
   const wallRows = walls.map(w => {
@@ -1416,7 +1420,7 @@ function renderHudZoneExecution(signal) {
     return `
       <div class="wall-item ${w.type}${sniperCls}">
         <div><div class="wall-item-type">${w.label}</div></div>
-        <div class="wall-item-level">${fmtLevel(w.level)}</div>
+        <div class="wall-item-level">${w.inverted ? '<span class="data-missing">字段映射错误</span>' : (w.level != null ? fmtLevel(w.level) : '<span class="data-missing">暂无</span>')}</div>
         <div class="wall-item-distance ${distClass}">${distanceLabel(spot, w.level)}</div>
       </div>`;
   }).join('');
@@ -1435,7 +1439,55 @@ function renderHudZoneExecution(signal) {
   `;
 }
 
-// Zone 3: Order Flow X-Ray
+// Zone 3: Order Flow — Sentiment Bar + X-Ray
+function renderSentimentBar(fb) {
+  const behavior = fb.behavior || 'neutral';
+  const netPrem  = fb.net_premium  != null ? fb.net_premium  : null;
+  const pcRatio  = fb.put_call_ratio != null ? fb.put_call_ratio : null;
+  const pcExtreme = fb.pc_extreme || {};
+
+  // Determine sentiment color
+  let sentColor = 'gray', sentLabel = '数据不足', sentClass = 'gray';
+  if (netPrem == null || pcRatio == null) {
+    sentColor = 'gray'; sentLabel = '数据不足'; sentClass = 'gray';
+  } else if (behavior === 'call_effective' || (netPrem > 0 && pcRatio < 0.8)) {
+    sentColor = 'green'; sentLabel = '偏多'; sentClass = 'bullish';
+  } else if (behavior === 'put_effective' || (netPrem < 0 && pcRatio > 1.2)) {
+    sentColor = 'red'; sentLabel = '偏空'; sentClass = 'bearish';
+  } else if (behavior === 'put_squeezed' || behavior === 'call_capped') {
+    sentColor = 'yellow'; sentLabel = '观望'; sentClass = 'neutral';
+  } else if (Math.abs(netPrem || 0) < 50_000_000) {
+    sentColor = 'yellow'; sentLabel = '观望'; sentClass = 'neutral';
+  } else {
+    sentColor = 'yellow'; sentLabel = '观望'; sentClass = 'neutral';
+  }
+
+  // P/C extreme alert
+  let pcAlert = '';
+  if (pcRatio == null) {
+    pcAlert = `<span class="pc-alert gray">P/C 数据缺失</span>`;
+  } else if (pcRatio > 1.5) {
+    pcAlert = `<span class="pc-alert bearish">P/C ${pcRatio.toFixed(2)} — 极度防守 ⚠</span>`;
+  } else if (pcRatio < 0.5) {
+    pcAlert = `<span class="pc-alert bullish">P/C ${pcRatio.toFixed(2)} — 极度贪婪 ⚠</span>`;
+  } else {
+    pcAlert = `<span class="pc-alert neutral">P/C ${pcRatio.toFixed(2)}</span>`;
+  }
+
+  return `
+    <div class="sentiment-bar-wrap">
+      <div class="sentiment-bar-track">
+        <div class="sentiment-bar-segment red" style="flex:1">偏空</div>
+        <div class="sentiment-bar-segment yellow" style="flex:1">观望</div>
+        <div class="sentiment-bar-segment green" style="flex:1">偏多</div>
+      </div>
+      <div class="sentiment-bar-needle ${sentClass}"></div>
+      <div class="sentiment-bar-label ${sentClass}">${sentLabel}</div>
+      ${pcAlert}
+    </div>
+  `;
+}
+
 function renderHudZoneFlow(signal) {
   const fb = signal.flow_behavior_engine || {};
   const behavior = fb.behavior || 'neutral';
@@ -1454,6 +1506,14 @@ function renderHudZoneFlow(signal) {
   const pcRatio = fb.put_call_ratio != null ? fb.put_call_ratio : null;
   const pcClass = (pcExtreme.type || 'normal').replace(/_/g, '-');
   const netPremClass = netPrem == null ? 'neutral' : netPrem >= 0 ? 'positive' : 'negative';
+
+  // Data validity checks
+  const netPremDisplay = netPrem == null ? '<span class="data-missing">未接入</span>' : `<span class="${netPremClass}">${fmtPrem(netPrem)}</span>`;
+  const callPremDisplay = callPrem == null ? '<span class="data-missing">未接入</span>' : `<span class="positive">${fmtPrem(callPrem)}</span>`;
+  const putPremDisplay  = putPrem  == null ? '<span class="data-missing">未接入</span>' : `<span class="negative">${fmtPrem(putPrem)}</span>`;
+  const pcDisplay = pcRatio == null ? '<span class="data-missing">数据缺失</span>' : `<span class="pc-ratio-value ${pcClass}">${Number(pcRatio).toFixed(2)}</span>`;
+  const aggDisplay = (netPrem == null || pcRatio == null) ? '<span class="data-missing">不可用（数据未接入）</span>' : `${fb.aggression_label || '--'} (${aggScore}/100)`;
+
   return `
     <div class="hud-zone flow-xray">
       <div class="hud-zone-header">
@@ -1463,22 +1523,23 @@ function renderHudZoneFlow(signal) {
         </div>
         <span class="hud-zone-badge ${fb.behavior_color || 'gray'}">${behaviorLabel}</span>
       </div>
-      <div class="flow-behavior-banner ${behavior}">
-        <div>
-          <div class="flow-behavior-label">${behaviorIcon} ${behaviorLabel}</div>
-          <div class="flow-behavior-reason">${reason}</div>
+      ${renderSentimentBar(fb)}
+      <div class="flow-prem-grid">
+        <div class="flow-prem-item">
+          <div class="flow-prem-label">净权利金</div>
+          <div class="flow-prem-value">${netPremDisplay}</div>
         </div>
-        <span class="hud-zone-badge ${fb.behavior_color || 'gray'}">${fb.confidence || '--'}</span>
-      </div>
-      <div class="net-prem-row">
-        <div class="net-prem-card">
-          <div class="net-prem-card-label">净权利金 Net Prem</div>
-          <div class="net-prem-card-value ${netPremClass}">${fmtPrem(netPrem)}</div>
+        <div class="flow-prem-item">
+          <div class="flow-prem-label">Call 权利金</div>
+          <div class="flow-prem-value">${callPremDisplay}</div>
         </div>
-        <div class="net-prem-card">
-          <div class="net-prem-card-label">Call / Put 权利金</div>
-          <div class="net-prem-card-value positive">${fmtPrem(callPrem)}</div>
-          <div style="font-size:10px;color:var(--ink-4);margin-top:2px">${fmtPrem(putPrem)}</div>
+        <div class="flow-prem-item">
+          <div class="flow-prem-label">Put 权利金</div>
+          <div class="flow-prem-value">${putPremDisplay}</div>
+        </div>
+        <div class="flow-prem-item">
+          <div class="flow-prem-label">P/C 比率</div>
+          <div class="flow-prem-value">${pcDisplay}</div>
         </div>
       </div>
       <div class="acceleration-card">
@@ -1488,76 +1549,138 @@ function renderHudZoneFlow(signal) {
         </div>
         <span class="acceleration-tag">${acc.is_accelerating ? '加速中' : '平稳'}</span>
       </div>
-      <div class="pc-ratio-row">
-        <span class="pc-ratio-label">P/C 情绪极值</span>
-        <span class="pc-ratio-value ${pcClass}">${pcRatio != null ? Number(pcRatio).toFixed(2) : '--'}</span>
-        <span class="pc-ratio-tag">${pcExtreme.label || '--'}</span>
-      </div>
       <div class="aggression-meter">
         <div class="aggression-meter-label">
           <span>资金侵略性</span>
-          <span>${fb.aggression_label || '--'} (${aggScore}/100)</span>
+          <span>${aggDisplay}</span>
         </div>
-        <div class="aggression-meter-bar">
-          <div class="aggression-meter-fill ${aggClass}" style="width:${aggScore}%"></div>
-        </div>
+        ${(netPrem != null && pcRatio != null) ? `<div class="aggression-meter-bar"><div class="aggression-meter-fill ${aggClass}" style="width:${aggScore}%"></div></div>` : ''}
       </div>
     </div>
   `;
 }
 
-// Zone 4: Command Generator
+// Zone 4: Command Generator — Trading Language Format
 function renderHudZoneCommand(signal) {
   const ab = signal.ab_order_engine || {};
+  const atm = signal.atm_engine || {};
+  const gr = signal.gamma_regime_engine || {};
+  const fb = signal.flow_behavior_engine || {};
   const status = ab.status || 'waiting';
-  const headline = ab.headline || '等待信号确认...';
-  const planA = ab.plan_a || null;
-  const planB = ab.plan_b || null;
   const confidence = ab.execution_confidence != null ? ab.execution_confidence : 0;
   const confClass = confidence >= 70 ? 'high' : confidence >= 40 ? 'medium' : 'low';
-  const headlineClass = status === 'blocked' ? 'blocked' : status === 'waiting' ? 'waiting' : '';
-  function renderPlan(plan, tag, cls) {
-    if (!plan) {
-      return `<div class="plan-card ${cls}"><div class="plan-card-header"><span class="plan-card-tag">${tag}</span><span class="plan-card-direction NEUTRAL">等待</span></div><div class="plan-card-rationale">暂无预案</div></div>`;
+  const planA = ab.plan_a || null;
+  const planB = ab.plan_b || null;
+
+  // Build trading-language directive lines
+  const pc = signal.price_contract || {};
+  const spot = pc.live_price != null ? pc.live_price : null;
+  const callWall = gr.call_wall != null ? gr.call_wall : null;
+  const putWall  = gr.put_wall  != null ? gr.put_wall  : null;
+  const gammaFlip = gr.gamma_flip != null ? gr.gamma_flip : null;
+  const atmVal = atm.atm != null ? atm.atm : null;
+  const pinRisk = atm.pin_risk != null ? atm.pin_risk : 0;
+
+  // Build "NOW / WAIT_LONG / WAIT_SHORT / FORBIDDEN / INVALID / TARGET" lines
+  function buildDirective() {
+    if (status === 'blocked') {
+      return {
+        now: '执行锁定 — 数据不足，禁止开仓',
+        wait_long: '等待数据接入后重新评估',
+        wait_short: '等待数据接入后重新评估',
+        forbidden: atmVal != null ? `${fmtLevel(atmVal)} ATM 附近禁买 0DTE` : 'ATM 附近禁买 0DTE',
+        invalid: '数据接入前所有预案失效',
+        target: '--'
+      };
     }
-    return `
-      <div class="plan-card ${cls}">
-        <div class="plan-card-header">
-          <span class="plan-card-tag">${tag}</span>
-          <span class="plan-card-direction ${plan.direction || 'NEUTRAL'}">${plan.direction_cn || plan.direction || '--'}</span>
-        </div>
-        <div class="plan-card-instrument">${plan.instrument || '--'}</div>
-        <div class="plan-card-rationale">${plan.rationale || ''}</div>
-        <div class="plan-kv-grid">
-          <div class="plan-kv-row"><span class="plan-kv-key">入场</span><span class="plan-kv-val entry">${plan.entry || '--'}</span></div>
-          <div class="plan-kv-row"><span class="plan-kv-key">止损</span><span class="plan-kv-val stop">${plan.stop || '--'}</span></div>
-          <div class="plan-kv-row"><span class="plan-kv-key">TP1</span><span class="plan-kv-val tp">${plan.tp1 || '--'}</span></div>
-          <div class="plan-kv-row"><span class="plan-kv-key">TP2</span><span class="plan-kv-val tp">${plan.tp2 || '--'}</span></div>
-          <div class="plan-kv-row"><span class="plan-kv-key">失效</span><span class="plan-kv-val invalid">${plan.invalid || '--'}</span></div>
-        </div>
-        ${plan.condition ? `<div class="plan-condition">${plan.condition}</div>` : ''}
-      </div>
-    `;
+    if (planA && planA.direction) {
+      const entryA = planA.entry || '--';
+      const stopA  = planA.stop  || '--';
+      const tp1A   = planA.tp1   || '--';
+      const tp2A   = planA.tp2   || '--';
+      const entryB = planB ? (planB.entry || '--') : '--';
+      const stopB  = planB ? (planB.stop  || '--') : '--';
+      const tp1B   = planB ? (planB.tp1   || '--') : '--';
+      const isLong = planA.direction === 'LONG' || planA.direction === 'BULL';
+      const isShort = planA.direction === 'SHORT' || planA.direction === 'BEAR';
+      return {
+        now: `不追，等确认信号`,
+        wait_long: isLong
+          ? `站稳 ${entryA}，3分钟回踩不破 → ${planA.instrument || 'Bull Call Spread'}`
+          : (planB && (planB.direction === 'LONG' || planB.direction === 'BULL'))
+            ? `站稳 ${entryB}，3分钟回踩不破 → ${planB.instrument || 'Long Call'}`
+            : `等 Gamma 环境翻正后评估`,
+        wait_short: isShort
+          ? `跌破 ${entryA} 回抽失败 → ${planA.instrument || 'Bear Put Spread'}`
+          : (planB && (planB.direction === 'SHORT' || planB.direction === 'BEAR'))
+            ? `跌破 ${entryB} 回抽失败 → ${planB.instrument || 'Long Put'}`
+            : `等 Flow 确认偏空后评估`,
+        forbidden: [
+          atmVal != null ? `${fmtLevel(atmVal)} ATM 附近乱买 0DTE` : 'ATM 附近乱买 0DTE',
+          pinRisk >= 70 ? 'ATM 吸附风险高，避免单腿裸买' : null,
+          callWall != null && putWall != null ? `${fmtLevel(putWall)}–${fmtLevel(callWall)} 中间乱磨` : null
+        ].filter(Boolean).join(' | '),
+        invalid: [
+          planA.invalid || null,
+          planB ? (planB.invalid || null) : null
+        ].filter(Boolean).join(' | ') || '--',
+        target: `${isLong ? 'Call' : 'Put'}：${tp1A} → ${tp2A}`
+      };
+    }
+    return {
+      now: '不追 Call，不追 Put',
+      wait_long: callWall != null ? `站稳 ${fmtLevel(spot != null ? spot + 10 : callWall - 20)}，站稳 ${fmtLevel(spot != null ? spot + 15 : callWall - 15)}，3分钟回踩不破 → 短 Call` : '等 Call Wall 数据',
+      wait_short: putWall != null ? `跌破 ${fmtLevel(spot != null ? spot - 10 : putWall + 20)}，5分钟收不回 → Put` : '等 Put Wall 数据',
+      forbidden: atmVal != null ? `${fmtLevel(atmVal)} ATM 附近乱买 0DTE` : 'ATM 附近乱买 0DTE',
+      invalid: callWall != null ? `Put 站稳 ${fmtLevel(callWall)} 失效 | Call 跌回 ${fmtLevel(putWall)} 失效` : '--',
+      target: callWall != null && putWall != null ? `Put：${fmtLevel(putWall)} → ${fmtLevel(putWall - 10)} | Call：${fmtLevel(callWall)} → ${fmtLevel(callWall + 10)}` : '--'
+    };
   }
+
+  const d = buildDirective();
+  const badgeStatus = status === 'ready' ? 'blue' : status === 'blocked' ? 'red' : 'amber';
+  const badgeLabel  = status === 'ready' ? '预案就绪' : status === 'blocked' ? '执行锁定' : '等待确认';
+
   return `
     <div class="hud-zone command-generator">
       <div class="hud-zone-header">
         <div class="hud-zone-title">
           <span class="hud-zone-number">ZONE 04</span>
-          <span class="hud-zone-name">指令生成器</span>
+          <span class="hud-zone-name">执行指令</span>
         </div>
-        <span class="hud-zone-badge ${status === 'ready' ? 'blue' : status === 'blocked' ? 'red' : 'amber'}">${status === 'ready' ? '预案就绪' : status === 'blocked' ? '执行锁定' : '等待确认'}</span>
+        <span class="hud-zone-badge ${badgeStatus}">${badgeLabel}</span>
       </div>
-      <div class="command-headline ${headlineClass}">${headline}</div>
-      ${ab.pin_warning ? `<div class="pin-warning-banner"><span class="pin-warning-text">${ab.pin_warning}</span></div>` : ''}
+      ${atm.pin_risk >= 70 ? `<div class="pin-warning-banner"><span class="pin-warning-text">⚠ ATM 吸附风险 ${atm.pin_risk}/100 — 避免单腿裸买</span></div>` : ''}
+      <div class="directive-grid">
+        <div class="directive-row now">
+          <span class="directive-key">现在</span>
+          <span class="directive-val">${d.now}</span>
+        </div>
+        <div class="directive-row wait-long">
+          <span class="directive-key">等多</span>
+          <span class="directive-val">${d.wait_long}</span>
+        </div>
+        <div class="directive-row wait-short">
+          <span class="directive-key">等空</span>
+          <span class="directive-val">${d.wait_short}</span>
+        </div>
+        <div class="directive-row forbidden">
+          <span class="directive-key">禁做</span>
+          <span class="directive-val">${d.forbidden}</span>
+        </div>
+        <div class="directive-row invalid">
+          <span class="directive-key">失效</span>
+          <span class="directive-val">${d.invalid}</span>
+        </div>
+        <div class="directive-row target">
+          <span class="directive-key">目标</span>
+          <span class="directive-val">${d.target}</span>
+        </div>
+      </div>
       <div class="confidence-row">
         <span class="confidence-label">执行置信度</span>
         <div class="confidence-bar-wrap"><div class="confidence-bar-fill ${confClass}" style="width:${confidence}%"></div></div>
         <span class="confidence-value">${confidence}/100</span>
-      </div>
-      <div class="plan-grid">
-        ${renderPlan(planA, 'PLAN A', 'plan-a')}
-        ${renderPlan(planB, 'PLAN B', 'plan-b')}
       </div>
     </div>
   `;
@@ -1606,6 +1729,123 @@ function renderHudPriceStrip(signal) {
   `;
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOP COMMAND STRIP — One-line master directive
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderTopCommandStrip(signal) {
+  const ab = signal.ab_order_engine || {};
+  const gr = signal.gamma_regime_engine || {};
+  const atm = signal.atm_engine || {};
+  const fb = signal.flow_behavior_engine || {};
+  const pc = signal.price_contract || {};
+  const spot = pc.live_price != null ? pc.live_price : null;
+  const atmVal = atm.atm != null ? atm.atm : null;
+  const regime = gr.gamma_regime || 'unknown';
+  const behavior = fb.behavior || 'neutral';
+  const status = ab.status || 'waiting';
+
+  const regimeCn = { positive: '正 Gamma 绞肉', negative: '负 Gamma 放波', transitional: 'Gamma 过渡区', unknown: 'Gamma 待确认' }[regime] || regime;
+  const behaviorCn = { call_effective: 'Call 有效流入', put_effective: 'Put 有效流入', put_squeezed: 'Put 被绞', call_capped: 'Call 被压', neutral: '资金中性' }[behavior] || behavior;
+
+  let directive = '';
+  if (status === 'blocked' || (ab.execution_confidence != null && ab.execution_confidence < 20)) {
+    directive = `数据不足，禁止开仓`;
+  } else if (ab.plan_a && ab.plan_a.entry) {
+    const dir = ab.plan_a.direction === 'LONG' || ab.plan_a.direction === 'BULL' ? '等多' : '等空';
+    directive = `${dir} ${ab.plan_a.entry} 确认 → ${ab.plan_a.instrument || '待定'}`;
+  } else {
+    directive = `不追，等 ${atmVal != null ? fmtLevel(atmVal) + ' 站稳或跌破' : '关键位确认'}`;
+  }
+
+  const stripClass = status === 'ready' ? 'ready' : status === 'blocked' ? 'blocked' : 'waiting';
+
+  return `
+    <div class="top-command-strip ${stripClass}">
+      <span class="top-command-regime">${regimeCn}</span>
+      <span class="top-command-sep">｜</span>
+      <span class="top-command-atm">盘眼 ${atmVal != null ? fmtLevel(atmVal) : '--'}</span>
+      <span class="top-command-sep">｜</span>
+      <span class="top-command-flow">${behaviorCn}</span>
+      <span class="top-command-sep">｜</span>
+      <span class="top-command-directive">${directive}</span>
+    </div>
+  `;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VOLATILITY DASHBOARD — VIX + IV + HV gauge
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderVolatilityDashboard(signal) {
+  const vol = signal.volatility_dashboard || {};
+  const vix = vol.vix != null ? vol.vix : null;
+  const iv30 = vol.iv30 != null ? vol.iv30 : null;
+  const hv20 = vol.hv20 != null ? vol.hv20 : null;
+  const vscore = vol.vscore != null ? vol.vscore : null;
+  const volRegime = vol.regime || 'unknown';
+  const volLabel = { low: '低波动', normal: '正常波动', elevated: '波动升温', high: '高波动', extreme: '极端波动', unknown: '数据待接入' }[volRegime] || volRegime;
+  const volClass = { low: 'low', normal: 'normal', elevated: 'elevated', high: 'high', extreme: 'extreme', unknown: 'unknown' }[volRegime] || 'unknown';
+
+  // VIX gauge: 0-20 low, 20-30 normal, 30-40 elevated, 40+ high
+  function vixGauge(v) {
+    if (v == null) return '<div class="vol-gauge-empty">--</div>';
+    const pct = Math.min(100, (v / 50) * 100);
+    const cls = v < 15 ? 'low' : v < 20 ? 'normal' : v < 30 ? 'elevated' : v < 40 ? 'high' : 'extreme';
+    return `<div class="vol-gauge-bar"><div class="vol-gauge-fill ${cls}" style="width:${pct}%"></div></div>`;
+  }
+
+  function ivRatio(iv, hv) {
+    if (iv == null || hv == null || hv === 0) return null;
+    return (iv / hv).toFixed(2);
+  }
+
+  const ivHvRatio = ivRatio(iv30, hv20);
+  const ivHvClass = ivHvRatio == null ? 'neutral' : ivHvRatio > 1.3 ? 'expensive' : ivHvRatio < 0.8 ? 'cheap' : 'fair';
+  const ivHvLabel = ivHvRatio == null ? '数据缺失' : ivHvRatio > 1.3 ? '期权偏贵 — 卖权策略占优' : ivHvRatio < 0.8 ? '期权偏便宜 — 买权策略占优' : '期权定价合理';
+
+  return `
+    <div class="vol-dashboard">
+      <div class="vol-dashboard-header">
+        <div class="vol-dashboard-title">
+          <span class="vol-dashboard-icon">⚡</span>
+          <span>波动率仪表盘</span>
+        </div>
+        <span class="hud-zone-badge ${volClass}">${volLabel}</span>
+      </div>
+      <div class="vol-gauge-row">
+        <div class="vol-gauge-card">
+          <div class="vol-gauge-label">VIX 恐慌指数</div>
+          <div class="vol-gauge-value ${vix != null ? (vix < 20 ? 'low' : vix < 30 ? 'elevated' : 'high') : 'unknown'}">${vix != null ? Number(vix).toFixed(1) : '<span class="data-missing">--</span>'}</div>
+          ${vixGauge(vix)}
+          <div class="vol-gauge-sub">${vix != null ? (vix < 15 ? '市场极度平静' : vix < 20 ? '正常区间' : vix < 30 ? '波动升温' : vix < 40 ? '高度恐慌' : '极端恐慌') : '数据待接入'}</div>
+        </div>
+        <div class="vol-gauge-card">
+          <div class="vol-gauge-label">IV30 隐含波动率</div>
+          <div class="vol-gauge-value ${iv30 != null ? 'normal' : 'unknown'}">${iv30 != null ? Number(iv30).toFixed(1) + '%' : '<span class="data-missing">--</span>'}</div>
+          <div class="vol-gauge-sub">${iv30 != null ? '30日隐含波动率' : '数据待接入'}</div>
+        </div>
+        <div class="vol-gauge-card">
+          <div class="vol-gauge-label">HV20 历史波动率</div>
+          <div class="vol-gauge-value ${hv20 != null ? 'normal' : 'unknown'}">${hv20 != null ? Number(hv20).toFixed(1) + '%' : '<span class="data-missing">--</span>'}</div>
+          <div class="vol-gauge-sub">${hv20 != null ? '20日实现波动率' : '数据待接入'}</div>
+        </div>
+        <div class="vol-gauge-card ${ivHvClass}">
+          <div class="vol-gauge-label">IV/HV 期权成本比</div>
+          <div class="vol-gauge-value ${ivHvClass}">${ivHvRatio != null ? ivHvRatio : '<span class="data-missing">--</span>'}</div>
+          <div class="vol-gauge-sub">${ivHvLabel}</div>
+        </div>
+      </div>
+      ${vscore != null ? `
+      <div class="vscore-row">
+        <span class="vscore-label">Vscore 综合评分</span>
+        <div class="vscore-bar-wrap"><div class="vscore-bar-fill ${volClass}" style="width:${Math.min(100, vscore)}%"></div></div>
+        <span class="vscore-value">${vscore}/100</span>
+        <span class="vscore-tag">${vscore >= 70 ? '期权成本高，优先价差策略' : vscore >= 40 ? '期权成本适中' : '期权成本低，可考虑裸买'}</span>
+      </div>` : `<div class="vscore-row"><span class="vscore-label">Vscore</span><span class="data-missing">公式已准备，等待数据接入</span></div>`}
+    </div>
+  `;
+}
+
 // Main HUD Panel — assembles all four zones
 function renderHudPanel(signal) {
   return `
@@ -1620,408 +1860,13 @@ function renderHudPanel(signal) {
   `;
 }
 function renderHome(signal) {
-  const home = homepageState(signal);
   return `
     <main class="page home-v1">
+      ${renderTopCommandStrip(signal)}
       ${renderHudPanel(signal)}
-      ${renderHomeTopMood(home)}
-      ${renderExecutionSection(home)}
-      ${renderGoldenDecision(home)}
-      ${renderAnalysisTiles(home)}
-      ${renderBottomPlaceholders(home)}
+      ${renderVolatilityDashboard(signal)}
     </main>
   `;
-}
-
-function renderRealtimePriceBox(home) {
-  const price = home.observation_price || {};
-  const dataClock = home.data_clock || {};
-  const policy = home.refresh_policy || {};
-  const refresh = home.refresh_state || {};
-  return `
-    <section class="home-realtime-price">
-      ${renderHomeRows([
-        ['实时价格', price.value != null ? Number(price.value).toFixed(2) : '价格暂未获取'],
-        ['更新时间', shortTime(price.updated_at || dataClock.price?.updated_at || dataClock.now)],
-        ['价格状态', price.status === 'live' ? '实时' : price.status === 'stale' ? '延迟' : '失联'],
-        ['用途', price.can_use_for_distance ? '可用于距离观察，暂不能生成完整交易计划' : '价格暂未获取，不能计算距离'],
-        ['自动刷新', refresh.last_success_at && Date.now() - new Date(refresh.last_success_at).getTime() > 30000 ? '实时链路异常，请手动刷新。' : refresh.last_success_at && Date.now() - new Date(refresh.last_success_at).getTime() > 10000 ? '页面数据延迟，正在重试。' : '开启'],
-        ['页面刷新', `每 ${Math.round((policy.ui_poll_ms || 3000) / 1000)} 秒`],
-        ['价格刷新', `每 ${Math.round((policy.source_refresh_ms?.price || 2000) / 1000)} 秒`],
-        ['最近更新', shortTime(dataClock.now)]
-      ])}
-    </section>
-  `;
-}
-
-function renderHomeTopMood(home) {
-  return `
-    <section class="home-status-strip">
-      ${renderStatusPill('MASTER', homeMasterSignal(home.operation_layer, home.final_decision), 'wait')}
-      ${renderStatusPill('方向', home.direction, 'support')}
-      ${renderStatusPill('数据', home.dataHealth, 'support')}
-      ${renderStatusPill('安全锁', home.lockText, 'prohibit')}
-      <div class="status-reason"><span>原因</span><b>${escapeHtml(homeSanitize(home.coreReason))}</b></div>
-    </section>
-  `;
-}
-
-function renderStatusPill(label, value, tone) {
-  return `
-    <div class="status-pill ${tone}">
-      <span>${escapeHtml(label)}</span>
-      <b>${escapeHtml(homeSanitize(value))}</b>
-    </div>
-  `;
-}
-
-function humanHomeText(value, fallback = '这项数据还不能用于交易计划。') {
-  const text = homeSanitize(value, fallback);
-  const replacements = [
-    [/Gamma Flip 暂不能确认。?/g, '做市商分界线还没算出来，所以暂时不能判断大盘是在震荡区，还是容易单边加速。'],
-    [/lower_brake_zone/g, '下方大成交承接区'],
-    [/Put RepeatedHits/g, '有资金连续买 Put，说明有人押下跌或买保护'],
-    [/Data Health Score/g, '数据完整度'],
-    [/核心操作字段缺失，不能 ready/g, '还缺做市商墙位、波动率结论、0DTE / 多腿过滤，所以暂时不给入场、止损、TP'],
-    [/不能 ready/g, '还不能生成完整交易计划'],
-    [/撞墙/g, '追空容易打到下方承接区'],
-    [/unavailable/g, '数据源还没接好'],
-    [/cluster_wall/g, '暗池大成交聚集区'],
-    [/background_only/g, '只能做背景参考'],
-    [/normalized/g, '已整理的数据'],
-    [/raw/g, '原始数据'],
-    [/endpoint/g, '数据接口'],
-    [/parser/g, '数据转换器'],
-    [/operation_layer/g, '执行安全层'],
-    [/partial/g, '部分可参考'],
-    [/null/g, '还没有数值'],
-    [/undefined/g, '还没有数值'],
-    [/NaN/g, '还没有数值']
-  ];
-  return replacements.reduce((acc, [pattern, replacement]) => acc.replace(pattern, replacement), text);
-}
-
-function buildHomeHumanCopy(home = {}) {
-  const execution = home.execution_card || {};
-  const wall = home.dealer_wall_map || {};
-  const gravity = home.darkpool_gravity || {};
-  const conflict = home.flow_conflict || {};
-  const volState = home.volatility_state || {};
-  const priceTrigger = Object.keys(home.price_trigger || {}).length ? home.price_trigger : execution.price_trigger || {};
-  const newsRadar = home.news_radar || execution.news_radar || {};
-  const wallZone = home.wall_zone_panel || execution.wall_zone_panel || {};
-  const controlSide = home.control_side || execution.control_side || wallZone.control_side || {};
-  const hasDealerWalls = wall.call_wall != null || wall.put_wall != null || wall.gamma_flip != null;
-  const darkLevel = priceTrigger.key_level != null
-    ? Number(priceTrigger.key_level).toFixed(2)
-    : gravity.mapped_spx != null ? Number(gravity.mapped_spx).toFixed(2) : '7150.23';
-  const validPrice = (...values) => values.map((value) => Number(value)).find((value) => Number.isFinite(value) && value > 0) ?? null;
-  const inferredFromDarkpool = (() => {
-    const mapped = Number(gravity.mapped_spx);
-    const distance = Number(gravity.distance_pct);
-    if (!Number.isFinite(mapped) || !Number.isFinite(distance)) return null;
-    if (gravity.zone_side === 'lower') return mapped / (1 - distance / 100);
-    if (gravity.zone_side === 'upper') return mapped / (1 + distance / 100);
-    return null;
-  })();
-  const triggerCurrentPrice = (() => {
-    const current = Number(priceTrigger.current_price);
-    const key = Number(priceTrigger.key_level);
-    if (!Number.isFinite(current) || current <= 0) return null;
-    if (Number.isFinite(key) && Math.abs(current - key) < 0.01 && inferredFromDarkpool != null) return null;
-    return current;
-  })();
-  const displayPrice = validPrice(
-    triggerCurrentPrice,
-    inferredFromDarkpool,
-    home.spot_conclusion?.spot_price,
-    home.spot_conclusion?.spot,
-    home.source_display?.price,
-    home.operation_layer?.spot,
-    home.price_sources?.spx?.price
-  );
-  const displayTrigger = displayPrice != null && priceTrigger.key_level != null
-    ? {
-        ...priceTrigger,
-        current_price: displayPrice,
-        distance_pct: Math.abs(displayPrice - Number(priceTrigger.key_level)) / displayPrice * 100,
-        state: Math.abs(displayPrice - Number(priceTrigger.key_level)) / displayPrice * 100 <= 0.5 ? 'watch_reaction' : priceTrigger.state,
-        state_cn: Math.abs(displayPrice - Number(priceTrigger.key_level)) / displayPrice * 100 <= 0.5 ? `已接近 ${darkLevel}，观察反应` : priceTrigger.state_cn,
-        next_action_cn: Math.abs(displayPrice - Number(priceTrigger.key_level)) / displayPrice * 100 <= 0.5 ? '不追 Put，先看这里有没有承接。' : priceTrigger.next_action_cn
-      }
-    : priceTrigger;
-  const newsRiskCn = ['live', 'fresh'].includes(String(newsRadar.status || '').toLowerCase())
-    ? newsRadar.news_risk_cn || '暂未确认'
-    : '暂未确认';
-  const mainConclusion = execution.status === 'READY'
-    ? 'READY，可以按完整计划执行。'
-    : 'WAIT，不能开仓。';
-  const bias = '有 Put 看空线索，但不能追 Put。';
-  const dealerImpact = hasDealerWalls
-    ? `做市商墙位已生成：上方约 ${homeSanitize(wall.call_wall)}，下方约 ${homeSanitize(wall.put_wall)}，分界线约 ${homeSanitize(wall.gamma_flip)}。`
-    : '做市商墙位还没生成。现在不能用 Gamma 判断上方压力、下方支撑和趋势加速区。';
-  const darkPoolImpact = gravity.mapped_spx != null
-    ? `下方 ${darkLevel} 附近有暗池大成交区。这里可能有资金承接，追 Put 要小心。`
-    : '暗池现在只有背景参考，还不能给出明确承接区。';
-  const flowImpact = '有资金连续买 Put，说明有人押下跌或买保护。这是看空线索，但还不能单独作为开仓信号。';
-  const volImpact = volState.vscore != null
-    ? `波动率 Vscore 是 ${volState.vscore}，用来判断期权贵不贵。`
-    : '波动率公式已准备好。但 Vscore 还没算出来，所以暂时不能判断期权贵不贵。';
-  const sentimentImpact = '市场情绪轻微防守。不是强空，只能做背景。';
-  const headline = hasDealerWalls
-    ? humanHomeText(execution.headline_cn, 'WAIT，不能开仓。')
-    : '下方暗池大成交区限制追空，做市商墙位还没生成。';
-  return {
-    mainConclusion,
-    bias,
-    headline,
-    action: gravity.mapped_spx != null ? `禁止追 Put，等 ${darkLevel} 附近回踩反应。` : '只观察，不追空。',
-    priceTrigger: displayTrigger,
-    newsRadar,
-    displayPrice,
-    newsRiskCn,
-    newsUnavailableReason: 'Brave 新闻雷达当前不可用或未返回有效结果。',
-    currentPriceText: displayPrice != null ? Number(displayPrice).toFixed(2) : '暂未获取价格',
-    currentPriceNote: displayPrice != null ? '可用于距离观察，暂不能生成完整交易计划。' : '暂未获取价格，不能计算离关键观察位的距离。',
-    wallZone,
-    controlSide,
-    dealerImpact,
-    darkPoolImpact,
-    flowImpact,
-    volImpact,
-    sentimentImpact,
-    whyList: [
-      '有资金连续买 Put，说明有人押下跌或买保护。',
-      darkPoolImpact,
-      '现在追 Put，容易刚追进去就遇到反弹。',
-      dealerImpact,
-      volImpact
-    ],
-    waitList: [
-      `等价格回踩 ${darkLevel} 附近。`,
-      `如果 ${darkLevel} 附近站稳反弹，再观察 Call。`,
-      `如果 ${darkLevel} 放量跌破，再重新评估 Put。`,
-      '等 Flow 继续同向并完成 0DTE / 多腿过滤。',
-      '没有入场、止损、TP，不下单。'
-    ],
-    doNotList: [
-      '不追 Put。',
-      '不提前买 Put。',
-      '不根据单一 Flow 信号开仓。',
-      '没有入场、止损、TP 前不下单。'
-    ]
-  };
-}
-
-function renderGoldenDecision(home) {
-  const spot = home.spot_conclusion;
-  const copy = buildHomeHumanCopy(home);
-  return `
-    <section class="home-golden-grid">
-      <article class="home-panel home-panel-side">
-        <div class="home-panel-title"><span>黄金决策区</span><b>市场机制</b></div>
-        ${renderHomeRows([
-          ['实时价格', copy.currentPriceText],
-          ['说明', copy.currentPriceNote],
-          ['市场机制', copy.dealerImpact],
-          ['解释', '做市商墙位还没生成，所以暂时不能判断大盘是在震荡区，还是容易单边加速。']
-        ])}
-      </article>
-
-      <article class="home-panel home-decision-card">
-        <div class="home-decision-head">
-          <span>盘中决策卡</span>
-          <strong>WAIT</strong>
-        </div>
-        ${renderHomeRows([
-          ['主结论', copy.mainConclusion],
-          ['当前偏向', copy.bias],
-          ['为什么不能做', copy.whyList.slice(0, 2).join(' ')],
-          ['Dealer / Gamma', copy.dealerImpact],
-          ['资金线索', copy.flowImpact],
-          ['操作', copy.action]
-        ])}
-      </article>
-
-      <article class="home-panel home-panel-side">
-        <div class="home-panel-title"><span>风控</span><b>波动率 / VIX</b></div>
-        ${renderHomeRows([
-          ['波动状态', copy.volImpact],
-          ['期权成本', copy.volImpact],
-          ['杀估值风险', '等 Vscore 出来后再判断'],
-          ['VIX', '这一项还没有接入首页交易计划'],
-          ['0DTE 预期波动', '等 0DTE 数据进入后再判断'],
-          ['结论', '波动率 Vscore 还没算出来，不能判断期权贵不贵。']
-        ])}
-      </article>
-    </section>
-  `;
-}
-
-function renderExecutionSection(home) {
-  const operation = home.operation_layer;
-  const execution = home.execution_card || {};
-  const copy = buildHomeHumanCopy(home);
-  const masterSignal = homeMasterSignal(operation, home.final_decision);
-  const waiting = operation.status !== 'ready';
-  return `
-    <section class="home-execution-grid">
-      <article class="home-card execution-card">
-        <div class="home-card-title"><span>操作执行卡</span><b>${waiting ? '等待' : '可执行'}</b></div>
-        ${renderHomeRows([
-          ['操作状态', 'WAIT，不能开仓'],
-          ['计划方向', copy.bias],
-          ['关键观察位', copy.priceTrigger.key_level ?? execution.next_price_to_watch ?? '等暗池观察区刷新'],
-          ['当前阶段', copy.priceTrigger.state_cn || '已接近 7150.23，观察反应'],
-          ['为什么不能开仓', copy.whyList[1]],
-          ['下一步', copy.priceTrigger.next_action_cn || '不追 Put，先看这里有没有承接。'],
-          ['看 Call 条件', copy.priceTrigger.bullish_condition_cn || '7150 附近站稳并反弹，再观察 Call 候选。'],
-          ['看 Put 条件', copy.priceTrigger.bearish_condition_cn || '7150 放量跌破并回抽不过，再重新评估 Put。'],
-          ['禁做条件', copy.priceTrigger.no_trade_condition_cn || '7150 附近来回乱磨，或者没有入场、止损、TP，不做。'],
-          ['新闻风险', copy.newsRiskCn],
-          ['新闻原因', copy.newsUnavailableReason],
-          ['墙位区', execution.wall_zone_panel?.summary_cn || 'GEX 墙位暂时不能用；暗池显示 7150 附近有大成交观察区。'],
-          ['入场 / 止损 / TP', '还没有入场、止损、目标价，不能下单']
-        ])}
-      </article>
-
-      <article class="home-card master-signal-card">
-        <span class="home-eyebrow">主信号</span>
-        <div class="master-signal-value">${escapeHtml(masterSignal)}</div>
-        ${renderHomeRows([
-          ['数据能不能出计划', '数据可以参考，但还不能生成完整交易计划。'],
-          ['安全锁', home.lockText],
-          ['原因', '还缺做市商墙位、波动率结论、0DTE / 多腿过滤，所以暂时不给入场、止损、TP。']
-        ])}
-      </article>
-    </section>
-  `;
-}
-
-function renderAnalysisTiles(home) {
-  const copy = buildHomeHumanCopy(home);
-  const tiles = [
-    ['Dealer', '做市商墙位还没生成。', '现在不能用 Gamma 判断上方压力、下方支撑和趋势加速区。', '不能生成入场、止损、目标价。'],
-    ['Flow', '有资金连续买 Put。', copy.flowImpact, '这是看空线索，但还不能单独作为开仓信号。'],
-    ['Volatility', '波动率公式已准备好。', copy.volImpact, '暂时不能判断期权贵不贵。'],
-    ['Dark Pool', copy.darkPoolImpact, '这里可能有资金承接，追 Put 要小心。', '只能观察，不是正式支撑。'],
-    ['Sentiment', '市场情绪轻微防守。', '不是强空。', '只能做背景。']
-  ];
-  return `
-    <section class="home-factor-grid">
-      <div class="home-section-heading">五因子瓦片</div>
-      ${tiles.map(([title, state, summary, limit]) => `
-        <article class="factor-tile">
-          <div class="factor-title">${escapeHtml(title)}</div>
-          <div class="factor-state">${escapeHtml(state)}</div>
-          <div class="factor-summary">${escapeHtml(summary)}</div>
-          <div class="factor-limit">${escapeHtml(limit)}</div>
-        </article>
-      `).join('')}
-    </section>
-  `;
-}
-
-function renderBottomPlaceholders() {
-  const home = arguments[0] || {};
-  const news = home.news_radar || {};
-  const wallPanel = home.wall_zone_panel || {};
-  const control = home.control_side || wallPanel.control_side || {};
-  const nearestZone = wallPanel.darkpool_zone?.nearest_zone || {};
-  return `
-    <section class="home-bottom-grid">
-      <article class="placeholder-card">
-        <div class="home-card-head">
-          <span>新闻雷达</span>
-          <h3>Brave 市场雷达</h3>
-        </div>
-        ${renderHomeRows([
-          ['新闻风险', news.status === 'live' || news.status === 'fresh' ? news.news_risk_cn : '暂未确认'],
-          ['原因', news.status === 'live' || news.status === 'fresh' ? news.macro_event_cn : 'Brave 新闻雷达当前不可用或未返回有效结果。'],
-          ['宏观事件', news.macro_event_cn || '没有确认的宏观冲击'],
-          ['财报预告', news.earnings_event_cn || '没有确认的重大财报临近'],
-          ['科技权重', news.mega_cap_cn || '科技权重暂未给出额外方向'],
-          ['市场主线', news.market_theme_cn || '等待新闻雷达下一轮刷新'],
-          ['操作影响', news.operation_impact_cn || '只做背景，不直接开仓']
-        ])}
-      </article>
-      <article class="placeholder-card">
-        <div class="home-card-head">
-          <span>墙位与控盘</span>
-          <h3>GEX / 暗池墙位</h3>
-        </div>
-        ${renderHomeRows([
-          ['控盘判断', control.side_cn || '多空拉扯，先观察。'],
-          ['依据', Array.isArray(control.evidence_cn) ? control.evidence_cn.slice(0, 2).join(' ') : '等待 Flow、暗池和做市商墙位共同确认。'],
-          ['暗池观察区', nearestZone.summary_cn || wallPanel.darkpool_zone?.summary_cn || '7150 附近是重点观察区。'],
-          ['GEX 墙位', wallPanel.gex_wall?.summary_cn || '做市商墙位还没生成。'],
-          ['操作含义', control.action_cn || wallPanel.action_cn || '不追 Put，等 7150 附近反应。']
-        ])}
-      </article>
-    </section>
-  `;
-}
-
-function buildDataQualityGuardText(signal, spotSourceText) {
-  if (signal.data_quality_guard?.plain_chinese) {
-    const gapItems = Object.entries(signal.source_status || {})
-      .filter(([, source]) => source?.show_in_data_gaps)
-      .map(([name, source]) => `${name.toUpperCase()}：${source.reason || source.status}`);
-    return {
-      title: signal.data_quality_guard.title || '数据质量：可观察，等待结构确认。',
-      items: gapItems.length > 0 ? gapItems : signal.data_quality_guard.items || [signal.data_quality_guard.plain_chinese]
-    };
-  }
-  return {
-    title: safeText(signal?.engines?.data_coherence?.reason, '价格地图不一致，禁止执行。'),
-    items: null
-  };
-}
-
-function buildUwRadarSummary(signal) {
-  if (signal.uw_flow_summary?.plain_chinese) {
-    return signal.uw_flow_summary.plain_chinese;
-  }
-  const human = signal.intraday_decision_card || {};
-  if (human.market_read || human.why_now) {
-    return [
-      '【UW 资金解读】',
-      human.market_read || '',
-      `结论：${human.why_now || '等待 TV 结构确认。'}`
-    ].filter(Boolean).join('\n');
-  }
-  const flow = signal.uw_conclusion?.flow_bias === 'bearish' ? '偏空' : signal.uw_conclusion?.flow_bias === 'bullish' ? '偏多' : '中性/不明';
-  const inst = signal.institutional_alert?.state === 'bombing' ? '连续轰炸' : signal.institutional_alert?.state || '未形成';
-  const dark = signal.darkpool_summary?.bias === 'neutral' ? '中性，没有明显支撑/压力' : safeText(signal.darkpool_summary?.bias, '不可用');
-  const dealer = signal.dealer_engine?.status === 'partial' ? '部分可读，墙位已接入，但 Vanna/Charm/Delta 不完整' : safeText(signal.dealer_engine?.plain_chinese, '不可用');
-  const vol = signal.volatility_activation?.strength === 'off' ? '未启动，单腿不放行' : safeText(signal.volatility_activation?.plain_chinese, '不可用');
-  const conclusion = signal.uw_conclusion?.flow_bias === 'bearish'
-    ? '空头资金有动作，但不能直接追空。等 TV breakdown_confirmed 或 retest_failed。'
-    : '资金有动作，但必须等 TV 结构确认。';
-  return [
-    '【UW 资金解读】',
-    `机构流：${flow}，${inst}`,
-    `暗池：${dark}`,
-    `Dealer：${dealer}`,
-    `波动：${vol}`,
-    `结论：${conclusion}`
-  ].join('\n');
-}
-
-function buildSignalConflictText(signal, spotSourceText) {
-  if (signal.signal_conflict?.plain_chinese) {
-    return {
-      title: signal.signal_conflict.title || '【轻微冲突】',
-      items: signal.signal_conflict.items || [signal.signal_conflict.plain_chinese]
-    };
-  }
-  return {
-    title: safeText(signal?.engines?.data_coherence?.reason, '等待 final_decision 的下一次确认。'),
-    items: [
-      `Spot 来源：${spotSourceText} ${displaySpot(signal.market_snapshot || {})}`,
-      `执行状态：${signal.final_decision?.state || 'wait'} / ${signal.final_decision?.position_multiplier ?? 0}x`
-    ]
-  };
 }
 
 function renderRadarSummary(signal) {

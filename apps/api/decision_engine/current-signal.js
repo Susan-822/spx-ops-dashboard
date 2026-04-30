@@ -47,7 +47,9 @@ import {
   buildAtmEngine,
   buildGammaRegimeEngine,
   buildFlowBehaviorEngine,
-  buildAbOrderEngine
+  buildAbOrderEngine,
+  runVolatilityEngine,
+  premiumAccelerationQueue
 } from './algorithms/index.js';
 import { getLiveRefreshLog } from '../scheduler/live-refresh-scheduler.js';
 
@@ -2145,8 +2147,37 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     expiry: '0DTE',
     degraded: priceContract.is_degraded
   });
-  // ─────────────────────────────────────────────────────────────────────────────
+  // 6. Volatility Engine (async, non-blocking — uses cached VIX + HV20 from price history)
+  const volDashboard = await runVolatilityEngine({
+    spot_price: priceContract.live_price,
+    fmp_price: fmpSnapshot.price?.spot ?? null,
+    uw_iv30: uwNormalized?.volatility?.iv30 ?? null
+  }).catch(() => ({ vix: null, iv30: null, hv20: null, vscore: null, regime: 'unknown', option_cost: 'unknown', option_cost_cn: '数据待接入' }));
 
+  // 7. Premium Acceleration Queue — push latest net_premium snapshot
+  const latestNetPrem = uwNormalized?.flow?.net_premium ?? null;
+  const latestCallPrem = uwNormalized?.flow?.call_premium ?? null;
+  const latestPutPrem  = uwNormalized?.flow?.put_premium  ?? null;
+  if (latestNetPrem != null) {
+    premiumAccelerationQueue.push({
+      net_premium:  latestNetPrem,
+      call_premium: latestCallPrem,
+      put_premium:  latestPutPrem
+    });
+  }
+  const acceleration = premiumAccelerationQueue.compute();
+
+  // Inject acceleration into flow_behavior_engine output
+  const flowBehaviorEngineWithAccel = {
+    ...flowBehaviorEngine,
+    acceleration,
+    net_premium:   latestNetPrem,
+    call_premium:  latestCallPrem,
+    put_premium:   latestPutPrem,
+    put_call_ratio: uwNormalized?.flow?.put_call_ratio ?? null
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
   const finalOutput = {
     ...output,
     ...rawNoteV2,
@@ -2169,7 +2200,8 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     price_contract: priceContract,
     atm_engine: atmEngine,
     gamma_regime_engine: gammaRegimeEngine,
-    flow_behavior_engine: flowBehaviorEngine,
+    flow_behavior_engine: flowBehaviorEngineWithAccel,
+    volatility_dashboard: volDashboard,
     ab_order_engine: abOrderEngine,
     tradeable_price: tradeable,
     execution_card: executionCard,

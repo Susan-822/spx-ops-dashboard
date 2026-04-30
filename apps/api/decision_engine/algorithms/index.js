@@ -23,3 +23,5 @@ export { buildAtmEngine } from './atm-engine.js';
 export { buildGammaRegimeEngine } from './gamma-regime-engine.js';
 export { buildFlowBehaviorEngine } from './flow-behavior-engine.js';
 export { buildAbOrderEngine } from './ab-order-engine.js';
+export { runVolatilityEngine } from './volatility-engine.js';
+export { globalQueue as premiumAccelerationQueue } from './premium-acceleration-queue.js';
