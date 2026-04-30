@@ -25,3 +25,4 @@ export { buildFlowBehaviorEngine } from './flow-behavior-engine.js';
 export { buildAbOrderEngine } from './ab-order-engine.js';
 export { runVolatilityEngine } from './volatility-engine.js';
 export { globalQueue as premiumAccelerationQueue } from './premium-acceleration-queue.js';
+export { buildDarkpoolBehaviorEngine } from './darkpool-behavior-engine.js';

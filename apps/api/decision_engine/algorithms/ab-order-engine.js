@@ -1,93 +1,161 @@
 /**
- * ab-order-engine.js
+ * ab-order-engine.js  — L2.5 Institutional A/B Order Generator
  *
- * A/B Order Generation Engine
+ * Generates two execution plans in precise trading language:
+ *   action_now   — 【现在】当前应做什么
+ *   wait_long    — 【等多】触发做多的条件
+ *   wait_short   — 【等空】触发做空的条件
+ *   forbidden    — 【禁做】绝对禁止的操作
+ *   invalidation — 【失效】预案作废条件
+ *   tp1 / tp2    — 【目标】获利了结位
  *
- * Generates two execution plans (Plan A and Plan B) based on:
- *  - Gamma regime (positive/negative)
- *  - Flow behavior (put_effective/put_squeezed/call_effective/call_capped/mixed)
- *  - ATM position and key levels
- *  - Execution confidence score
- *
- * Output format:
- *  - plan_a: Primary plan (higher probability scenario)
- *  - plan_b: Contingency plan (alternative scenario)
- *  - Both include: direction, instrument, entry, stop, tp1, tp2, invalid, rationale
- *
- * SAFETY: No orders generated if execution_confidence < 40 or price data is degraded
+ * Inputs:
+ *   spot_price, atm, gamma_flip, call_wall, put_wall
+ *   gamma_regime: 'positive' | 'negative' | 'transition'
+ *   flow_behavior: 'put_effective' | 'put_squeezed' | 'call_effective' | 'call_capped' | 'mixed'
+ *   execution_confidence: 0–100
+ *   pin_risk: 0–100
+ *   darkpool_conclusion: { behavior, behavior_cn, spx_level, tier } (optional)
+ *   net_premium_millions: number (optional)
+ *   acceleration_15m: number (optional, 15-min flow delta in millions)
  */
 
-function safeNumber(value) {
-  const n = Number(value);
+function safeN(v) {
+  const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
 
-function fmt(value, decimals = 0) {
-  if (value == null) return '--';
-  return Number(value.toFixed(decimals)).toString();
+function fmt(v, d = 0) {
+  if (v == null) return '--';
+  return Number(v.toFixed(d)).toString();
 }
 
-/**
- * Build a Bull Put Spread plan
- */
-function buildBullPutSpread({ spot, put_wall, atm, gamma_flip, expiry = '0DTE' }) {
-  if (spot == null || put_wall == null) return null;
+function spreadWidth(base, w = 10) {
+  return base != null ? base + w : null;
+}
+
+// ── Plan builders ─────────────────────────────────────────────────────────────
+
+function makeLongCallPlan({ atm, call_wall, gamma_flip, expiry, dp }) {
+  const buyStrike = atm != null ? atm + 5 : null;
+  const dpCtx = dp?.behavior === 'breakout' ? `（暗盘 ${fmt(dp.spx_level)} 突破确认）` : '';
+  return {
+    direction: 'BULLISH',
+    direction_cn: '多头方向单',
+    instrument: `Long Call ${fmt(buyStrike)} (${expiry})`,
+    action_now:   `观望，不追高`,
+    wait_long:    `现价站稳 ${fmt(gamma_flip ?? atm)} 上方，且 Call Flow 持续净流入${dpCtx}`,
+    wait_short:   `不适用`,
+    forbidden:    `禁止在 ${fmt(atm)} ATM 附近直接追入；禁止在 Put Flow 增强时买 Call`,
+    invalidation: `现价有效跌破 ${fmt(gamma_flip ?? (atm != null ? atm - 10 : null))}，或 Put Flow 重新主导`,
+    tp1:          fmt(call_wall != null ? call_wall - 5 : (atm != null ? atm + 15 : null)),
+    tp2:          fmt(call_wall ?? (atm != null ? atm + 25 : null)),
+    rationale:    `负 Gamma 放波，Call Flow 有效，突破 Gamma Flip 可触发做市商对冲加速`
+  };
+}
+
+function makeLongPutPlan({ atm, put_wall, gamma_flip, expiry, dp }) {
+  const buyStrike = atm != null ? atm - 5 : null;
+  const dpCtx = dp?.behavior === 'breakdown' ? `（暗盘 ${fmt(dp.spx_level)} 破位确认）` : '';
+  return {
+    direction: 'BEARISH',
+    direction_cn: '空头方向单',
+    instrument: `Long Put ${fmt(buyStrike)} (${expiry})`,
+    action_now:   `观望，等待跌破确认`,
+    wait_long:    `不适用`,
+    wait_short:   `现价有效跌破 ${fmt(gamma_flip ?? atm)}，Put Flow 持续净流入${dpCtx}`,
+    forbidden:    `禁止在 ${fmt(atm)} ATM 上方做空；禁止在 Call Flow 增强时买 Put`,
+    invalidation: `现价收复 ${fmt(gamma_flip ?? (atm != null ? atm + 10 : null))}，或 Call Flow 转强`,
+    tp1:          fmt(put_wall != null ? put_wall + 5 : (atm != null ? atm - 15 : null)),
+    tp2:          fmt(put_wall ?? (atm != null ? atm - 25 : null)),
+    rationale:    `负 Gamma 放波，Put Flow 有效，做市商被迫对冲加速下行`
+  };
+}
+
+function makeBullPutSpreadPlan({ put_wall, atm, gamma_flip, expiry, dp }) {
+  if (put_wall == null) return null;
   const sellStrike = put_wall - 5;
-  const buyStrike = put_wall - 15;
-  const entry = `卖出 ${fmt(sellStrike)} Put / 买入 ${fmt(buyStrike)} Put (${expiry})`;
-  const stop = `现价跌破 ${fmt(put_wall - 5)}`;
-  const tp1 = `权利金收回 50%`;
-  const tp2 = `权利金收回 80% 或到期`;
-  const invalid = `现价有效跌破 ${fmt(put_wall)}`;
-  return { entry, stop, tp1, tp2, invalid, sell_strike: sellStrike, buy_strike: buyStrike };
+  const buyStrike  = put_wall - 15;
+  const dpCtx = dp?.behavior === 'support' ? `（暗盘 ${fmt(dp.spx_level)} 承接确认）` : '';
+  return {
+    direction: 'BULLISH',
+    direction_cn: '多头价差单',
+    instrument: `Bull Put Spread ${fmt(sellStrike)}/${fmt(buyStrike)} (${expiry})`,
+    action_now:   `等待 Put Wall 吸收确认后入场`,
+    wait_long:    `现价站稳 ${fmt(put_wall)} 上方，Put Flow 不再增强${dpCtx}`,
+    wait_short:   `不适用`,
+    forbidden:    `禁止在 Put Flow 持续增强时卖 Put Spread；禁止在 ${fmt(put_wall)} 破位后入场`,
+    invalidation: `现价有效跌破 ${fmt(put_wall)}，Put Flow 继续增强`,
+    tp1:          `权利金收回 50%`,
+    tp2:          `权利金收回 80% 或到期`,
+    rationale:    `Put Flow 被 Put Wall 吸收，正 Gamma 阻尼，做市商不跟空`
+  };
 }
 
-/**
- * Build a Bear Call Spread plan
- */
-function buildBearCallSpread({ spot, call_wall, atm, expiry = '0DTE' }) {
-  if (spot == null || call_wall == null) return null;
+function makeBearCallSpreadPlan({ call_wall, atm, expiry, dp }) {
+  if (call_wall == null) return null;
   const sellStrike = call_wall + 5;
-  const buyStrike = call_wall + 15;
-  const entry = `卖出 ${fmt(sellStrike)} Call / 买入 ${fmt(buyStrike)} Call (${expiry})`;
-  const stop = `现价突破 ${fmt(call_wall + 5)}`;
-  const tp1 = `权利金收回 50%`;
-  const tp2 = `权利金收回 80% 或到期`;
-  const invalid = `现价有效突破 ${fmt(call_wall)}`;
-  return { entry, stop, tp1, tp2, invalid, sell_strike: sellStrike, buy_strike: buyStrike };
+  const buyStrike  = call_wall + 15;
+  const dpCtx = dp?.behavior === 'resistance' ? `（暗盘 ${fmt(dp.spx_level)} 派发确认）` : '';
+  return {
+    direction: 'BEARISH',
+    direction_cn: '空头价差单',
+    instrument: `Bear Call Spread ${fmt(sellStrike)}/${fmt(buyStrike)} (${expiry})`,
+    action_now:   `等待 Call Wall 压制确认后入场`,
+    wait_long:    `不适用`,
+    wait_short:   `现价接近 Call Wall ${fmt(call_wall)} 且 Call Flow 减弱${dpCtx}`,
+    forbidden:    `禁止在 Call Flow 持续增强时卖 Call Spread；禁止在 ${fmt(call_wall)} 突破后入场`,
+    invalidation: `现价有效突破 ${fmt(call_wall)}，Call Flow 持续增强`,
+    tp1:          `权利金收回 50%`,
+    tp2:          `权利金收回 80% 或到期`,
+    rationale:    `Call Wall 压制，正 Gamma 阻尼，做市商不跟多`
+  };
 }
 
-/**
- * Build a Long Call plan
- */
-function buildLongCall({ spot, atm, call_wall, gamma_flip, expiry = '0DTE' }) {
-  if (spot == null || atm == null) return null;
-  const strike = atm + 5;
-  const entry = `买入 ${fmt(strike)} Call (${expiry})，等价格站稳 ${fmt(gamma_flip ?? atm)} 后入场`;
-  const stop = `现价跌破 ${fmt(gamma_flip ?? (atm - 10))}`;
-  const tp1 = `${fmt(call_wall != null ? call_wall - 5 : atm + 15)}`;
-  const tp2 = `${fmt(call_wall ?? atm + 25)}`;
-  const invalid = `现价跌破 ${fmt(gamma_flip ?? (atm - 15))} 或 Put Flow 重新增强`;
-  return { entry, stop, tp1, tp2, invalid, strike };
+function makeWaitPlan({ reason }) {
+  return {
+    direction: 'WAIT',
+    direction_cn: '等待确认',
+    instrument:   `观望`,
+    action_now:   `不操作，等待信号明确`,
+    wait_long:    `等待 Gamma 环境明确后重新评估`,
+    wait_short:   `等待 Gamma 环境明确后重新评估`,
+    forbidden:    `禁止在当前不明确环境中开仓`,
+    invalidation: `N/A`,
+    tp1:          `N/A`,
+    tp2:          `N/A`,
+    rationale:    reason || `Gamma 环境或资金行为不明确`
+  };
 }
 
-/**
- * Build a Long Put plan
- */
-function buildLongPut({ spot, atm, put_wall, gamma_flip, expiry = '0DTE' }) {
-  if (spot == null || atm == null) return null;
-  const strike = atm - 5;
-  const entry = `买入 ${fmt(strike)} Put (${expiry})，等价格确认跌破 ${fmt(gamma_flip ?? atm)} 后入场`;
-  const stop = `现价收复 ${fmt(gamma_flip ?? (atm + 10))}`;
-  const tp1 = `${fmt(put_wall != null ? put_wall + 5 : atm - 15)}`;
-  const tp2 = `${fmt(put_wall ?? atm - 25)}`;
-  const invalid = `现价收复 ${fmt(gamma_flip ?? (atm + 15))} 或 Call Flow 转强`;
-  return { entry, stop, tp1, tp2, invalid, strike };
+// ── Headline generator ────────────────────────────────────────────────────────
+function buildHeadline({ gamma_regime, flow_behavior, gamma_flip, call_wall, put_wall,
+                          net_premium_millions, acceleration_15m, dp }) {
+  const flowStr = net_premium_millions != null
+    ? (net_premium_millions >= 0
+        ? `净多头流入 $${Math.abs(net_premium_millions).toFixed(1)}M`
+        : `净空头流入 $${Math.abs(net_premium_millions).toFixed(1)}M`)
+    : '资金流向待接入';
+  const accelStr = acceleration_15m != null
+    ? ` | 15分钟加速度 ${acceleration_15m > 0 ? '+' : ''}${acceleration_15m.toFixed(1)}M`
+    : '';
+  const dpStr = dp?.behavior && dp.behavior !== 'unknown'
+    ? ` | 暗盘 ${fmt(dp.spx_level)} ${dp.behavior_cn ?? dp.behavior}`
+    : '';
+
+  const map = {
+    'positive_put_squeezed':  `【底部背离确立】正 Gamma 阻尼 + Put 被吸收。${flowStr}${accelStr}${dpStr}。Put Wall ${fmt(put_wall)} 下方禁做空。`,
+    'negative_put_effective': `【空头动能确认】负 Gamma 放波 + Put Flow 有效。${flowStr}${accelStr}${dpStr}。等跌破 ${fmt(gamma_flip)} 后顺势做空。`,
+    'positive_call_capped':   `【震荡夹击区】正 Gamma 控波 + Call 被压制。${flowStr}${accelStr}${dpStr}。区间 ${fmt(put_wall)}–${fmt(call_wall)} 内卖权占优。`,
+    'negative_call_effective':`【多头突破预案】负 Gamma 放波 + Call Flow 有效。${flowStr}${accelStr}${dpStr}。等有效突破 ${fmt(call_wall)} 后追多。`,
+    'positive_call_effective':`【正 Gamma 突破信号】Call Flow 有效但正 Gamma 阻尼。${flowStr}${accelStr}。谨慎追多，等 ${fmt(call_wall)} 突破确认。`,
+    'negative_put_squeezed':  `【空头陷阱警告】负 Gamma 环境中 Put 被吸收。${flowStr}${accelStr}。空头可能被轧，等待方向确认。`
+  };
+  return map[`${gamma_regime}_${flow_behavior}`]
+    || `【等待确认】Gamma 环境或资金行为不明确。${flowStr}${accelStr}。`;
 }
 
-/**
- * Main A/B Order Engine
- */
+// ── Main engine ───────────────────────────────────────────────────────────────
 export function buildAbOrderEngine({
   spot_price = null,
   atm = null,
@@ -99,167 +167,120 @@ export function buildAbOrderEngine({
   execution_confidence = 0,
   pin_risk = 0,
   expiry = '0DTE',
-  degraded = false
+  degraded = false,
+  darkpool_conclusion = null,
+  net_premium_millions = null,
+  acceleration_15m = null
 } = {}) {
-  const spot = safeNumber(spot_price);
+  const spot = safeN(spot_price);
+  const dp   = darkpool_conclusion || {};
 
-  // Safety gate: no orders if degraded or low confidence
-  if (degraded || spot == null || execution_confidence < 40) {
+  // ── Safety gates ───────────────────────────────────────────────────────────
+  if (degraded || spot == null) {
+    return {
+      status: 'blocked', status_cn: 'SPX 价格未接入，不生成预案',
+      plan_a: null, plan_b: null,
+      headline: '【系统降级】SPX 价格数据不可用，所有预案暂停。',
+      blocked_reason: 'SPX 价格数据降级', execution_confidence
+    };
+  }
+  if (execution_confidence < 40) {
     return {
       status: 'blocked',
-      status_cn: execution_confidence < 40
-        ? `执行置信度不足 (${execution_confidence}/100)，不生成预案`
-        : 'SPX 价格未接入，不生成预案',
-      plan_a: null,
-      plan_b: null,
-      headline: '当前条件不满足执行预案生成要求。',
-      blocked_reason: execution_confidence < 40
-        ? `置信度 ${execution_confidence}/100 < 阈值 40`
-        : 'SPX 价格数据降级',
-      execution_confidence
+      status_cn: `执行置信度不足 (${execution_confidence}/100)，不生成预案`,
+      plan_a: null, plan_b: null,
+      headline: `【置信度不足】当前置信度 ${execution_confidence}/100，低于执行阈值 40，等待数据改善。`,
+      blocked_reason: `置信度 ${execution_confidence}/100 < 40`, execution_confidence
     };
   }
 
-  // High pin risk warning
   const pinWarning = pin_risk >= 70
-    ? `⚠ ATM 吸附风险高 (${pin_risk}/100)，禁止在 ATM 附近买 0DTE 方向单`
+    ? `⚠ ATM 吸附风险高 (${pin_risk}/100)，禁止在 ${fmt(atm)} ATM 附近买 0DTE 方向单`
     : null;
+
+  const headline = buildHeadline({
+    gamma_regime, flow_behavior, gamma_flip, call_wall, put_wall,
+    net_premium_millions, acceleration_15m, dp
+  });
 
   let plan_a = null;
   let plan_b = null;
-  let headline = '';
   let judgment = '';
 
-  // ─── Scenario Matrix ─────────────────────────────────────────────────────
-
-  // SCENARIO 1: Positive Gamma + Put Squeezed → Bottom Divergence
+  // ── Scenario Matrix ────────────────────────────────────────────────────────
   if (gamma_regime === 'positive' && flow_behavior === 'put_squeezed') {
     judgment = '底部背离确立。Put Flow 被 Put Wall 吸收，正 Gamma 阻尼，做市商不跟空。';
-    headline = `判定：底部背离确立。建议预案 A：现价未破 ${fmt(put_wall)} 前，拒绝做空，逢低构建 Bull Put Spread 或买入 Call。`;
-    plan_a = {
-      direction: 'BULLISH',
-      direction_cn: '多头预案',
-      instrument: 'Bull Put Spread',
-      rationale: 'Put Flow 被吸收，正 Gamma 阻尼，下方有 Put Wall 支撑',
-      ...buildBullPutSpread({ spot, put_wall, atm, gamma_flip, expiry }),
-      condition: `现价站稳 ${fmt(put_wall)} 上方，Put Flow 不再增强`
-    };
-    plan_b = {
-      direction: 'BULLISH',
-      direction_cn: '多头预案 B',
-      instrument: 'Long Call',
-      rationale: '如 Put Wall 吸收反弹确认，追入 Call',
-      ...buildLongCall({ spot, atm, call_wall, gamma_flip, expiry }),
-      condition: `现价回踩 ${fmt(gamma_flip ?? put_wall)} 后站稳反弹`
-    };
+    plan_a = makeBullPutSpreadPlan({ put_wall, atm, gamma_flip, expiry, dp });
+    plan_b = { ...makeLongCallPlan({ atm, call_wall, gamma_flip, expiry, dp }),
+      direction_cn: '多头方向单（确认后）',
+      action_now: `等 Put Wall 吸收反弹确认后考虑 Call` };
   }
-
-  // SCENARIO 2: Negative Gamma + Put Effective → Bearish Momentum
   else if (gamma_regime === 'negative' && flow_behavior === 'put_effective') {
     judgment = '空头动能确认。负 Gamma 放波，Put Flow 有效，做市商被迫对冲加速下行。';
-    headline = `判定：空头动能确认。建议预案 A：等价格确认跌破 ${fmt(gamma_flip)} 后，顺势买入 Put 或构建 Bear Put Spread。`;
-    plan_a = {
-      direction: 'BEARISH',
-      direction_cn: '空头预案',
-      instrument: 'Long Put',
-      rationale: '负 Gamma 放波，Put Flow 有效，顺势追空',
-      ...buildLongPut({ spot, atm, put_wall, gamma_flip, expiry }),
-      condition: `现价确认跌破 ${fmt(gamma_flip)}，Put Flow 持续`
-    };
-    plan_b = {
-      direction: 'BEARISH',
-      direction_cn: '空头预案 B',
-      instrument: 'Bear Call Spread',
-      rationale: '如 Call Wall 压制确认，卖出 Call Spread',
-      ...buildBearCallSpread({ spot, call_wall, atm, expiry }),
-      condition: `现价反弹至 ${fmt(call_wall ?? (atm + 10))} 附近遇阻`
-    };
+    plan_a = makeLongPutPlan({ atm, put_wall, gamma_flip, expiry, dp });
+    plan_b = makeBearCallSpreadPlan({ call_wall, atm, expiry, dp });
   }
-
-  // SCENARIO 3: Positive Gamma + Call Capped → Range-bound
   else if (gamma_regime === 'positive' && flow_behavior === 'call_capped') {
     judgment = '正 Gamma 震荡区，Call 被 Call Wall 压制，当前为双向卖权环境。';
-    headline = `判定：震荡夹击区。建议预案 A：在 ${fmt(put_wall)} 至 ${fmt(call_wall)} 区间内卖出双向 Spread，收取权利金。`;
-    plan_a = {
-      direction: 'NEUTRAL',
-      direction_cn: '中性预案',
-      instrument: 'Bear Call Spread',
-      rationale: 'Call Wall 压制，正 Gamma 阻尼，卖出上方 Call Spread',
-      ...buildBearCallSpread({ spot, call_wall, atm, expiry }),
-      condition: `现价接近 Call Wall ${fmt(call_wall)}`
-    };
-    plan_b = {
-      direction: 'NEUTRAL',
-      direction_cn: '中性预案 B',
-      instrument: 'Bull Put Spread',
-      rationale: 'Put Wall 支撑，正 Gamma 阻尼，卖出下方 Put Spread',
-      ...buildBullPutSpread({ spot, put_wall, atm, gamma_flip, expiry }),
-      condition: `现价接近 Put Wall ${fmt(put_wall)}`
-    };
+    plan_a = makeBearCallSpreadPlan({ call_wall, atm, expiry, dp });
+    plan_b = makeBullPutSpreadPlan({ put_wall, atm, gamma_flip, expiry, dp });
   }
-
-  // SCENARIO 4: Negative Gamma + Call Effective → Bullish Breakout
   else if (gamma_regime === 'negative' && flow_behavior === 'call_effective') {
     judgment = '负 Gamma 放波，Call Flow 有效，突破 Call Wall 可能触发 Gamma Squeeze。';
-    headline = `判定：多头突破预案。建议预案 A：等价格有效突破 ${fmt(call_wall)} 后，追入 Call 或 Bull Call Spread。`;
-    plan_a = {
-      direction: 'BULLISH',
-      direction_cn: '多头突破预案',
-      instrument: 'Long Call',
-      rationale: '负 Gamma 放波，Call Flow 有效，突破 Call Wall 触发 Gamma Squeeze',
-      ...buildLongCall({ spot, atm, call_wall, gamma_flip, expiry }),
-      condition: `现价有效突破 ${fmt(call_wall)}，Call Flow 持续增强`
-    };
+    plan_a = makeLongCallPlan({ atm, call_wall, gamma_flip, expiry, dp });
     plan_b = {
-      direction: 'BULLISH',
-      direction_cn: '多头预案 B',
-      instrument: 'Bull Call Spread',
-      rationale: '控制成本，限制风险',
-      entry: `买入 ${fmt(call_wall)} Call / 卖出 ${fmt((call_wall ?? 0) + 15)} Call (${expiry})`,
-      stop: `现价跌回 ${fmt(call_wall ?? 0)}`,
-      tp1: `${fmt((call_wall ?? 0) + 10)}`,
-      tp2: `${fmt((call_wall ?? 0) + 20)}`,
-      invalid: `现价跌破 ${fmt(gamma_flip ?? atm)}`,
-      condition: `现价突破 ${fmt(call_wall)} 后回踩不破`
+      direction: 'BULLISH', direction_cn: '多头价差单（控成本）',
+      instrument: `Bull Call Spread ${fmt(call_wall)}/${fmt(spreadWidth(call_wall, 15))} (${expiry})`,
+      action_now:   `等突破 ${fmt(call_wall)} 后入场`,
+      wait_long:    `现价有效突破 ${fmt(call_wall)} 后回踩不破`,
+      wait_short:   `不适用`,
+      forbidden:    `禁止在 ${fmt(call_wall)} 未突破前追入`,
+      invalidation: `现价跌破 ${fmt(gamma_flip ?? atm)}`,
+      tp1:          fmt(call_wall != null ? call_wall + 10 : null),
+      tp2:          fmt(call_wall != null ? call_wall + 20 : null),
+      rationale:    `控制成本，限制风险，适合突破确认后追入`
     };
   }
-
-  // SCENARIO 5: Mixed or Transitional → Wait
+  else if (gamma_regime === 'positive' && flow_behavior === 'call_effective') {
+    judgment = '正 Gamma 环境中 Call Flow 有效，但阻尼效应可能限制涨幅，谨慎追多。';
+    plan_a = makeBearCallSpreadPlan({ call_wall, atm, expiry, dp });
+    plan_b = makeBullPutSpreadPlan({ put_wall, atm, gamma_flip, expiry, dp });
+  }
+  else if (gamma_regime === 'negative' && flow_behavior === 'put_squeezed') {
+    judgment = '负 Gamma 环境中 Put 被吸收，空头陷阱警告，等待方向确认。';
+    plan_a = makeWaitPlan({ reason: '负 Gamma + Put 被绞，空头陷阱风险高，等待方向明确' });
+    plan_b = makeLongCallPlan({ atm, call_wall, gamma_flip, expiry, dp });
+  }
   else {
     judgment = '当前 Gamma 环境或资金行为不明确，不生成方向性预案。';
-    headline = '判定：等待确认。当前 Gamma 环境或资金行为不明确，不生成方向性预案。';
-    plan_a = null;
+    plan_a = makeWaitPlan({ reason: 'Gamma 环境或资金行为不明确' });
     plan_b = null;
   }
 
+  const doNotRules = [
+    '不在没有【等多】/【等空】触发条件时下单',
+    '不根据单一信号开仓',
+    '不在 ATM 中轴区内追单',
+    '不在【失效】条件触发后继续持仓'
+  ];
+
   return {
-    status: plan_a != null ? 'ready' : 'waiting',
-    status_cn: plan_a != null ? '预案已生成' : '等待确认',
+    status: plan_a?.direction !== 'WAIT' ? 'ready' : 'waiting',
+    status_cn: plan_a?.direction !== 'WAIT' ? '预案已生成' : '等待确认',
     headline,
     judgment,
     pin_warning: pinWarning,
     execution_confidence,
-    plan_a: plan_a ? {
-      ...plan_a,
-      expiry,
-      execution_confidence,
-      do_not: [
-        '不在没有入场、止损、TP 时下单',
-        '不根据单一信号开仓',
-        '不在 ATM 中轴区内追单'
-      ]
-    } : null,
-    plan_b: plan_b ? {
-      ...plan_b,
-      expiry,
-      execution_confidence,
-      do_not: [
-        '不在没有入场、止损、TP 时下单',
-        '不根据单一信号开仓'
-      ]
-    } : null,
+    plan_a: plan_a ? { ...plan_a, expiry, execution_confidence, do_not: doNotRules } : null,
+    plan_b: plan_b ? { ...plan_b, expiry, execution_confidence, do_not: doNotRules.slice(0, 3) } : null,
     scenario: `${gamma_regime}_${flow_behavior}`,
     gamma_regime,
-    flow_behavior
+    flow_behavior,
+    darkpool_context: dp?.behavior ? {
+      behavior: dp.behavior,
+      behavior_cn: dp.behavior_cn,
+      spx_level: dp.spx_level,
+      tier: dp.tier
+    } : null
   };
 }

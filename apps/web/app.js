@@ -1394,36 +1394,76 @@ function renderHudZoneGamma(signal) {
 
 // Zone 2: Execution Matrix
 function renderHudZoneExecution(signal) {
-  const gr = signal.gamma_regime_engine || {};
-  const dp = signal.darkpool_gravity || {};
-  const pc = signal.price_contract || {};
-  const dw = signal.dealer_wall_map || {};
-  const spot = pc.live_price != null ? pc.live_price : (signal.observation_price && signal.observation_price.value != null ? signal.observation_price.value : null);
-  const callWall  = gr.call_wall  != null ? gr.call_wall  : (dw.call_wall  != null ? dw.call_wall  : null);
-  const putWall   = gr.put_wall   != null ? gr.put_wall   : (dw.put_wall   != null ? dw.put_wall   : null);
-  const gammaFlip = gr.gamma_flip != null ? gr.gamma_flip : (dw.gamma_flip != null ? dw.gamma_flip : null);
-  const dpSupport = dp.nearest_support != null ? dp.nearest_support : (dp.mapped_spx != null ? dp.mapped_spx : null);
+  const gr  = signal.gamma_regime_engine || {};
+  const dp  = signal.darkpool_gravity    || {};
+  const dpb = signal.darkpool_behavior_engine || {};
+  const pc  = signal.price_contract      || {};
+  const dw  = signal.dealer_wall_map     || {};
+  const spot = pc.live_price != null ? pc.live_price
+    : (signal.observation_price?.value ?? null);
+  const callWall  = gr.call_wall  ?? dw.call_wall  ?? null;
+  const putWall   = gr.put_wall   ?? dw.put_wall   ?? null;
+  const gammaFlip = gr.gamma_flip ?? dw.gamma_flip ?? null;
+
+  // Prefer darkpool_behavior_engine levels (SPX-mapped), fallback to legacy gravity
+  const dpLevel = dpb.spx_level ?? dpb.support_level
+    ?? (dp.nearest_support != null ? dp.nearest_support : (dp.mapped_spx ?? null));
+
   // Frontend guard: if Put Wall > Call Wall, mark as inverted (data error)
   const wallInverted = (callWall != null && putWall != null && putWall > callWall);
   const callWallDisplay = wallInverted ? null : callWall;
   const putWallDisplay  = wallInverted ? null : putWall;
+
+  // Dark pool behavior badge
+  const dpBehavior    = dpb.behavior    || 'unknown';
+  const dpBehaviorCn  = dpb.behavior_cn || '数据不足';
+  const dpPremM       = dpb.total_premium_millions;
+  const dpBehaviorColorMap = {
+    support:    'green',
+    breakout:   'green',
+    resistance: 'red',
+    breakdown:  'red',
+    unknown:    'gray'
+  };
+  const dpColor = dpBehaviorColorMap[dpBehavior] || 'gray';
+
   const walls = [
-    { type: 'call-wall',      label: '上限阻力 Call Wall', level: callWallDisplay, sniper: isSniperZone(spot, callWallDisplay), inverted: wallInverted },
-    { type: 'put-wall',       label: '下限支撑 Put Wall',  level: putWallDisplay,  sniper: isSniperZone(spot, putWallDisplay),  inverted: wallInverted },
-    { type: 'darkpool-wall',  label: '暗盘防线 Dark Pool', level: dpSupport, sniper: isSniperZone(spot, dpSupport) },
-    { type: 'gamma-flip-wall',label: 'Gamma 翻转点',       level: (gammaFlip != null && gammaFlip !== 0) ? gammaFlip : null, sniper: isSniperZone(spot, gammaFlip) }
+    { type: 'call-wall',       label: '上限阻力 Call Wall', level: callWallDisplay, sniper: isSniperZone(spot, callWallDisplay), inverted: wallInverted },
+    { type: 'put-wall',        label: '下限支撑 Put Wall',  level: putWallDisplay,  sniper: isSniperZone(spot, putWallDisplay),  inverted: wallInverted },
+    { type: 'darkpool-wall',   label: '暗盘防线 ' + dpBehaviorCn, level: dpLevel, sniper: isSniperZone(spot, dpLevel) },
+    { type: 'gamma-flip-wall', label: 'Gamma 翻转点',       level: (gammaFlip != null && gammaFlip !== 0) ? gammaFlip : null, sniper: isSniperZone(spot, gammaFlip) }
   ];
   const anySniperActive = walls.some(w => w.sniper && w.level != null);
   const wallRows = walls.map(w => {
     const distClass = (w.level != null && spot != null && Math.abs(w.level - spot) <= 5) ? 'danger' : 'safe';
     const sniperCls = (w.sniper && w.level != null) ? ' sniper-active' : '';
+    const dpDesc = (w.type === 'darkpool-wall' && dpBehavior !== 'unknown' && dpb.behavior_description)
+      ? '<div class="dp-behavior-desc">' + dpb.behavior_description + (dpPremM != null ? ' ($' + dpPremM + 'M)' : '') + '</div>'
+      : '';
     return `
       <div class="wall-item ${w.type}${sniperCls}">
-        <div><div class="wall-item-type">${w.label}</div></div>
+        <div>
+          <div class="wall-item-type">${w.label}</div>
+          ${dpDesc}
+        </div>
         <div class="wall-item-level">${w.inverted ? '<span class="data-missing">字段映射错误</span>' : (w.level != null ? fmtLevel(w.level) : '<span class="data-missing">暂无</span>')}</div>
         <div class="wall-item-distance ${distClass}">${distanceLabel(spot, w.level)}</div>
       </div>`;
   }).join('');
+
+  // Dark pool cluster mini-list (top 3 clusters)
+  const dpClusters = Array.isArray(dpb.clusters) && dpb.clusters.length > 0
+    ? `<div class="dp-cluster-list">
+        <div class="dp-cluster-header">暗盘聚类（SPX 坐标）</div>
+        ${dpb.clusters.slice(0, 3).map(c => `
+          <div class="dp-cluster-row">
+            <span class="dp-cluster-level">${fmtLevel(c.spx_level)}</span>
+            <span class="dp-cluster-prem">$${c.total_premium_millions}M</span>
+            <span class="dp-cluster-behavior dp-${dpBehaviorColorMap[c.behavior] || 'gray'}">${c.behavior_cn}</span>
+          </div>`).join('')}
+       </div>`
+    : '';
+
   return `
     <div class="hud-zone execution-matrix">
       <div class="hud-zone-header">
@@ -1435,6 +1475,7 @@ function renderHudZoneExecution(signal) {
       </div>
       ${anySniperActive ? `<div class="sniper-alert"><div class="sniper-alert-dot"></div><span class="sniper-alert-text">现价进入关键位 ±2 点范围 — 进入狙击状态</span></div>` : ''}
       <div class="wall-stack">${wallRows}</div>
+      ${dpClusters}
     </div>
   `;
 }

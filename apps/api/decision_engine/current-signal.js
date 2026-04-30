@@ -49,7 +49,8 @@ import {
   buildFlowBehaviorEngine,
   buildAbOrderEngine,
   runVolatilityEngine,
-  premiumAccelerationQueue
+  premiumAccelerationQueue,
+  buildDarkpoolBehaviorEngine
 } from './algorithms/index.js';
 import { getLiveRefreshLog } from '../scheduler/live-refresh-scheduler.js';
 
@@ -2109,21 +2110,31 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     atm: atmEngine.atm,
     atm_trend: atmEngine.atm_trend,
     atm_change: atmEngine.atm_change,
-    put_call_ratio: uwNormalized.flow?.call_put_ratio != null
-      ? (uwNormalized.flow.put_premium_5m ?? 0) / Math.max(uwNormalized.flow.call_premium_5m ?? 1, 1)
+    put_call_ratio: uwApi.uw_factors.flow_factors?.call_put_ratio != null
+      ? Number(((uwApi.uw_factors.flow_factors.put_premium_5m ?? 0) / Math.max(uwApi.uw_factors.flow_factors.call_premium_5m ?? 1, 1)).toFixed(2))
       : null,
-    net_premium: uwNormalized.flow?.net_premium_5m ?? null,
+    net_premium: uwApi.uw_factors.flow_factors?.net_premium_5m ?? null,
     pin_risk: atmEngine.pin_risk,
     uw_status: rawNoteV2.uw_conclusion?.status ?? 'unavailable',
     fmp_status: fmpIsReal ? 'real' : 'unavailable'
   });
 
-  // 4. Flow Behavior Engine
+  // 4. Flow Behavior Engine — use uwApi.uw_factors.flow_factors (correct normalizer path)
+  // uwNormalized.flow (decision_engine/algorithms/uw-normalizer.js) does NOT define
+  // net_premium_5m / call_premium_5m / put_premium_5m — those fields only exist in
+  // /normalizer/uw-api-normalizer.js which is already consumed as uwApi.uw_factors.flow_factors.
+  const _ff = uwApi.uw_factors.flow_factors || {};
+  const _netPrem5m  = _ff.net_premium_5m  ?? null;
+  const _callPrem5m = _ff.call_premium_5m ?? null;
+  const _putPrem5m  = _ff.put_premium_5m  ?? null;
+  const _pcRatio    = (_ff.call_put_ratio != null && (_ff.put_premium_5m ?? 0) > 0)
+    ? Number((_ff.put_premium_5m / Math.max(_ff.call_premium_5m ?? 1, 1)).toFixed(2))
+    : null;
   const flowBehaviorEngine = buildFlowBehaviorEngine({
-    net_premium: uwNormalized.flow?.net_premium_5m ?? null,
-    call_premium: uwNormalized.flow?.call_premium_5m ?? null,
-    put_premium: uwNormalized.flow?.put_premium_5m ?? null,
-    put_call_ratio: gammaRegimeEngine.scores ? null : null, // derived below
+    net_premium: _netPrem5m,
+    call_premium: _callPrem5m,
+    put_premium: _putPrem5m,
+    put_call_ratio: _pcRatio,
     prem_ticks: [],
     gamma_regime: gammaRegimeEngine.gamma_regime,
     spot_position: gammaRegimeEngine.spot_position,
@@ -2133,7 +2144,14 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     spot_price: priceContract.live_price
   });
 
-  // 5. A/B Order Engine
+  // 4.5 Dark Pool Behavior Engine
+  // Reads from uwApi.uw_factors.darkpool_factors (normalized) + raw.darkpool_spy (raw rows)
+  const darkpoolBehaviorEngine = buildDarkpoolBehaviorEngine({
+    darkpool_factors: uwApi.uw_factors.darkpool_factors ?? {},
+    raw_darkpool_spy: uwApi.raw?.darkpool_spy ?? null,
+    spot_price: priceContract.live_price
+  });
+  // 5. A/B Order Engine — now includes darkpool_conclusion and flow context
   const abOrderEngine = buildAbOrderEngine({
     spot_price: priceContract.live_price,
     atm: atmEngine.atm,
@@ -2145,19 +2163,28 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     execution_confidence: gammaRegimeEngine.scores?.execution_confidence ?? 0,
     pin_risk: atmEngine.pin_risk,
     expiry: '0DTE',
-    degraded: priceContract.is_degraded
+    degraded: priceContract.is_degraded,
+    darkpool_conclusion: darkpoolBehaviorEngine,
+    net_premium_millions: _netPrem5m != null ? Number((_netPrem5m / 1_000_000).toFixed(1)) : null,
+    acceleration_15m: null  // injected below after acceleration queue computes
   });
   // 6. Volatility Engine (async, non-blocking — uses cached VIX + HV20 from price history)
+  // fmpSnapshot.price.price = SPX spot (not .spot which may be undefined)
+  // uw_iv30: prefer UW volatility_factors.atm_iv (IV30 proxy), fallback to uwNormalized
+  const _uwIv30 = uwApi.uw_factors.volatility_factors?.atm_iv
+    ?? uwNormalized?.volatility?.iv30
+    ?? null;
   const volDashboard = await runVolatilityEngine({
-    spot_price: priceContract.live_price,
-    fmp_price: fmpSnapshot.price?.spot ?? null,
-    uw_iv30: uwNormalized?.volatility?.iv30 ?? null
+    spot_price: priceContract.live_price ?? fmpSnapshot.price?.price ?? null,
+    fmp_price:  fmpSnapshot.price?.price ?? null,
+    uw_iv30:    _uwIv30
   }).catch(() => ({ vix: null, iv30: null, hv20: null, vscore: null, regime: 'unknown', option_cost: 'unknown', option_cost_cn: '数据待接入' }));
 
   // 7. Premium Acceleration Queue — push latest net_premium snapshot
-  const latestNetPrem = uwNormalized?.flow?.net_premium ?? null;
-  const latestCallPrem = uwNormalized?.flow?.call_premium ?? null;
-  const latestPutPrem  = uwNormalized?.flow?.put_premium  ?? null;
+  // Use _ff variables computed above (correct normalizer: uwApi.uw_factors.flow_factors)
+  const latestNetPrem  = _netPrem5m;
+  const latestCallPrem = _callPrem5m;
+  const latestPutPrem  = _putPrem5m;
   if (latestNetPrem != null) {
     premiumAccelerationQueue.push({
       net_premium:  latestNetPrem,
@@ -2174,7 +2201,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     net_premium:   latestNetPrem,
     call_premium:  latestCallPrem,
     put_premium:   latestPutPrem,
-    put_call_ratio: uwNormalized?.flow?.put_call_ratio ?? null
+    put_call_ratio: _pcRatio
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -2202,6 +2229,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     gamma_regime_engine: gammaRegimeEngine,
     flow_behavior_engine: flowBehaviorEngineWithAccel,
     volatility_dashboard: volDashboard,
+    darkpool_behavior_engine: darkpoolBehaviorEngine,
     ab_order_engine: abOrderEngine,
     tradeable_price: tradeable,
     execution_card: executionCard,
