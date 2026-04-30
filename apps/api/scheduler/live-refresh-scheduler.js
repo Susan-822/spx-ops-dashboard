@@ -1,41 +1,63 @@
 /**
  * live-refresh-scheduler.js
  *
- * Upgraded from a tick-only mock to a real multi-source background scheduler.
- * Each job runs on its own interval, fetches live data, persists it, and logs
- * the outcome so the rest of the system can read fresh snapshots from the store.
+ * Multi-source background scheduler with adaptive UW refresh.
+ *
+ * Architecture:
+ *  - FMP price / event jobs run on fixed intervals (unchanged)
+ *  - UW refresh is now driven by AdaptiveRefreshScheduler:
+ *      NORMAL  mode: conservative intervals (10s–300s per endpoint)
+ *      TURBO   mode: accelerated when near key levels (5s–120s)
+ *      THROTTLE mode: 2× normal when quota > 80%
+ *      MINIMAL  mode: only spot+flow+net-prem when quota > 90%
+ *  - After each UW refresh, price context is extracted from the snapshot
+ *    and fed back into the scheduler to detect key-level transitions
+ *  - Quota state (daily_requests_used / remaining / rpm) is tracked from
+ *    UW response headers and exposed via getLiveRefreshLog()
  *
  * Safety rules:
- *  - Every job is wrapped in a try/catch; a failure in one job never crashes the server.
- *  - Jobs use .unref() so they do not prevent Node.js from exiting cleanly in tests.
- *  - Intervals are conservative to stay within free-tier API rate limits.
+ *  - Every job is wrapped in try/catch; a failure never crashes the server
+ *  - Timers use .unref() so they don't prevent clean exit in tests
  */
 
 import { getFmpSnapshot } from '../adapters/fmp/index.js';
 import { refreshUwProvider } from '../state/uwProvider.js';
 import { writeThetaSnapshot } from '../storage/theta-snapshot.js';
 import { pushSpotPrice } from '../state/price-history-buffer.js';
+import {
+  createAdaptiveScheduler,
+  getAdaptiveScheduler,
+} from './adaptive-refresh-scheduler.js';
 
-// ─── Refresh intervals (milliseconds) ────────────────────────────────────────
-const REFRESH_INTERVALS = {
-  fmp_price:   60_000,   // FMP SPX spot price  – every 60 s
-  fmp_event:  120_000,   // FMP economic calendar – every 2 min
-  uw:          60_000,   // UW API snapshot (flow, dealer, darkpool, vol) – every 60 s
-  theta:       30_000,   // Theta ingest health-check / stale guard – every 30 s
+// ─── Fixed intervals for non-UW jobs (milliseconds) ──────────────────────────
+const FIXED_INTERVALS = {
+  fmp_price:  60_000,   // FMP SPX spot price  – every 60 s
+  fmp_event: 120_000,   // FMP economic calendar – every 2 min
+  theta:      30_000,   // Theta stale-guard – every 30 s
 };
 
-// ─── In-memory refresh log (read by /sources/status) ─────────────────────────
-const refreshLog = Object.fromEntries(
-  Object.keys(REFRESH_INTERVALS).map((name) => [
-    name,
-    {
-      name,
-      last_run_at: null,
-      last_status: 'waiting',
-      message: '等待首次刷新。',
-    },
-  ])
-);
+// ─── In-memory refresh log ────────────────────────────────────────────────────
+const refreshLog = {
+  fmp_price: { name: 'fmp_price', last_run_at: null, last_status: 'waiting', message: '等待首次刷新。' },
+  fmp_event: { name: 'fmp_event', last_run_at: null, last_status: 'waiting', message: '等待首次刷新。' },
+  uw:        { name: 'uw',        last_run_at: null, last_status: 'waiting', message: '等待首次刷新。' },
+  theta:     { name: 'theta',     last_run_at: null, last_status: 'waiting', message: '等待首次刷新。' },
+};
+
+// ─── Quota state (updated from UW response headers) ──────────────────────────
+let _quotaState = {
+  daily_limit:         250,
+  daily_requests_used: 0,
+  remaining:           250,
+  rpm:                 null,
+  rpm_limit:           null,
+  usage_pct:           0,
+  last_updated_at:     null,
+};
+
+// ─── Adaptive scheduler mode state ───────────────────────────────────────────
+let _schedulerMode = 'normal';
+let _schedulerTurboReason = null;
 
 let started = false;
 
@@ -58,19 +80,129 @@ function markError(name, error) {
   };
 }
 
-// ─── Individual job implementations ──────────────────────────────────────────
-
 /**
- * FMP Price job
- * Fetches the latest SPX spot price from FMP and the result is automatically
- * cached inside getFmpSnapshot → createFmpPriceFailureFallback / priceSnapshot.
- * The snapshot is read later by current-signal.js via getFmpSnapshot().
+ * Extract price context from a UW snapshot for the adaptive scheduler.
+ * Reads the normalized output to get spot, atm, walls, flow metrics.
  */
+function extractPriceContext(snapshot) {
+  if (!snapshot) return {};
+  try {
+    const norm = snapshot.normalized;
+    if (!norm) return {};
+
+    const flow    = norm.flow_factors   || {};
+    const dealer  = norm.dealer_factors || {};
+    const dark    = norm.darkpool_factors || {};
+
+    // Spot price from flow_recent underlying_price
+    const spot = flow.underlying_price ?? null;
+
+    // ATM from conclusion
+    const conclusion = norm.conclusion || {};
+    const atm = conclusion.atm ?? null;
+
+    // Walls from dealer
+    const near_call_wall = dealer.near_call_wall ?? null;
+    const near_put_wall  = dealer.near_put_wall  ?? null;
+    const bull_trigger   = dealer.near_call_wall ?? null;  // same as near_call_wall
+    const bear_trigger   = dealer.near_put_wall  ?? null;  // same as near_put_wall
+
+    // Net premium (in raw dollars, not millions)
+    const net_premium = flow.net_premium ?? null;
+
+    // P/C ratio
+    const put_call_ratio = flow.put_call_ratio ?? null;
+
+    // Darkpool max level premium
+    const levels = dark.levels || [];
+    let darkpool_max_level_premium = null;
+    for (const lv of levels) {
+      const prem = lv.premium ?? 0;
+      if (darkpool_max_level_premium === null || prem > darkpool_max_level_premium) {
+        darkpool_max_level_premium = prem;
+      }
+    }
+
+    return {
+      spot,
+      atm,
+      near_call_wall,
+      near_put_wall,
+      bull_trigger,
+      bear_trigger,
+      net_premium,
+      put_call_ratio,
+      darkpool_max_level_premium,
+    };
+  } catch {
+    return {};
+  }
+}
+
+// ─── UW per-endpoint refresh callback ────────────────────────────────────────
+/**
+ * Called by AdaptiveRefreshScheduler for each endpoint.
+ * We run a full UW snapshot refresh (which internally uses TTL cache,
+ * so only stale endpoints are actually fetched).
+ * This is intentional: we let uw-api-provider's TTL logic decide
+ * which endpoints need a real HTTP request.
+ */
+async function runUwEndpointRefresh(endpointName) {
+  const mode = String(process.env.UW_PROVIDER_MODE || '').toLowerCase();
+  if (mode !== 'api') return;
+  if (!process.env.UW_API_KEY) return;
+
+  // Override the TTL for this specific endpoint to force a refresh
+  // by passing a hint via options (uw-api-provider will check ttlSeconds)
+  const snapshot = await refreshUwProvider({
+    forceEndpoint: endpointName,  // hint — provider may ignore if not supported
+  });
+
+  if (!snapshot) return;
+
+  // Update quota from rate_limit in provider
+  const rl = snapshot?.provider?.rate_limit;
+  if (rl) {
+    const scheduler = getAdaptiveScheduler();
+    if (scheduler) {
+      scheduler.updateQuota({
+        daily_limit: rl.daily_limit,
+        remaining:   rl.remaining,
+        rpm:         rl.per_minute_limit,
+      });
+    }
+  }
+
+  // Extract spot price and push to price history buffer
+  const norm = snapshot?.normalized;
+  const flow = norm?.flow_factors || {};
+  const spot = flow.underlying_price;
+  if (typeof spot === 'number' && spot > 0) {
+    pushSpotPrice(spot);
+  }
+
+  // Update price context in adaptive scheduler
+  const ctx = extractPriceContext(snapshot);
+  const scheduler = getAdaptiveScheduler();
+  if (scheduler && Object.keys(ctx).length > 0) {
+    scheduler.updatePriceContext(ctx);
+  }
+
+  const status = snapshot?.provider?.status || 'unknown';
+  const ok = ['live', 'partial'].includes(status);
+  markRefresh(
+    'uw',
+    ok ? 'ok' : 'degraded',
+    `UW [${endpointName}] refresh: status=${status}, mode=${_schedulerMode}`
+  );
+}
+
+// ─── Fixed job implementations ────────────────────────────────────────────────
+
 async function runFmpPriceJob() {
   try {
     const { price } = await getFmpSnapshot({ price: {} });
     const ok = price?.available === true && price?.price != null;
-    // Push spot price into the history buffer for dynamic price validation
     if (ok && typeof price.price === 'number') {
       pushSpotPrice(price.price);
     }
@@ -86,10 +218,6 @@ async function runFmpPriceJob() {
   }
 }
 
-/**
- * FMP Event Risk job
- * Fetches the economic calendar and caches event risk state.
- */
 async function runFmpEventJob() {
   try {
     const { event } = await getFmpSnapshot({ event: {} });
@@ -106,42 +234,6 @@ async function runFmpEventJob() {
   }
 }
 
-/**
- * UW job
- * Calls refreshUwProvider() which fetches all configured UW API endpoints
- * and writes the result to the UW API snapshot store.
- * Only runs when UW_PROVIDER_MODE=api and UW_API_KEY is set.
- */
-async function runUwJob() {
-  const mode = String(process.env.UW_PROVIDER_MODE || '').toLowerCase();
-  if (mode !== 'api') {
-    markRefresh('uw', 'skipped', `UW_PROVIDER_MODE=${mode || 'unset'}, skipping API refresh.`);
-    return;
-  }
-  if (!process.env.UW_API_KEY) {
-    markRefresh('uw', 'skipped', 'UW_API_KEY not configured, skipping refresh.');
-    return;
-  }
-  try {
-    const snapshot = await refreshUwProvider();
-    const status = snapshot?.provider?.status || 'unknown';
-    markRefresh(
-      'uw',
-      ['live', 'partial'].includes(status) ? 'ok' : 'degraded',
-      `UW refresh: provider.status=${status}, endpoints_ok=${snapshot?.provider?.endpoints_ok?.length ?? 0}`
-    );
-  } catch (error) {
-    markError('uw', error);
-  }
-}
-
-/**
- * Theta stale-guard job
- * ThetaData is push-based (external script pushes via /ingest/theta).
- * This job does NOT pull from ThetaData directly; instead it reads the
- * current snapshot and marks it stale if the last push is too old.
- * This ensures the rest of the system always sees an accurate freshness state.
- */
 async function runThetaStaleGuardJob() {
   try {
     const { getThetaSnapshot } = await import('../storage/theta-snapshot.js');
@@ -172,33 +264,103 @@ export function startLiveRefreshScheduler() {
   if (started) return;
   started = true;
 
-  // Run each job immediately on start, then on the configured interval.
-  const jobs = [
-    { name: 'fmp_price', fn: runFmpPriceJob,       interval: REFRESH_INTERVALS.fmp_price },
-    { name: 'fmp_event', fn: runFmpEventJob,        interval: REFRESH_INTERVALS.fmp_event },
-    { name: 'uw',        fn: runUwJob,              interval: REFRESH_INTERVALS.uw },
-    { name: 'theta',     fn: runThetaStaleGuardJob, interval: REFRESH_INTERVALS.theta },
+  // ── 1. Create adaptive scheduler for UW endpoints ──────────────────────────
+  const adaptiveScheduler = createAdaptiveScheduler({
+    onRefresh: runUwEndpointRefresh,
+
+    onQuotaUpdate: (quota) => {
+      _quotaState = { ..._quotaState, ...quota };
+      markRefresh(
+        'uw',
+        quota.usage_pct >= 90 ? 'minimal' : quota.usage_pct >= 80 ? 'throttle' : 'ok',
+        `UW quota: ${quota.daily_requests_used}/${quota.daily_limit} (${quota.usage_pct}%), ` +
+        `remaining=${quota.remaining}, mode=${_schedulerMode}`
+      );
+    },
+
+    onModeChange: ({ mode, prev_mode, reason }) => {
+      _schedulerMode = mode;
+      _schedulerTurboReason = reason;
+      console.log(`[scheduler] UW mode: ${prev_mode} → ${mode}${reason ? ` — ${reason}` : ''}`);
+      markRefresh(
+        'uw',
+        'ok',
+        `UW scheduler mode changed: ${prev_mode} → ${mode}${reason ? ` (${reason})` : ''}`
+      );
+    },
+  });
+
+  adaptiveScheduler.start();
+
+  // ── 2. Fixed jobs (FMP, Theta) ─────────────────────────────────────────────
+  const fixedJobs = [
+    { name: 'fmp_price', fn: runFmpPriceJob,       interval: FIXED_INTERVALS.fmp_price },
+    { name: 'fmp_event', fn: runFmpEventJob,        interval: FIXED_INTERVALS.fmp_event },
+    { name: 'theta',     fn: runThetaStaleGuardJob, interval: FIXED_INTERVALS.theta },
   ];
 
-  for (const job of jobs) {
-    // Fire immediately (non-blocking)
+  for (const job of fixedJobs) {
     job.fn().catch((error) => markError(job.name, error));
-
-    // Then repeat on interval
     setInterval(() => {
       job.fn().catch((error) => markError(job.name, error));
     }, job.interval).unref?.();
   }
 
-  console.log('[scheduler] live-refresh-scheduler started with real data jobs.');
+  console.log('[scheduler] live-refresh-scheduler started with adaptive UW + fixed FMP/Theta jobs.');
 }
 
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 export function getLiveRefreshLog() {
-  return Object.values(refreshLog);
+  const base = Object.values(refreshLog);
+  // Append adaptive scheduler state
+  const scheduler = getAdaptiveScheduler();
+  if (scheduler) {
+    const state = scheduler.getState();
+    return [
+      ...base,
+      {
+        name: 'uw_adaptive',
+        last_run_at: new Date().toISOString(),
+        last_status: state.mode === 'minimal' ? 'minimal'
+          : state.mode === 'throttle' ? 'throttle'
+          : state.mode === 'turbo' ? 'turbo'
+          : 'normal',
+        message: `mode=${state.mode}${state.turbo_reason ? ` (${state.turbo_reason})` : ''}`,
+        adaptive_state: state,
+      }
+    ];
+  }
+  return base;
 }
 
 export function getLiveRefreshIntervals() {
-  return { ...REFRESH_INTERVALS };
+  return { ...FIXED_INTERVALS };
+}
+
+/**
+ * Get the current quota state (for /health endpoint).
+ */
+export function getUwQuotaState() {
+  return { ..._quotaState };
+}
+
+/**
+ * Get the current adaptive scheduler mode (for /health endpoint).
+ */
+export function getAdaptiveSchedulerMode() {
+  return {
+    mode:         _schedulerMode,
+    turbo_reason: _schedulerTurboReason,
+    quota:        { ..._quotaState },
+  };
+}
+
+/**
+ * Manually update price context (called from signal computation pipeline
+ * after /signals/current is computed, to feed back into the scheduler).
+ */
+export function updateSchedulerPriceContext(ctx = {}) {
+  const scheduler = getAdaptiveScheduler();
+  if (scheduler) scheduler.updatePriceContext(ctx);
 }
