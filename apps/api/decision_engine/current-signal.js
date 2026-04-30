@@ -50,8 +50,10 @@ import {
   buildAbOrderEngine,
   runVolatilityEngine,
   premiumAccelerationQueue,
-  buildDarkpoolBehaviorEngine
+  buildDarkpoolBehaviorEngine,
+  buildPriceValidationEngine
 } from './algorithms/index.js';
+import { getPriceHistory } from '../state/price-history-buffer.js';
 import { getLiveRefreshLog } from '../scheduler/live-refresh-scheduler.js';
 
 export {
@@ -2204,6 +2206,16 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     put_call_ratio: _pcRatio
   };
 
+  // 8. Price Validation Engine — dynamic reflection scene detection
+  const priceHistory = getPriceHistory();
+  const priceValidationEngine = buildPriceValidationEngine({
+    priceHistory,
+    flowFactors: uwApi?.uw_factors?.flow_factors ?? {},
+    darkpoolFactors: uwApi?.uw_factors?.darkpool_factors ?? {},
+    gammaRegime: gammaRegimeEngine ?? {},
+    atmEngine: atmEngine ?? {}
+  });
+
   // ─────────────────────────────────────────────────────────────────────────────
   const finalOutput = {
     ...output,
@@ -2231,6 +2243,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     volatility_dashboard: volDashboard,
     darkpool_behavior_engine: darkpoolBehaviorEngine,
     ab_order_engine: abOrderEngine,
+    price_validation_engine: priceValidationEngine,
     tradeable_price: tradeable,
     execution_card: executionCard,
     uw_aggregate_analysis: buildUwAggregateAnalysis(uwNormalized, uwLayerConclusions, {

@@ -14,6 +14,7 @@
 import { getFmpSnapshot } from '../adapters/fmp/index.js';
 import { refreshUwProvider } from '../state/uwProvider.js';
 import { writeThetaSnapshot } from '../storage/theta-snapshot.js';
+import { pushSpotPrice } from '../state/price-history-buffer.js';
 
 // ─── Refresh intervals (milliseconds) ────────────────────────────────────────
 const REFRESH_INTERVALS = {
@@ -69,6 +70,10 @@ async function runFmpPriceJob() {
   try {
     const { price } = await getFmpSnapshot({ price: {} });
     const ok = price?.available === true && price?.price != null;
+    // Push spot price into the history buffer for dynamic price validation
+    if (ok && typeof price.price === 'number') {
+      pushSpotPrice(price.price);
+    }
     markRefresh(
       'fmp_price',
       ok ? 'ok' : 'degraded',

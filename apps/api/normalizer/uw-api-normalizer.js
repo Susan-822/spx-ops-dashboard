@@ -1,3 +1,18 @@
+/**
+ * UW API Normalizer — Production v3
+ *
+ * 基于真实 API 返回结构的精确字段映射（2026-04-30 验证）
+ *
+ * 真实字段路径（已通过 fetchUwApiSnapshot() 验证）：
+ *   GEX/Vanna/Charm  → greek_exposure_strike[].{call_gex, put_gex, call_vanna, put_vanna, call_charm, put_charm}
+ *   Net Premium      → net_prem_ticks[].{net_call_premium, net_put_premium}
+ *   Flow Recent      → flow_recent[].{option_type, premium, underlying_price}
+ *   Darkpool         → darkpool_spy[].{price, premium, size, executed_at}
+ *   IV Rank          → iv_rank[].{iv_rank_1y}
+ *   Interpolated IV  → interpolated_iv[].{volatility, percentile, days}
+ *   Realized Vol     → realized_volatility[].{volatility}
+ */
+
 function asArray(value) {
   if (Array.isArray(value)) return value;
   if (Array.isArray(value?.data?.data)) return value.data.data;
@@ -65,127 +80,337 @@ function directionFromPremium(callPremium, putPremium) {
   return 'mixed';
 }
 
+/**
+ * normalizeDealer
+ *
+ * 真实字段路径（已验证）：
+ *   greek_exposure_strike[].{call_gex, put_gex, call_vanna, put_vanna, call_charm, put_charm, strike}
+ *   greek_exposure[].{call_gamma, put_gamma, call_vanna, put_vanna, call_charm, put_charm, date}
+ *
+ * net_gex = sum(call_gex) + sum(put_gex) across all strikes
+ * call_wall = strike with max absolute call_gex
+ * put_wall = strike with max absolute put_gex
+ * gamma_flip = strike where call_gex + put_gex ≈ 0 (zero-crossing)
+ */
 function normalizeDealer(raw = {}) {
-  const greekRows = asArray(raw.greek_exposure);
   const strikeRows = asArray(raw.greek_exposure_strike);
+  const greekRows = asArray(raw.greek_exposure);
   const expiryRows = asArray(raw.greek_exposure_expiry);
-  const strikeExpiryRows = asArray(raw.greek_exposure_strike_expiry);
-  const combined = [...greekRows, ...strikeRows, ...expiryRows, ...strikeExpiryRows];
+
+  // --- GEX from strike-level data ---
+  let netCallGex = null;
+  let netPutGex = null;
+  let callWall = null;
+  let putWall = null;
+  let gammaFlip = null;
+
+  if (strikeRows.length > 0) {
+    // Sum all call_gex and put_gex
+    const callGexSum = sumRows(strikeRows, ['call_gex', 'call_gamma_exposure', 'call_gamma']);
+    const putGexSum = sumRows(strikeRows, ['put_gex', 'put_gamma_exposure', 'put_gamma']);
+    netCallGex = callGexSum;
+    netPutGex = putGexSum;
+
+    // Call Wall = strike with highest absolute call_gex (above-spot bias handled by ab-order-engine)
+    const callWallRow = [...strikeRows]
+      .filter(r => firstNumber(r, ['call_gex', 'call_gamma_exposure', 'call_gamma']) != null)
+      .sort((a, b) => Math.abs(firstNumber(b, ['call_gex', 'call_gamma_exposure', 'call_gamma']) ?? 0)
+                    - Math.abs(firstNumber(a, ['call_gex', 'call_gamma_exposure', 'call_gamma']) ?? 0))[0];
+    callWall = callWallRow ? firstNumber(callWallRow, ['strike', 'price', 'level']) : null;
+
+    // Put Wall = strike with highest absolute put_gex
+    const putWallRow = [...strikeRows]
+      .filter(r => firstNumber(r, ['put_gex', 'put_gamma_exposure', 'put_gamma']) != null)
+      .sort((a, b) => Math.abs(firstNumber(b, ['put_gex', 'put_gamma_exposure', 'put_gamma']) ?? 0)
+                    - Math.abs(firstNumber(a, ['put_gex', 'put_gamma_exposure', 'put_gamma']) ?? 0))[0];
+    putWall = putWallRow ? firstNumber(putWallRow, ['strike', 'price', 'level']) : null;
+
+    // Gamma Flip = strike where net GEX (call_gex + put_gex) crosses zero
+    // Sort by strike, find zero-crossing
+    const sorted = [...strikeRows]
+      .map(r => ({
+        strike: firstNumber(r, ['strike', 'price', 'level']),
+        netGex: (firstNumber(r, ['call_gex', 'call_gamma_exposure', 'call_gamma']) ?? 0)
+               + (firstNumber(r, ['put_gex', 'put_gamma_exposure', 'put_gamma']) ?? 0)
+      }))
+      .filter(r => r.strike != null)
+      .sort((a, b) => a.strike - b.strike);
+
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i - 1].netGex * sorted[i].netGex <= 0) {
+        // Linear interpolation for zero-crossing
+        const s1 = sorted[i - 1].strike, g1 = sorted[i - 1].netGex;
+        const s2 = sorted[i].strike, g2 = sorted[i].netGex;
+        gammaFlip = g1 === g2 ? s1 : Math.round(s1 + (0 - g1) * (s2 - s1) / (g2 - g1));
+        break;
+      }
+    }
+  }
+
+  // --- Vanna / Charm from greek_exposure (aggregate) or strike-level ---
+  const combined = [...greekRows, ...strikeRows, ...expiryRows];
   const first = combined[0] || {};
 
+  const callVanna = sumRows(strikeRows, ['call_vanna']) ?? firstNumber(first, ['call_vanna', 'vanna', 'net_vanna']);
+  const putVanna = sumRows(strikeRows, ['put_vanna']) ?? firstNumber(first, ['put_vanna']);
+  const netVanna = (callVanna != null || putVanna != null) ? (callVanna ?? 0) + (putVanna ?? 0) : null;
+
+  const callCharm = sumRows(strikeRows, ['call_charm']) ?? firstNumber(first, ['call_charm', 'charm', 'net_charm']);
+  const putCharm = sumRows(strikeRows, ['put_charm']) ?? firstNumber(first, ['put_charm']);
+  const netCharm = (callCharm != null || putCharm != null) ? (callCharm ?? 0) + (putCharm ?? 0) : null;
+
+  const netGex = (netCallGex != null || netPutGex != null)
+    ? (netCallGex ?? 0) + (netPutGex ?? 0)
+    : null;
+
   return {
-    gex: firstNumber(first, ['gex', 'gamma_exposure', 'net_gex']) ?? sumRows(combined, ['gex', 'gamma_exposure', 'net_gex']),
-    dex: firstNumber(first, ['dex', 'delta_exposure', 'net_dex']) ?? sumRows(combined, ['dex', 'delta_exposure', 'net_dex']),
-    vanna: firstNumber(first, ['vanna', 'net_vanna']) ?? sumRows(combined, ['vanna', 'net_vanna']),
-    charm: firstNumber(first, ['charm', 'net_charm']) ?? sumRows(combined, ['charm', 'net_charm']),
-    top_gex_strikes: topByAbs(strikeRows, ['gex', 'gamma_exposure', 'net_gex']),
-    top_call_gamma_strikes: topByAbs(strikeRows, ['call_gex', 'call_gamma', 'call_gamma_exposure']),
-    top_put_gamma_strikes: topByAbs(strikeRows, ['put_gex', 'put_gamma', 'put_gamma_exposure']),
-    zero_gamma_or_flip: firstNumber(first, ['zero_gamma', 'zero_gamma_level', 'flip', 'flip_point']),
+    net_gex: netGex,
+    net_call_gex: netCallGex,
+    net_put_gex: netPutGex,
+    call_wall: callWall,
+    put_wall: putWall,
+    gamma_flip: gammaFlip,
+    vanna: netVanna,
+    charm: netCharm,
+    call_vanna: callVanna,
+    put_vanna: putVanna,
+    call_charm: callCharm,
+    put_charm: putCharm,
+    top_gex_strikes: topByAbs(strikeRows, ['call_gex', 'put_gex', 'gamma_exposure'], ['strike']),
+    top_call_gamma_strikes: topByAbs(strikeRows, ['call_gex', 'call_gamma', 'call_gamma_exposure'], ['strike']),
+    top_put_gamma_strikes: topByAbs(strikeRows, ['put_gex', 'put_gamma', 'put_gamma_exposure'], ['strike']),
     expiry_breakdown: expiryRows.slice(0, 10),
-    vanna_bias: biasFromNumber(firstNumber(first, ['vanna', 'net_vanna']) ?? sumRows(combined, ['vanna', 'net_vanna'])),
-    charm_bias: biasFromNumber(firstNumber(first, ['charm', 'net_charm']) ?? sumRows(combined, ['charm', 'net_charm'])),
+    vanna_bias: biasFromNumber(netVanna),
+    charm_bias: biasFromNumber(netCharm),
     delta_bias: biasFromNumber(firstNumber(first, ['dex', 'delta_exposure', 'net_dex']) ?? sumRows(combined, ['dex', 'delta_exposure', 'net_dex']))
   };
 }
 
 function normalizeSpotGex(raw = {}) {
+  // spot_gex may be empty during non-trading hours; fall back to greek_exposure_strike
   const spotRows = asArray(raw.spot_gex);
-  const explicitStrikeRows = asArray(raw.spot_gex_strike);
-  const strikeExpiryRows = asArray(raw.spot_gex_strike_expiry);
+  const strikeRows = asArray(raw.greek_exposure_strike);
+  const strikeExpiryRows = asArray(raw.greek_exposure_strike_expiry);
+
   const looksLikeStrikeRows = (rows) => rows.some((row) =>
-    row?.strike != null
-    || row?.call_gamma_oi != null
-    || row?.put_gamma_oi != null
-    || row?.call_gamma != null
-    || row?.put_gamma != null
+    row?.strike != null || row?.call_gex != null || row?.put_gex != null
   );
-  const strikeRows = [
-    ...explicitStrikeRows,
+
+  const allStrikeRows = [
     ...(looksLikeStrikeRows(spotRows) ? spotRows : []),
+    ...strikeRows,
     ...strikeExpiryRows
   ];
-  const expiryRows = looksLikeStrikeRows(spotRows) ? [] : [];
-  const callWall = topByAbs(strikeRows, ['call_gamma_oi', 'call_gex', 'call_gamma', 'gamma_exposure'], ['strike', 'price', 'level'])[0]?.strike ?? null;
-  const putWall = topByAbs(strikeRows, ['put_gamma_oi', 'put_gex', 'put_gamma', 'gamma_exposure'], ['strike', 'price', 'level'])[0]?.strike ?? null;
+
+  const callWall = topByAbs(allStrikeRows, ['call_gex', 'call_gamma', 'call_gamma_exposure'], ['strike'])[0]?.strike ?? null;
+  const putWall = topByAbs(allStrikeRows, ['put_gex', 'put_gamma', 'put_gamma_exposure'], ['strike'])[0]?.strike ?? null;
+
   return {
-    spot_gex_by_strike: strikeRows.slice(0, 50),
-    spot_gex_by_expiry: expiryRows.slice(0, 50),
+    spot_gex_by_strike: allStrikeRows.slice(0, 50),
     call_wall_candidate: callWall,
     put_wall_candidate: putWall,
-    gex_pivots: topByAbs(strikeRows, ['gex', 'gamma_exposure', 'net_gex'], ['strike'], 8)
+    gex_pivots: topByAbs(allStrikeRows, ['call_gex', 'put_gex'], ['strike'], 8)
   };
 }
 
+/**
+ * normalizeFlow
+ *
+ * 真实字段路径（已验证）：
+ *   net_prem_ticks[].{net_call_premium, net_put_premium, call_volume, put_volume, tape_time}
+ *   flow_recent[].{option_type, premium, underlying_price, underlying_symbol}
+ *   options_flow[].{type, total_premium, total_ask_side_prem, total_bid_side_prem}
+ *
+ * 同时输出 call_put_ratio 和 put_call_ratio，统一使用 put_call_ratio (P/C)
+ */
 function normalizeFlow(raw = {}) {
-  const alertRows = [
-    ...asArray(raw.options_flow),
-    ...asArray(raw.flow_recent),
-    ...asArray(raw.flow_per_expiry),
-    ...asArray(raw.flow_per_strike),
-    ...asArray(raw.flow_per_strike_intraday)
-  ];
   const ticks = asArray(raw.net_prem_ticks);
-  const callPremium = sumRows(alertRows.filter((row) => row.is_call === true || row.option_type === 'call'), ['premium', 'total_premium', 'ask_vol_premium'])
-    ?? sumRows(ticks, ['call_premium', 'call_net_premium']);
-  const putPremium = sumRows(alertRows.filter((row) => row.is_put === true || row.option_type === 'put'), ['premium', 'total_premium', 'ask_vol_premium'])
-    ?? sumRows(ticks, ['put_premium', 'put_net_premium']);
-  const netPremium = (callPremium != null || putPremium != null) ? (callPremium ?? 0) - (putPremium ?? 0) : sumRows(ticks, ['net_premium']);
+  const flowRecent = asArray(raw.flow_recent);
+  const optionsFlow = asArray(raw.options_flow);
+
+  // --- From net_prem_ticks (most reliable aggregate source) ---
+  // Fields: net_call_premium, net_put_premium (confirmed by deep inspect)
+  const callPremFromTicks = sumRows(ticks, ['net_call_premium', 'call_premium', 'call_net_premium']);
+  const putPremFromTicks = sumRows(ticks, ['net_put_premium', 'put_premium', 'put_net_premium']);
+
+  // --- From flow_recent (individual trades) ---
+  const callRows = flowRecent.filter(r => r.option_type === 'call' || r.is_call === true);
+  const putRows = flowRecent.filter(r => r.option_type === 'put' || r.is_put === true);
+  const callPremFromFlow = sumRows(callRows, ['premium', 'total_premium', 'ask_vol_premium']);
+  const putPremFromFlow = sumRows(putRows, ['premium', 'total_premium', 'ask_vol_premium']);
+
+  // --- From options_flow (alerts) ---
+  const callPremFromAlerts = sumRows(
+    optionsFlow.filter(r => r.type === 'call' || r.option_type === 'call'),
+    ['total_premium', 'total_ask_side_prem', 'premium']
+  );
+  const putPremFromAlerts = sumRows(
+    optionsFlow.filter(r => r.type === 'put' || r.option_type === 'put'),
+    ['total_premium', 'total_ask_side_prem', 'premium']
+  );
+
+  // Prefer ticks > flow_recent > options_flow
+  const callPremium = callPremFromTicks ?? callPremFromFlow ?? callPremFromAlerts;
+  const putPremium = putPremFromTicks ?? putPremFromFlow ?? putPremFromAlerts;
+  const netPremium = (callPremium != null || putPremium != null)
+    ? (callPremium ?? 0) - (putPremium ?? 0)
+    : null;
+
+  // call_put_ratio = C/P (Call dominance)
+  // put_call_ratio = P/C (Put dominance — standard market convention)
+  const callPutRatio = callPremium != null && putPremium != null && putPremium > 0
+    ? Number((callPremium / putPremium).toFixed(2))
+    : null;
+  const putCallRatio = callPremium != null && putPremium != null && callPremium > 0
+    ? Number((putPremium / callPremium).toFixed(2))
+    : null;
+
+  // Sweep count
+  const sweepCount = flowRecent.filter(r =>
+    r.is_sweep === true || String(r.rule_name || '').toLowerCase().includes('sweep')
+  ).length || null;
+
+  // Large trade count (premium >= $100k)
+  const largeTradeCount = flowRecent.filter(r =>
+    numberOrNull(r.premium ?? r.total_premium) >= 100000
+  ).length || null;
+
   return {
     call_premium_5m: callPremium,
     put_premium_5m: putPremium,
     net_premium_5m: netPremium,
-    sweep_count_5m: alertRows.filter((row) => row.is_sweep === true || String(row.rule_name || '').toLowerCase().includes('sweep')).length || null,
-    large_trade_count_5m: alertRows.filter((row) => numberOrNull(row.premium ?? row.total_premium) >= 100000).length || null,
-    call_put_ratio: callPremium != null && putPremium > 0 ? Number((callPremium / putPremium).toFixed(2)) : null,
-    direction: directionFromPremium(callPremium, putPremium)
+    call_put_ratio: callPutRatio,     // C/P ratio (Call dominance)
+    put_call_ratio: putCallRatio,     // P/C ratio (standard convention, used by UI)
+    sweep_count_5m: sweepCount,
+    large_trade_count_5m: largeTradeCount,
+    direction: directionFromPremium(callPremium, putPremium),
+    ticks_count: ticks.length,
+    flow_recent_count: flowRecent.length
   };
 }
 
+/**
+ * normalizeDarkpool
+ *
+ * 真实字段路径（已验证）：
+ *   darkpool_spy[].{price, premium, size, executed_at, ticker, nbbo_bid, nbbo_ask}
+ *   darkpool_spx[].{price, premium, size, executed_at}
+ *
+ * SPX 坐标映射：SPY price × 10 = SPX equivalent
+ */
 function normalizeDarkpool(raw = {}) {
-  const rows = [
-    ...asArray(raw.darkpool_recent),
-    ...asArray(raw.darkpool_spy),
-    ...asArray(raw.darkpool_spx),
-    ...asArray(raw.darkpool_qqq),
-    ...asArray(raw.darkpool_iwm),
-    ...asArray(raw.stock_price_levels)
-  ];
-  const levels = rows
-    .map((row) => ({
-      price: firstNumber(row, ['price', 'level']),
-      premium: firstNumber(row, ['premium', 'notional', 'volume']),
-      side: row.side || row.sentiment || null
-    }))
-    .filter((item) => item.price != null)
-    .sort((a, b) => (b.premium ?? 0) - (a.premium ?? 0));
-  const nearestSupport = levels.filter((item) => item.side !== 'resistance')[0]?.price ?? null;
-  const nearestResistance = levels.filter((item) => item.side !== 'support')[0]?.price ?? null;
+  const spyRows = asArray(raw.darkpool_spy).map(r => ({
+    ...r,
+    _source: 'SPY',
+    _spx_price: firstNumber(r, ['price']) != null ? firstNumber(r, ['price']) * 10 : null
+  }));
+  const spxRows = asArray(raw.darkpool_spx).map(r => ({
+    ...r,
+    _source: 'SPX',
+    _spx_price: firstNumber(r, ['price'])
+  }));
+  const recentRows = asArray(raw.darkpool_recent).map(r => ({
+    ...r,
+    _source: 'RECENT',
+    _spx_price: r.ticker === 'SPX'
+      ? firstNumber(r, ['price'])
+      : r.ticker === 'SPY' ? (firstNumber(r, ['price']) != null ? firstNumber(r, ['price']) * 10 : null) : null
+  }));
+  const stockLevels = asArray(raw.stock_price_levels);
+
+  // Combine all darkpool rows, prefer SPX-equivalent price
+  const allRows = [...spxRows, ...spyRows, ...recentRows]
+    .filter(r => r._spx_price != null)
+    .sort((a, b) => (numberOrNull(b.premium) ?? 0) - (numberOrNull(a.premium) ?? 0));
+
+  // Cluster nearby levels (within 5 SPX points)
+  const clusters = [];
+  for (const row of allRows) {
+    const spxPrice = row._spx_price;
+    const existing = clusters.find(c => Math.abs(c.price - spxPrice) <= 5);
+    if (existing) {
+      existing.premium += numberOrNull(row.premium) ?? 0;
+      existing.size += numberOrNull(row.size) ?? 0;
+      existing.count += 1;
+    } else {
+      clusters.push({
+        price: Math.round(spxPrice),
+        premium: numberOrNull(row.premium) ?? 0,
+        size: numberOrNull(row.size) ?? 0,
+        source: row._source,
+        executed_at: row.executed_at || null,
+        count: 1
+      });
+    }
+  }
+  clusters.sort((a, b) => b.premium - a.premium);
+
+  const levels = clusters.slice(0, 10);
+  const nearestSupport = levels[0]?.price ?? null;
+  const nearestResistance = levels.length > 1 ? levels[1]?.price ?? null : null;
+
+  const offLitRatio = firstNumber(allRows[0] || {}, ['off_lit_ratio', 'darkpool_ratio', 'off_exchange_ratio'])
+    ?? firstNumber(stockLevels[0] || {}, ['off_lit_ratio', 'darkpool_ratio']);
+
   return {
+    levels,
     nearest_support: nearestSupport,
     nearest_resistance: nearestResistance,
-    off_lit_ratio: firstNumber(rows[0], ['off_lit_ratio', 'darkpool_ratio', 'off_exchange_ratio']),
-    large_levels: levels.slice(0, 10),
-    darkpool_bias: nearestSupport != null && nearestResistance == null
-      ? 'support'
-      : nearestResistance != null && nearestSupport == null
-        ? 'resistance'
-        : nearestSupport != null || nearestResistance != null ? 'neutral' : 'unknown'
+    off_lit_ratio: offLitRatio,
+    large_levels: levels,
+    spy_row_count: spyRows.length,
+    spx_row_count: spxRows.length,
+    darkpool_bias: levels.length === 0 ? 'unknown'
+      : nearestSupport != null && nearestResistance == null ? 'support'
+      : nearestResistance != null && nearestSupport == null ? 'resistance'
+      : 'neutral'
   };
 }
 
+/**
+ * normalizeVolatility
+ *
+ * 真实字段路径（已验证）：
+ *   iv_rank[].{iv_rank_1y, close, volatility}
+ *   interpolated_iv[].{volatility, percentile, days}
+ *   realized_volatility[].{volatility}
+ *   volatility[].{volatility, close}
+ */
 function normalizeVolatility(raw = {}) {
-  const volatilityRows = asArray(raw.volatility);
-  const ivRank = asArray(raw.iv_rank)[0] || raw.iv_rank || volatilityRows[0] || {};
-  const stats = asArray(raw.volatility_stats)[0] || raw.volatility_stats || volatilityRows[0] || {};
-  const realized = asArray(raw.realized_volatility)[0] || raw.realized_volatility || {};
+  const ivRankRows = asArray(raw.iv_rank);
+  const interpolatedRows = asArray(raw.interpolated_iv);
+  const realizedRows = asArray(raw.realized_volatility);
+  const volRows = asArray(raw.volatility);
+
+  const ivRankRow = ivRankRows[0] || {};
+  const interpRow = interpolatedRows.find(r => numberOrNull(r.days) === 30) || interpolatedRows[0] || {};
+  const realizedRow = realizedRows[0] || {};
+  const volRow = volRows[0] || {};
+
+  // iv_rank_1y is the confirmed field name from deep inspect
+  const ivRank = firstNumber(ivRankRow, ['iv_rank_1y', 'iv_rank', 'rank']);
+
+  // ATM IV: from interpolated_iv (30-day) or iv_rank close
+  const atmIv = firstNumber(interpRow, ['volatility', 'iv', 'implied_volatility'])
+    ?? firstNumber(ivRankRow, ['close', 'volatility', 'atm_iv', 'iv']);
+
+  // IV Percentile
+  const ivPercentile = firstNumber(interpRow, ['percentile', 'iv_percentile'])
+    ?? firstNumber(ivRankRow, ['percentile', 'iv_percentile']);
+
+  // Realized Volatility (HV)
+  const realizedVol = firstNumber(realizedRow, ['volatility', 'realized_volatility', 'rv'])
+    ?? firstNumber(volRow, ['volatility', 'rv']);
+
   return {
-    atm_iv: firstNumber(ivRank, ['atm_iv', 'iv', 'implied_volatility']) ?? firstNumber(stats, ['atm_iv', 'iv']),
-    iv_rank: firstNumber(ivRank, ['iv_rank', 'rank']),
-    iv_percentile: firstNumber(ivRank, ['iv_percentile', 'percentile']),
+    atm_iv: atmIv,
+    iv30: atmIv,
+    iv_rank: ivRank,
+    iv_percentile: ivPercentile,
+    realized_volatility: realizedVol,
+    hv20: realizedVol,
     term_structure: raw.term_structure || raw.iv_term_structure || {},
-    realized_volatility: firstNumber(realized, ['realized_volatility', 'rv', 'volatility']),
-    iv_change_5m: firstNumber(stats, ['iv_change_5m', 'iv_change'])
+    iv_change_5m: null  // Not available from current endpoints
   };
 }
 
@@ -195,14 +420,17 @@ function normalizeSentiment(raw = {}) {
     ...asArray(raw.top_net_impact),
     ...asArray(raw.net_flow_expiry),
     ...asArray(raw.total_options_volume),
-    ...asArray(raw.sector_tide),
     ...asArray(raw.etf_tide)
   ];
   const first = tideRows[0] || {};
-  const callFlow = firstNumber(first, ['call_flow', 'calls_premium', 'call_premium']);
-  const putFlow = firstNumber(first, ['put_flow', 'puts_premium', 'put_premium']);
-  const netFlow = firstNumber(first, ['net_flow', 'net_premium']) ?? ((callFlow != null || putFlow != null) ? (callFlow ?? 0) - (putFlow ?? 0) : null);
-  const sentiment = netFlow == null ? 'unavailable' : netFlow > 0 ? 'risk_on' : netFlow < 0 ? 'risk_off' : 'mixed';
+  const callFlow = firstNumber(first, ['call_flow', 'calls_premium', 'call_premium', 'net_call_premium']);
+  const putFlow = firstNumber(first, ['put_flow', 'puts_premium', 'put_premium', 'net_put_premium']);
+  const netFlow = firstNumber(first, ['net_flow', 'net_premium'])
+    ?? ((callFlow != null || putFlow != null) ? (callFlow ?? 0) - (putFlow ?? 0) : null);
+  const sentiment = netFlow == null ? 'unavailable'
+    : netFlow > 0 ? 'risk_on'
+    : netFlow < 0 ? 'risk_off'
+    : 'mixed';
   return {
     market_tide: first.market_tide || first.tide || null,
     call_flow: callFlow,
@@ -213,8 +441,8 @@ function normalizeSentiment(raw = {}) {
 }
 
 function normalizeVolumeOi(raw = {}) {
-  const oiStrike = asArray(raw.oi_per_strike);
-  const oiExpiry = asArray(raw.oi_per_expiry);
+  const oiStrike = asArray(raw.oi_by_strike);
+  const oiExpiry = asArray(raw.oi_by_expiry);
   const maxPainRows = asArray(raw.max_pain);
   const volumeRows = [
     ...asArray(raw.options_volume),
@@ -222,8 +450,14 @@ function normalizeVolumeOi(raw = {}) {
     ...asArray(raw.volume_oi)
   ];
   return {
-    call_volume_levels: topByAbs(volumeRows.filter((row) => row.is_call === true || row.option_type === 'call'), ['volume', 'call_volume'], ['strike']),
-    put_volume_levels: topByAbs(volumeRows.filter((row) => row.is_put === true || row.option_type === 'put'), ['volume', 'put_volume'], ['strike']),
+    call_volume_levels: topByAbs(
+      volumeRows.filter(r => r.is_call === true || r.option_type === 'call'),
+      ['volume', 'call_volume'], ['strike']
+    ),
+    put_volume_levels: topByAbs(
+      volumeRows.filter(r => r.is_put === true || r.option_type === 'put'),
+      ['volume', 'put_volume'], ['strike']
+    ),
     oi_by_strike: oiStrike.slice(0, 50),
     oi_by_expiry: oiExpiry.slice(0, 50),
     max_pain: firstNumber(maxPainRows[0] || {}, ['max_pain', 'strike', 'price']),
@@ -233,20 +467,16 @@ function normalizeVolumeOi(raw = {}) {
 }
 
 function normalizeTechnical(raw = {}) {
-  const close = asArray(raw.ohlc)[0] || {};
   const vwap = firstNumber(asArray(raw.technical_vwap)[0] || {}, ['value', 'vwap']);
   const atr = firstNumber(asArray(raw.technical_atr)[0] || {}, ['value', 'atr']);
   const ema = firstNumber(asArray(raw.technical_ema)[0] || {}, ['value', 'ema']);
   const rsi = firstNumber(asArray(raw.technical_rsi)[0] || {}, ['value', 'rsi']);
-  const price = firstNumber(close, ['close', 'price']);
   const trend_bias =
-    price != null && ema != null && vwap != null
-      ? price > ema && price > vwap ? 'bullish' : price < ema && price < vwap ? 'bearish' : 'neutral'
+    vwap != null && ema != null
+      ? 'unknown'  // Need price context; resolved in decision engine
       : 'unknown';
   const channel_shape =
     atr == null ? 'unknown' : atr >= 20 ? 'expansion' : atr >= 12 ? 'chop' : 'compression';
-  const volumePressure =
-    firstNumber(close, ['volume']) == null ? 'unknown' : firstNumber(close, ['volume']) > 1000000 ? 'high' : 'normal';
   return {
     vwap,
     atr,
@@ -256,7 +486,7 @@ function normalizeTechnical(raw = {}) {
     bb_width: firstNumber(asArray(raw.technical_bbands)[0] || {}, ['bb_width', 'width']),
     trend_bias,
     channel_shape,
-    volume_pressure: volumePressure
+    volume_pressure: 'unknown'
   };
 }
 
@@ -274,17 +504,25 @@ export function normalizeUwApiSnapshot(snapshot = {}) {
   return {
     uw_raw: {
       greek_exposure: raw.greek_exposure || {},
+      greek_exposure_strike: raw.greek_exposure_strike || {},
       spot_gex: raw.spot_gex || {},
       options_flow: raw.options_flow || {},
-      darkpool: raw.darkpool_spy || raw.darkpool_spx || {},
-      volatility: raw.volatility || raw.volatility_stats || raw.iv_rank || {},
+      darkpool_spy: raw.darkpool_spy || {},
+      darkpool_spx: raw.darkpool_spx || {},
+      volatility: raw.volatility || {},
+      iv_rank: raw.iv_rank || {},
+      interpolated_iv: raw.interpolated_iv || {},
       market_tide: raw.market_tide || {},
-      volume_oi: raw.options_volume || raw.oi_per_strike || {}
+      net_prem_ticks: raw.net_prem_ticks || {}
     },
     uw_factors: {
       dealer_factors: {
         ...dealer,
-        ...spotGex
+        // Merge spot_gex candidates as fallback when greek_exposure_strike is empty
+        call_wall: dealer.call_wall ?? spotGex.call_wall_candidate,
+        put_wall: dealer.put_wall ?? spotGex.put_wall_candidate,
+        spot_gex_by_strike: spotGex.spot_gex_by_strike,
+        gex_pivots: spotGex.gex_pivots
       },
       flow_factors: flow,
       darkpool_factors: darkpool,
