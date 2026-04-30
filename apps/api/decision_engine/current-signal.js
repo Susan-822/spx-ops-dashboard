@@ -2251,6 +2251,13 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     dominant_scene: priceValidationEngine.dominant_scene ?? null,
     alert_level: priceValidationEngine.alert_level ?? 'normal'
   });
+
+  // Re-run health engine with AB context for better blocked summary
+  const updatedDataHealth = runDataHealthEngine({ 
+    stale_flags: signal.stale_flags, 
+    source_status: signal.source_status, 
+    normalized: { ...signal, ab_order_engine: abOrderEngine } 
+  });
   // 6. Volatility Engine (async, non-blocking — uses cached VIX + HV20 from price history)
   // fmpSnapshot.price.price = SPX spot (not .spot which may be undefined)
   // uw_iv30: prefer UW volatility_factors.atm_iv (IV30 proxy), fallback to uwNormalized
@@ -2391,7 +2398,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
         `TV：${normalizedRawNote.tv_sentinel.status}`,
         `执行状态：${rawNoteV2.final_decision.state} / ${rawNoteV2.final_decision.position_multiplier}x`
       ],
-      plain_chinese: rawNoteV2.final_decision.reason
+      plain_chinese: updatedDataHealth.summary || rawNoteV2.final_decision.reason
     },
     signal_conflict: {
       title: 'Signal Conflict｜final_decision',

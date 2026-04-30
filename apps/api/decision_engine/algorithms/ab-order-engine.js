@@ -191,11 +191,11 @@ export function buildAbOrderEngine({
     const _atmFmt = atm != null ? String(Math.round(atm)) : '--';
     const _lockedPlan = {
       state:        '\u9501\u4ed3\u89c2\u5bdf',
-      why:          '\u975e\u4ea4\u6613\u65f6\u6bb5\u6216\u4ef7\u683c\u6570\u636e\u4e0d\u53ef\u7528\uff0c\u5f00\u76d8\u540e\u81ea\u52a8\u89e3\u9501\u3002',
+      why:          '\u73b0\u4ef7\u6570\u636e\u672a\u63a5\u5165\uff08FMP \u8d85\u9650/TV \u672a\u63a8\u9001/UW \u65e0\u73b0\u4ef7\uff09\uff0c\u7b49\u5f85\u6570\u636e\u6062\u590d\u3002',
       watch:        '\u7b49\u5f85\u5f00\u76d8\u540e ATM \u4ef7\u683c\u786e\u8ba4',
       wait_long:    '\u7b49\u5f85\u5f00\u76d8\u540e\u5b9e\u65f6\u6570\u636e\u63a5\u5165',
       wait_short:   '\u7b49\u5f85\u5f00\u76d8\u540e\u5b9e\u65f6\u6570\u636e\u63a5\u5165',
-      forbidden:    '\u975e\u4ea4\u6613\u65f6\u6bb5\u7981\u6b62\u5f00\u4ed3',
+      forbidden:    '\u73b0\u4ef7\u6570\u636e\u7f3a\u5931\uff0c\u7981\u6b62\u5f00\u4ed3',
       invalidation: '\u5f00\u76d8\u540e\u4ef7\u683c\u5386\u53f2\u6ee1 10 \u5206\u949f\u81ea\u52a8\u89e3\u9501',
       confidence:   execution_confidence,
       confidence_label: _confLabel
@@ -204,7 +204,7 @@ export function buildAbOrderEngine({
       status: 'blocked',
       status_cn: '\u6570\u636e\u4e0d\u53ef\u7528',
       headline: '\u7b49\u5f85\u4ef7\u683c\u6570\u636e\u63a5\u5165',
-      judgment: '\u975e\u4ea4\u6613\u65f6\u6bb5\u6216\u4ef7\u683c\u6570\u636e\u4e0d\u53ef\u7528\uff0c\u5f00\u76d8\u540e\u81ea\u52a8\u89e3\u9501\u3002',
+      judgment: '\u73b0\u4ef7\u6570\u636e\u672a\u63a5\u5165\uff08FMP \u8d85\u9650/TV \u672a\u63a8\u9001/UW \u65e0\u73b0\u4ef7\uff09\uff0c\u7b49\u5f85\u6570\u636e\u6062\u590d\u3002',
       pin_warning: null,
       execution_confidence,
       plan_a: _lockedPlan,

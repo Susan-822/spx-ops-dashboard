@@ -32,7 +32,7 @@ export function runDataHealthEngine({ stale_flags, source_status, normalized }) 
     tv_fresh,
     any_stale: stale_flags.any_stale,
     summary: hard_block
-      ? '关键输入异常，禁止执行。'
+      ? (normalized?.ab_order_engine?.status === 'blocked' ? normalized.ab_order_engine.judgment : '关键输入异常，禁止执行。')
       : !command_inputs_fresh
         ? '指挥部关键输入不够新鲜。'
         : !tv_fresh
