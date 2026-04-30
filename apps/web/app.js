@@ -2127,72 +2127,157 @@ function renderHome(signal) {
           ${planLines}
         </section>
 
-        <!-- RIGHT: Key Levels — v2: ATM±5/10 trigger lines -->
-        <section class="key-levels-card">
-          <div class="key-levels-header">
-            <span class="key-levels-title">关键线</span>
-            <span class="key-levels-subtitle">0DTE 快进快出</span>
-          </div>
-          <!-- ATM center line -->
-          <div class="kl-atm-center">
-            <span class="kl-atm-icon">👁</span>
-            <span class="kl-atm-label">盘眼 ATM</span>
-            <span class="kl-atm-val">${escapeHtml(atmFmt)}</span>
-            ${spotInLock ? '<span class="kl-lock-badge">锁仓区</span>' : ''}
-          </div>
-          <!-- Bull side -->
-          <div class="kl-trigger-section bull-section">
-            <div class="kl-section-label bull">↗ 多头方向</div>
-            <div class="kl-trigger-row">
-              <div class="kl-trigger-item">
-                <span class="kl-trigger-tag">第一触发</span>
-                <span class="kl-trigger-val bull">${escapeHtml(bull1Fmt)}</span>
-              </div>
-              <div class="kl-trigger-item">
-                <span class="kl-trigger-tag">确认</span>
-                <span class="kl-trigger-val bull">${escapeHtml(bull2Fmt)}</span>
-              </div>
-            </div>
-            <div class="kl-target-row">
-              <span class="kl-target-label">目标：</span>
-              <span class="kl-target-val">${escapeHtml(bullTgt1Fmt)} / ${escapeHtml(bullTgt2Fmt)}</span>
-            </div>
-            <div class="kl-inv-row">
-              <span class="kl-inv-label">失效线：</span>
-              <span class="kl-inv-val">${escapeHtml(invBullFmt)}</span>
-            </div>
-          </div>
-          <!-- Bear side -->
-          <div class="kl-trigger-section bear-section">
-            <div class="kl-section-label bear">↘ 空头方向</div>
-            <div class="kl-trigger-row">
-              <div class="kl-trigger-item">
-                <span class="kl-trigger-tag">第一触发</span>
-                <span class="kl-trigger-val bear">${escapeHtml(bear1Fmt)}</span>
-              </div>
-              <div class="kl-trigger-item">
-                <span class="kl-trigger-tag">确认</span>
-                <span class="kl-trigger-val bear">${escapeHtml(bear2Fmt)}</span>
-              </div>
-            </div>
-            <div class="kl-target-row">
-              <span class="kl-target-label">目标：</span>
-              <span class="kl-target-val">${escapeHtml(bearTgt1Fmt)} / ${escapeHtml(bearTgt2Fmt)}</span>
-            </div>
-            <div class="kl-inv-row">
-              <span class="kl-inv-label">失效线：</span>
-              <span class="kl-inv-val">${escapeHtml(invBearFmt)}</span>
-            </div>
-          </div>
-          <!-- Far walls (background only) -->
-          <div class="kl-far-walls">
-            <span class="kl-far-label">远端墙（背景）：</span>
-            <span class="kl-far-val">${escapeHtml(farCallFmt)} / ${escapeHtml(farPutFmt)}</span>
-            <span class="kl-far-note">只作背景，不作日内触发</span>
-          </div>
-          ${hint ? `<div class="kl-hint">💡 ${escapeHtml(hint)}</div>` : ''}
-          ${pinWarn ? `<div class="kl-pin-warn">⚠ ${escapeHtml(pinWarn)}</div>` : ''}
-        </section>
+        <!-- RIGHT: Key Levels — v3: Dynamic A/B Order Status Card -->
+        ${(() => {
+          const abEng = signal.ab_order_engine || {};
+          const ateEng = signal.atm_trigger_engine || {};
+          const planA = abEng.plan_a || null;
+          const planB = abEng.plan_b || null;
+          const abStatus = abEng.status || 'blocked';
+          const abConf2 = abEng.execution_confidence ?? 0;
+          const abScenario = abEng.scenario || null;
+
+          function getOrderStatus(plan, trigStat, abStat) {
+            if (!plan || (plan.direction || '').toUpperCase() === 'WAIT') return 'waiting';
+            if (abStat === 'blocked') return 'blocked';
+            const dir = (plan.direction || '').toUpperCase();
+            if (abStat === 'ready') {
+              if ((dir === 'BULLISH' || dir === 'LONG') && (trigStat === 'bull_triggered' || trigStat === 'bull_watching')) return 'ready';
+              if ((dir === 'BEARISH' || dir === 'SHORT') && (trigStat === 'bear_triggered' || trigStat === 'bear_watching')) return 'ready';
+              return 'waiting';
+            }
+            return 'waiting';
+          }
+
+          function statusBadge(status, dir) {
+            const dl = (dir === 'BULLISH' || dir === 'LONG') ? '多' : (dir === 'BEARISH' || dir === 'SHORT') ? '空' : '观望';
+            if (status === 'ready')   return '<span class="ab-status-badge ready">'   + dl + ' 放行</span>';
+            if (status === 'blocked') return '<span class="ab-status-badge blocked">失效</span>';
+            if (dir === 'WAIT')       return '<span class="ab-status-badge waiting">等待</span>';
+            return '<span class="ab-status-badge waiting">' + dl + ' 等待</span>';
+          }
+
+          function dirIcon(dir) {
+            if (dir === 'BULLISH' || dir === 'LONG')   return '↗';
+            if (dir === 'BEARISH' || dir === 'SHORT')  return '↘';
+            return '—';
+          }
+
+          function dirCls(dir) {
+            if (dir === 'BULLISH' || dir === 'LONG')   return 'bull';
+            if (dir === 'BEARISH' || dir === 'SHORT')  return 'bear';
+            return 'neutral';
+          }
+
+          function renderPlanCard(plan, label, trigStat, abStat) {
+            if (!plan) return '';
+            const status   = getOrderStatus(plan, trigStat, abStat);
+            const dir      = (plan.direction || 'WAIT').toUpperCase();
+            const cls      = dirCls(dir);
+            const icon     = dirIcon(dir);
+            const dirCn    = plan.direction_cn || (dir === 'BULLISH' || dir === 'LONG' ? '多头方向单' : dir === 'BEARISH' || dir === 'SHORT' ? '空头方向单' : '观望');
+            const badge    = statusBadge(status, dir);
+            const instr    = plan.instrument   || '--';
+            const actionNow= plan.action_now   || '--';
+            const waitCond = (dir === 'BULLISH' || dir === 'LONG') ? (plan.wait_long || '--') : (plan.wait_short || '--');
+            const forbidden= plan.forbidden    || '--';
+            const inv      = plan.invalidation || '--';
+            const tp1      = plan.tp1          || '--';
+            const tp2      = plan.tp2          || '--';
+            const rationale= plan.rationale    || '';
+            const rowCls   = 'ab-status-row ' + status;
+            return (
+              '<div class="ab-plan-card ' + cls + ' ' + status + '">' +
+                '<div class="ab-plan-header">' +
+                  '<span class="ab-plan-label ' + cls + '">' + escapeHtml(label) + ' ' + icon + ' ' + escapeHtml(dirCn) + '</span>' +
+                  badge +
+                '</div>' +
+                '<div class="ab-plan-instrument">' + escapeHtml(instr) + '</div>' +
+                '<div class="' + rowCls + '">' +
+                  '<div class="ab-plan-row">' +
+                    '<span class="ab-plan-key">入场条件</span>' +
+                    '<span class="ab-plan-val entry">' + escapeHtml(waitCond) + '</span>' +
+                  '</div>' +
+                  '<div class="ab-plan-row">' +
+                    '<span class="ab-plan-key">现在动作</span>' +
+                    '<span class="ab-plan-val action">' + escapeHtml(actionNow) + '</span>' +
+                  '</div>' +
+                  '<div class="ab-plan-row">' +
+                    '<span class="ab-plan-key">目标一</span>' +
+                    '<span class="ab-plan-val target">' + escapeHtml(tp1) + '</span>' +
+                  '</div>' +
+                  '<div class="ab-plan-row">' +
+                    '<span class="ab-plan-key">目标二</span>' +
+                    '<span class="ab-plan-val target">' + escapeHtml(tp2) + '</span>' +
+                  '</div>' +
+                  '<div class="ab-plan-row">' +
+                    '<span class="ab-plan-key">止损 / 失效</span>' +
+                    '<span class="ab-plan-val stop">' + escapeHtml(inv) + '</span>' +
+                  '</div>' +
+                  '<div class="ab-plan-row forbidden-row">' +
+                    '<span class="ab-plan-key">禁做</span>' +
+                    '<span class="ab-plan-val forbidden">' + escapeHtml(forbidden) + '</span>' +
+                  '</div>' +
+                  (rationale ? '<div class="ab-plan-rationale">' + escapeHtml(rationale) + '</div>' : '') +
+                '</div>' +
+              '</div>'
+            );
+          }
+
+          const trigStat2  = ateEng.trigger_status || triggerStatus || 'locked';
+          const planACard  = renderPlanCard(planA, 'A单', trigStat2, abStatus);
+          const planBCard  = planB ? renderPlanCard(planB, 'B单', trigStat2, abStatus) : '';
+
+          const confCls2 = abConf2 >= 70 ? 'conf-high' : abConf2 >= 40 ? 'conf-mid' : 'conf-low';
+          const confLbl2 = abConf2 >= 70 ? '高可信，可执行' : abConf2 >= 40 ? '中可信，小仓等确认' : '低可信，只观察';
+
+          const sceneMap = {
+            'positive_put_squeezed':  '底部背离',
+            'negative_put_effective': '空头动能',
+            'positive_call_capped':   '震荡夹击',
+            'negative_call_effective':'多头突破',
+            'positive_call_effective':'正Gamma突破',
+            'negative_put_squeezed':  '空头陷阱'
+          };
+          const sceneLabel = abScenario ? (sceneMap[abScenario] || abScenario) : null;
+
+          return (
+            '<section class="key-levels-card ab-order-card">' +
+              '<div class="key-levels-header">' +
+                '<span class="key-levels-title">A/B 单</span>' +
+                '<span class="key-levels-subtitle">0DTE 执行预案</span>' +
+              '</div>' +
+              '<div class="kl-atm-center">' +
+                '<span class="kl-atm-icon">👁</span>' +
+                '<span class="kl-atm-label">盘眼 ATM</span>' +
+                '<span class="kl-atm-val">' + escapeHtml(atmFmt) + '</span>' +
+                (spotInLock ? '<span class="kl-lock-badge">锁仓区</span>' : '') +
+                (sceneLabel ? '<span class="kl-scene-tag">' + escapeHtml(sceneLabel) + '</span>' : '') +
+              '</div>' +
+              '<div class="ab-plans-container">' +
+                (planACard || '<div class="ab-plan-empty">A单：等待市场条件满足</div>') +
+                planBCard +
+              '</div>' +
+              '<div class="ab-conf-row">' +
+                '<span class="ab-conf-label">可信度</span>' +
+                '<div class="ab-conf-bar-wrap">' +
+                  '<div class="ab-conf-bar-track">' +
+                    '<div class="ab-conf-bar-fill ' + confCls2 + '" style="width:' + Math.min(100, abConf2) + '%"></div>' +
+                  '</div>' +
+                '</div>' +
+                '<span class="ab-conf-val ' + confCls2 + '">' + abConf2 + '/100</span>' +
+                '<span class="ab-conf-desc ' + confCls2 + '">' + confLbl2 + '</span>' +
+              '</div>' +
+              '<div class="kl-far-walls">' +
+                '<span class="kl-far-label">远端墙（背景）：</span>' +
+                '<span class="kl-far-val">' + escapeHtml(farCallFmt) + ' / ' + escapeHtml(farPutFmt) + '</span>' +
+                '<span class="kl-far-note">只作背景，不作日内触发</span>' +
+              '</div>' +
+              (hint    ? '<div class="kl-hint">💡 ' + escapeHtml(hint) + '</div>' : '') +
+              (pinWarn ? '<div class="kl-pin-warn">⚠ ' + escapeHtml(pinWarn) + '</div>' : '') +
+            '</section>'
+          );
+        })()}
       </div>
 
       <!-- BOTTOM CARDS ROW -->
