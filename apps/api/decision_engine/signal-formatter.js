@@ -21,70 +21,149 @@ function fmt(n, decimals = 0) {
 }
 
 // ── Primary Action Card ────────────────────────────────────────────────────────
+// v2: Uses atm_trigger_engine for ATM±5/10 trigger lines (not far GEX walls)
+// Three-state output: LONG_CALL / SHORT_PUT / LOCKED
 function buildPrimaryCard(signal) {
-  const ab  = signal.ab_order_engine || {};
-  const atm = signal.atm_engine || {};
+  const ab  = signal.ab_order_engine     || {};
+  const atm = signal.atm_engine          || {};
+  const ate = signal.atm_trigger_engine  || {};  // NEW: ATM Trigger Engine
   const gr  = signal.gamma_regime_engine || {};
   const fb  = signal.flow_behavior_engine || {};
-  const pc  = signal.price_contract || {};
-  const dw  = signal.dealer_wall_map || {};
+  const pc  = signal.price_contract      || {};
+  const dw  = signal.dealer_wall_map     || {};
   const pve = signal.price_validation_engine || {};
-
   const spot    = pc.spot ?? pc.live_price ?? null;
   const spotFmt = spot != null ? `SPX ${fmt(spot, 1)}` : 'SPX --';
 
-  // Determine primary direction
+  // ── ATM Trigger Lines (from atm_trigger_engine) ──────────────────────────
+  const atmVal        = ate.atm          ?? atm.atm ?? null;
+  const bull1         = ate.bull_trigger_1 ?? null;  // ATM+5
+  const bull2         = ate.bull_trigger_2 ?? null;  // ATM+10
+  const bullTgt1      = ate.bull_target_1  ?? null;  // ATM+15
+  const bullTgt2      = ate.bull_target_2  ?? null;  // ATM+20
+  const bear1         = ate.bear_trigger_1 ?? null;  // ATM-5
+  const bear2         = ate.bear_trigger_2 ?? null;  // ATM-10
+  const bearTgt1      = ate.bear_target_1  ?? null;  // ATM-15
+  const bearTgt2      = ate.bear_target_2  ?? null;  // ATM-20
+  const invBull       = ate.invalidation_bull ?? null;  // ATM-10
+  const invBear       = ate.invalidation_bear ?? null;  // ATM+10
+  const triggerStatus = ate.trigger_status ?? 'locked';
+  const spotInLock    = ate.spot_in_lock_zone ?? true;
+
+  // Far walls go to Radar only (never used as homepage triggers)
+  const globalCallWall = ate.global_call_wall ?? dw.global_call_gex_cluster ?? null;
+  const globalPutWall  = ate.global_put_wall  ?? dw.global_put_gex_cluster  ?? null;
+
+  // ── Determine primary direction (three-state: LONG_CALL / SHORT_PUT / LOCKED) ──
   let direction      = 'LOCKED';
   let directionLabel = '锁仓';
   let directionColor = 'gray';
   let badge          = 'LOCKED';
 
+  // Priority 1: ab_order_engine has a confirmed direction
   if (ab.status !== 'blocked' && ab.plan_a) {
     const planADir = ab.plan_a.direction ?? '';
-    if (planADir === 'long' || planADir === 'bullish' || fb.behavior === 'call_effective') {
+    if (planADir === 'long' || planADir === 'bullish') {
       direction = 'LONG_CALL'; directionLabel = '做 Call'; directionColor = 'green'; badge = 'LONG_CALL';
-    } else if (planADir === 'short' || planADir === 'bearish' || fb.behavior === 'put_effective') {
+    } else if (planADir === 'short' || planADir === 'bearish') {
       direction = 'SHORT_PUT'; directionLabel = '做 Put'; directionColor = 'red'; badge = 'SHORT_PUT';
     }
   }
 
-  const headline    = ab.headline || `${spotFmt} ｜ 锁仓 ｜ ${ab.blocked_reason ?? '等待条件'}`;
-  const subHeadline = ab.plan_a?.summary || (ab.status === 'blocked' ? (ab.status_cn ?? '等待条件满足') : '');
+  // Priority 2: ATM trigger engine confirms direction (only when both trigger + flow align)
+  if (direction === 'LOCKED') {
+    if (triggerStatus === 'bull_triggered' && fb.behavior === 'call_effective') {
+      direction = 'LONG_CALL'; directionLabel = '做 Call'; directionColor = 'green'; badge = 'LONG_CALL';
+    } else if (triggerStatus === 'bear_triggered' && fb.behavior === 'put_effective') {
+      direction = 'SHORT_PUT'; directionLabel = '做 Put'; directionColor = 'red'; badge = 'SHORT_PUT';
+    }
+  }
 
-  const plan = ab.plan_a ? {
-    state:        ab.plan_a.state        ?? '--',
-    why:          ab.plan_a.why          ?? '--',
-    entry:        ab.plan_a.entry        ?? '--',
-    action:       ab.plan_a.action       ?? '--',
-    stop:         ab.plan_a.stop         ?? '--',
-    target:       ab.plan_a.target       ?? '--',
-    forbidden:    ab.plan_a.forbidden    ?? '--',
-    invalidation: ab.plan_a.invalidation ?? '--'
-  } : null;
-
-  // 可信度三档颜色
+  // ── Confidence ────────────────────────────────────────────────────────────
   const conf = ab.execution_confidence ?? 0;
   let confLabel = '低｜只观察';
   let confColor = 'gray';
   if      (conf >= 70) { confLabel = '高｜可执行';      confColor = 'green'; }
   else if (conf >= 40) { confLabel = '中｜小仓等确认';  confColor = 'amber'; }
   else                 { confLabel = '低｜只观察';       confColor = 'gray';  }
-  // LOCKED 状态也输出完整六行指令（从 ab.plan_a 读取，blocked 时已有 _lockedPlan）
-  const lockedPlan = ab.plan_a ? {
-    state:        ab.plan_a.state        ?? '锁仓观察',
-    why:          ab.plan_a.why          ?? '--',
-    watch:        ab.plan_a.watch        ?? '--',
-    wait_long:    ab.plan_a.wait_long    ?? '--',
-    wait_short:   ab.plan_a.wait_short   ?? '--',
-    forbidden:    ab.plan_a.forbidden    ?? '--',
-    invalidation: ab.plan_a.invalidation ?? '--',
-    confidence:   conf,
-    confidence_label: confLabel
-  } : null;
+
+  // ── Build active plan ─────────────────────────────────────────────────────
+  const atmStr  = atmVal != null ? String(Math.round(atmVal)) : '--';
+  const b1Str   = bull1  != null ? String(Math.round(bull1))  : '--';
+  const b2Str   = bull2  != null ? String(Math.round(bull2))  : '--';
+  const r1Str   = bear1  != null ? String(Math.round(bear1))  : '--';
+  const r2Str   = bear2  != null ? String(Math.round(bear2))  : '--';
+  const bt1Str  = bullTgt1 != null ? String(Math.round(bullTgt1)) : '--';
+  const bt2Str  = bullTgt2 != null ? String(Math.round(bullTgt2)) : '--';
+  const brt1Str = bearTgt1 != null ? String(Math.round(bearTgt1)) : '--';
+  const brt2Str = bearTgt2 != null ? String(Math.round(bearTgt2)) : '--';
+  const invBullStr = invBull != null ? String(Math.round(invBull)) : '--';
+  const invBearStr = invBear != null ? String(Math.round(invBear)) : '--';
+
+  const gammaNote = gr.gamma_regime === 'positive'
+    ? `正 Gamma 磁吸，做市商把价格拉回 ${atmStr} ATM，来回割。`
+    : gr.gamma_regime === 'negative'
+      ? `负 Gamma 放波，方向确认后单边行情概率高。`
+      : `等方向确认。`;
+
+  let activePlan = null;
+  if (direction === 'LONG_CALL') {
+    const abPlan = ab.plan_a ?? null;
+    activePlan = {
+      state:        '多头预案',
+      why:          `价格站上 ${b1Str} 第一触发线，等 ${b2Str} 确认后做多`,
+      entry:        abPlan?.entry ?? `${b2Str} 站稳后回踩 8EMA 入场`,
+      action:       `做 Call：${b2Str} 站稳确认，目标 ${bt1Str}–${bt2Str}`,
+      stop:         abPlan?.stop ?? `${invBullStr} 跌破止损`,
+      target:       abPlan?.target ?? `${bt1Str} → ${bt2Str}`,
+      forbidden:    `禁止在 ${atmStr} ATM 附近直接追多；禁止在 Put Flow 增强时买 Call`,
+      invalidation: `有效跌破 ${invBullStr}，多头预案作废`
+    };
+  } else if (direction === 'SHORT_PUT') {
+    const abPlan = ab.plan_a ?? null;
+    activePlan = {
+      state:        '空头预案',
+      why:          `价格跌破 ${r1Str} 第一触发线，等 ${r2Str} 确认后做空`,
+      entry:        abPlan?.entry ?? `${r2Str} 跌破后反抽 8EMA 入场`,
+      action:       `做 Put：${r2Str} 跌破确认，目标 ${brt1Str}–${brt2Str}`,
+      stop:         abPlan?.stop ?? `${invBearStr} 站上止损`,
+      target:       abPlan?.target ?? `${brt1Str} → ${brt2Str}`,
+      forbidden:    `禁止在 ${atmStr} ATM 附近直接追空；禁止在 Call Flow 增强时买 Put`,
+      invalidation: `有效站上 ${invBearStr}，空头预案作废`
+    };
+  } else {
+    // LOCKED: ATM observation plan
+    activePlan = {
+      state:        '锁仓观察',
+      why:          spotInLock
+        ? `价格在 ${r1Str}–${b1Str} ATM 锁仓区内。${gammaNote}`
+        : (ate.trigger_label ?? `等 ${b1Str} 站稳或 ${r1Str} 跌破`),
+      watch:        `上方 ${b1Str} 能不能站稳 / 下方 ${r1Str} 能不能跌破`,
+      wait_long:    `站稳 ${b1Str}（第一触发），等 ${b2Str} 确认，目标 ${bt1Str}–${bt2Str}`,
+      wait_short:   `跌破 ${r1Str}（第一触发），等 ${r2Str} 确认，目标 ${brt1Str}–${brt2Str}`,
+      forbidden:    `${r1Str}–${b1Str} ATM 锁仓区内禁止买 Call / Put`,
+      invalidation: `多头失效线 ${invBullStr} / 空头失效线 ${invBearStr}`,
+      confidence:   conf,
+      confidence_label: confLabel
+    };
+    // Fallback to ab_order_engine plan if atm_trigger_engine has no data
+    if (!ate.atm && ab.plan_a) {
+      activePlan = {
+        state: ab.plan_a.state ?? '锁仓观察', why: ab.plan_a.why ?? '--',
+        watch: ab.plan_a.watch ?? '--', wait_long: ab.plan_a.wait_long ?? '--',
+        wait_short: ab.plan_a.wait_short ?? '--', forbidden: ab.plan_a.forbidden ?? '--',
+        invalidation: ab.plan_a.invalidation ?? '--', confidence: conf, confidence_label: confLabel
+      };
+    }
+  }
+
+  const headline    = ab.headline || `${spotFmt} ｜ ${directionLabel} ｜ ${triggerStatus === 'locked' ? 'ATM 附近不做' : (ate.trigger_label ?? '等待条件')}`;
+  const subHeadline = activePlan?.state ?? (ab.status === 'blocked' ? (ab.status_cn ?? '等待条件满足') : '');
+
   return {
     direction, direction_label: directionLabel, direction_color: directionColor, badge,
     headline, sub_headline: subHeadline,
-    plan: ab.status !== 'blocked' ? plan : lockedPlan,
+    plan: activePlan,
     plan_b: ab.plan_b ?? null,
     spot, spot_fmt: spotFmt,
     spot_source: pc.spot_source ?? '--',
@@ -94,11 +173,32 @@ function buildPrimaryCard(signal) {
     dominant_scene: pve.dominant_scene ?? null,
     scene_warnings: pve.active_scenes ?? [],
     alert_level: pve.alert_level ?? 'normal',
-    locked: ab.status === 'blocked',
+    locked: direction === 'LOCKED',
     locked_reason: ab.blocked_reason ?? null,
     execution_confidence: conf,
     confidence_label: confLabel,
-    confidence_color: confColor
+    confidence_color: confColor,
+    // ATM trigger context (for frontend rendering)
+    trigger_status: triggerStatus,
+    trigger_label:  ate.trigger_label ?? null,
+    atm:            atmVal,
+    atm_fmt:        atmVal != null ? fmt(atmVal) : '--',
+    bull_trigger_1: bull1, bull_trigger_1_fmt: bull1 != null ? fmt(bull1) : '--',
+    bull_trigger_2: bull2, bull_trigger_2_fmt: bull2 != null ? fmt(bull2) : '--',
+    bull_target_1:  bullTgt1, bull_target_1_fmt: bullTgt1 != null ? fmt(bullTgt1) : '--',
+    bull_target_2:  bullTgt2, bull_target_2_fmt: bullTgt2 != null ? fmt(bullTgt2) : '--',
+    bear_trigger_1: bear1, bear_trigger_1_fmt: bear1 != null ? fmt(bear1) : '--',
+    bear_trigger_2: bear2, bear_trigger_2_fmt: bear2 != null ? fmt(bear2) : '--',
+    bear_target_1:  bearTgt1, bear_target_1_fmt: bearTgt1 != null ? fmt(bearTgt1) : '--',
+    bear_target_2:  bearTgt2, bear_target_2_fmt: bearTgt2 != null ? fmt(bearTgt2) : '--',
+    invalidation_bull: invBull, invalidation_bull_fmt: invBull != null ? fmt(invBull) : '--',
+    invalidation_bear: invBear, invalidation_bear_fmt: invBear != null ? fmt(invBear) : '--',
+    spot_in_lock_zone: spotInLock,
+    // Far walls (Radar only — NOT homepage triggers)
+    global_call_wall: globalCallWall,
+    global_put_wall:  globalPutWall,
+    global_call_wall_fmt: globalCallWall != null ? fmt(globalCallWall) : '--',
+    global_put_wall_fmt:  globalPutWall  != null ? fmt(globalPutWall)  : '--'
   };
 }
 
@@ -152,18 +252,31 @@ function buildSentimentBar(signal) {
 }
 
 // ── Key Levels ─────────────────────────────────────────────────────────────────
+// v2: Uses atm_trigger_engine for near-term trigger lines
+// bull_trigger / bear_trigger now = ATM±5 (not far GEX walls)
+// Far walls go to global_call_wall / global_put_wall (Radar only)
 function buildLevels(signal) {
-  const atm = signal.atm_engine      || {};
-  const dw  = signal.dealer_wall_map || {};
-  const pc  = signal.price_contract  || {};
-
+  const atm = signal.atm_engine          || {};
+  const ate = signal.atm_trigger_engine  || {};  // NEW
+  const dw  = signal.dealer_wall_map     || {};
+  const pc  = signal.price_contract      || {};
   const spot       = pc.spot ?? pc.live_price ?? null;
-  const atmLevel   = atm.atm ?? null;
+  const atmLevel   = ate.atm ?? atm.atm ?? null;
   const wallStatus = dw.wall_status ?? 'unavailable';
 
-  // Near walls (already filtered by spot in dealer-wall-engine)
-  const nearCallWall = wallStatus !== 'unavailable' ? (dw.near_call_wall ?? null) : null;
-  const nearPutWall  = wallStatus !== 'unavailable' ? (dw.near_put_wall  ?? null) : null;
+  // ── Near trigger lines (ATM±5/10 from atm_trigger_engine) ─────────────────
+  const bull1 = ate.bull_trigger_1 ?? null;  // ATM+5
+  const bull2 = ate.bull_trigger_2 ?? null;  // ATM+10
+  const bear1 = ate.bear_trigger_1 ?? null;  // ATM-5
+  const bear2 = ate.bear_trigger_2 ?? null;  // ATM-10
+
+  // ── Far walls (Radar only, not homepage triggers) ──────────────────────────
+  const globalCallWall = ate.global_call_wall ?? dw.global_call_gex_cluster ?? null;
+  const globalPutWall  = ate.global_put_wall  ?? dw.global_put_gex_cluster  ?? null;
+
+  // ── Near walls (ATM±50, homepage background only) ─────────────────────────
+  const nearCallWall = ate.near_call_wall ?? (wallStatus !== 'unavailable' ? (dw.near_call_wall ?? null) : null);
+  const nearPutWall  = ate.near_put_wall  ?? (wallStatus !== 'unavailable' ? (dw.near_put_wall  ?? null) : null);
 
   // Gamma flip display
   const gammaFlip  = dw.gamma_flip ?? null;
@@ -172,38 +285,93 @@ function buildLevels(signal) {
     ? 'Gamma Flip：远离现价，不参与日内执行。'
     : (gammaFlip != null ? `Gamma Flip ${fmt(gammaFlip)}` : '翻转点不可判断');
 
-  // Life/death line
-  const lifeDeath = !flipFar && gammaFlip != null ? gammaFlip
-    : (atmLevel != null ? atmLevel - 20 : null);
+  // Life/death line (ATM-10 = invalidation_bull from atm_trigger_engine)
+  const lifeDeath = ate.invalidation_bull ?? (!flipFar && gammaFlip != null ? gammaFlip
+    : (atmLevel != null ? atmLevel - 10 : null));
 
-  // Hint
+  // ── Hint (ATM-relative, not wall-relative) ─────────────────────────────────
   let hint = null;
-  if (atmLevel != null && spot != null && Math.abs(spot - atmLevel) <= 5) {
-    hint = `${fmt(atmLevel)} ATM 附近不要乱做，等价格离开 ATM 区后再判断。`;
-  } else if (nearPutWall != null) {
-    hint = `跌破 ${fmt(nearPutWall)} 才算空头更主动。`;
+  const spotInLock = ate.spot_in_lock_zone ?? (
+    atmLevel != null && spot != null && Math.abs(spot - atmLevel) <= 5
+  );
+  if (spotInLock) {
+    hint = `${fmt(atmLevel)} ATM 附近不做。等 ${bull1 != null ? fmt(bull1) : '--'} 站稳或 ${bear1 != null ? fmt(bear1) : '--'} 跌破。`;
+  } else if (ate.trigger_status === 'bull_watching') {
+    hint = `价格在 ${fmt(bull1)} 上方，等 ${fmt(bull2)} 站稳确认多头。`;
+  } else if (ate.trigger_status === 'bear_watching') {
+    hint = `价格在 ${fmt(bear1)} 下方，等 ${fmt(bear2)} 跌破确认空头。`;
+  } else if (ate.trigger_status === 'bull_triggered') {
+    hint = `多头确认：${fmt(bull2)} 站稳，目标 ${ate.bull_target_1_fmt ?? '--'}–${ate.bull_target_2_fmt ?? '--'}。`;
+  } else if (ate.trigger_status === 'bear_triggered') {
+    hint = `空头确认：${fmt(bear2)} 跌破，目标 ${ate.bear_target_1_fmt ?? '--'}–${ate.bear_target_2_fmt ?? '--'}。`;
   }
 
   return {
     atm: atmLevel,
     atm_fmt: atmLevel != null ? fmt(atmLevel) : '--',
-    bull_trigger: nearCallWall,
-    bull_trigger_fmt: nearCallWall != null ? fmt(nearCallWall) : 'unavailable',
-    bear_trigger: nearPutWall,
-    bear_trigger_fmt: nearPutWall != null ? fmt(nearPutWall) : 'unavailable',
+
+    // ── Near trigger lines (ATM±5/10) — homepage primary ──────────────────
+    bull_trigger:       bull1,
+    bull_trigger_fmt:   bull1 != null ? fmt(bull1) : 'unavailable',
+    bull_trigger_2:     bull2,
+    bull_trigger_2_fmt: bull2 != null ? fmt(bull2) : 'unavailable',
+    bear_trigger:       bear1,
+    bear_trigger_fmt:   bear1 != null ? fmt(bear1) : 'unavailable',
+    bear_trigger_2:     bear2,
+    bear_trigger_2_fmt: bear2 != null ? fmt(bear2) : 'unavailable',
+
+    // ── Targets ────────────────────────────────────────────────────────────
+    bull_target_1: ate.bull_target_1 ?? null,
+    bull_target_1_fmt: ate.bull_target_1_fmt ?? '--',
+    bull_target_2: ate.bull_target_2 ?? null,
+    bull_target_2_fmt: ate.bull_target_2_fmt ?? '--',
+    bear_target_1: ate.bear_target_1 ?? null,
+    bear_target_1_fmt: ate.bear_target_1_fmt ?? '--',
+    bear_target_2: ate.bear_target_2 ?? null,
+    bear_target_2_fmt: ate.bear_target_2_fmt ?? '--',
+
+    // ── Invalidation lines ─────────────────────────────────────────────────
+    invalidation_bull: ate.invalidation_bull ?? null,
+    invalidation_bull_fmt: ate.invalidation_bull_fmt ?? '--',
+    invalidation_bear: ate.invalidation_bear ?? null,
+    invalidation_bear_fmt: ate.invalidation_bear_fmt ?? '--',
+
+    // ── Lock zone ──────────────────────────────────────────────────────────
+    lock_zone: ate.lock_zone ?? null,
+    spot_in_lock_zone: spotInLock,
+
+    // ── Life/death line ────────────────────────────────────────────────────
     life_death: lifeDeath,
     life_death_fmt: lifeDeath != null ? fmt(lifeDeath) : '--',
+
+    // ── Gamma flip ─────────────────────────────────────────────────────────
     gamma_flip: gammaFlip,
     gamma_flip_display: flipDisplay,
     gamma_flip_far: flipFar,
+
+    // ── Near walls (ATM±50, homepage background) ───────────────────────────
     near_call_wall: nearCallWall,
     near_put_wall:  nearPutWall,
+    near_call_wall_fmt: nearCallWall != null ? fmt(nearCallWall) : '--',
+    near_put_wall_fmt:  nearPutWall  != null ? fmt(nearPutWall)  : '--',
+
+    // ── Far walls (Radar only) ─────────────────────────────────────────────
+    global_call_wall: globalCallWall,
+    global_put_wall:  globalPutWall,
+    global_call_wall_fmt: globalCallWall != null ? fmt(globalCallWall) : '--',
+    global_put_wall_fmt:  globalPutWall  != null ? fmt(globalPutWall)  : '--',
+
+    // Legacy fields (kept for backward compat)
     wall_status: wallStatus,
     wall_errors: dw.wall_errors ?? [],
     global_call_gex_cluster: dw.global_call_gex_cluster ?? null,
     global_put_gex_cluster:  dw.global_put_gex_cluster  ?? null,
     global_gex_clusters:     dw.global_gex_clusters     ?? [],
+
     hint,
+    trigger_status: ate.trigger_status ?? 'unknown',
+    trigger_label:  ate.trigger_label  ?? null,
+    gamma_note:     ate.gamma_note     ?? null,
     pin_risk: atm.pin_risk ?? null,
     pin_warning: (atm.pin_risk ?? 0) >= 70 ? `ATM ${fmt(atmLevel)} 附近禁止乱买 0DTE` : null
   };
@@ -248,13 +416,31 @@ function buildMoneyRead(signal) {
   const gammaRegime = gr.gamma_regime ?? 'unknown';
   let mmPath = '方向不明，等待数据。';
   let mmTalk = '做市商路径不明，等待数据改善。';
-  let mmBullScene = `站稳 ${cwFmt}，说明上方卖压被吃掉，才转多。`;
-  let mmBearScene = `跌破 ${pwFmt}，说明托盘失败，才转空。`;
-  let mmAction    = `${atmFmt} ATM 附近锁仓，等方向确认。`;
+  // ── ATM Trigger Engine context for mm_path_card ──────────────────────────
+  const ate    = signal.atm_trigger_engine || {};
+  const bull1F = ate.bull_trigger_1_fmt ?? (cwFmt !== '--' ? cwFmt : '--');
+  const bull2F = ate.bull_trigger_2_fmt ?? '--';
+  const bear1F = ate.bear_trigger_1_fmt ?? (pwFmt !== '--' ? pwFmt : '--');
+  const bear2F = ate.bear_trigger_2_fmt ?? '--';
+  const bt1F   = ate.bull_target_1_fmt  ?? '--';
+  const bt2F   = ate.bull_target_2_fmt  ?? '--';
+  const brt1F  = ate.bear_target_1_fmt  ?? '--';
+  const brt2F  = ate.bear_target_2_fmt  ?? '--';
+  // Far walls (background only)
+  const farCallFmt = ate.global_call_wall_fmt ?? (dw.global_call_gex_cluster != null ? String(Math.round(dw.global_call_gex_cluster)) : '--');
+  const farPutFmt  = ate.global_put_wall_fmt  ?? (dw.global_put_gex_cluster  != null ? String(Math.round(dw.global_put_gex_cluster))  : '--');
+  // 5m+15m dual window narrative
+  const dualNarrative = fb.dual_window_narrative ?? null;
+  const flow5mLabel   = fb.flow_5m_label  ?? null;
+  const flow15mLabel  = fb.flow_15m_label ?? null;
+
+  let mmBullScene = `先看 ${bull1F} / ${bull2F}，不是 ${farCallFmt}。站稳 ${bull2F} 后目标 ${bt1F}–${bt2F}。`;
+  let mmBearScene = `先看 ${bear1F} / ${bear2F}，不是 ${farPutFmt}。跌破 ${bear2F} 后目标 ${brt1F}–${brt2F}。`;
+  let mmAction    = `${atmFmt} ATM 附近不做，等 ${bull1F} 站稳或 ${bear1F} 跌破。`;
   if (gammaRegime === 'positive') {
     mmPath   = '正 Gamma 吸回 ATM。';
-    mmTalk   = `做市商更容易把价格吸回 ${atmFmt} ATM 附近，让 Call 和 Put 都磨损。${atmFmt} 附近不要乱做，等 ${cwFmt} 站稳或 ${pwFmt} 跌破。`;
-    mmAction = `${atmFmt} ATM 附近不做，等 ${cwFmt} 站稳或 ${pwFmt} 跌破。`;
+    mmTalk   = `做市商更容易把价格吸回 ${atmFmt} 附近，让 Call 和 Put 都磨损。${atmFmt} 附近不要乱做，等 ${bull1F} 站稳或 ${bear1F} 跌破。`;
+    mmAction = `${atmFmt} ATM 附近不做，等 ${bull1F} 站稳或 ${bear1F} 跌破。`;
   } else if (gammaRegime === 'negative') {
     mmPath   = '负 Gamma 放大波动。';
     mmTalk   = `负 Gamma 环境，做市商需要反向对冲，价格波动容易被放大，单边行情概率更高。方向确认后可以跟，但要快进快出。`;
@@ -266,7 +452,22 @@ function buildMoneyRead(signal) {
     bull_scene:     mmBullScene,
     bear_scene:     mmBearScene,
     current_action: mmAction,
-    gamma_regime:   gammaRegime
+    gamma_regime:   gammaRegime,
+    // ATM trigger lines for mm_path_card display
+    atm_fmt:        atmFmt,
+    bull_trigger_1: bull1F, bull_trigger_2: bull2F,
+    bear_trigger_1: bear1F, bear_trigger_2: bear2F,
+    bull_target_1:  bt1F,   bull_target_2:  bt2F,
+    bear_target_1:  brt1F,  bear_target_2:  brt2F,
+    // Far walls (background only, not triggers)
+    far_call_wall:  farCallFmt,
+    far_put_wall:   farPutFmt,
+    far_wall_note:  `远端墙：${farCallFmt} / ${farPutFmt} 只作背景，不作日内触发。`,
+    // 5m+15m dual window
+    dual_window_narrative: dualNarrative,
+    flow_5m_label:  flow5mLabel,
+    flow_15m_label: flow15mLabel,
+    dual_window_aligned: fb.dual_window_aligned ?? false
   };
   // 做市商会干嘛（资金模块内嵌）
   let mmWhatToDo = `${atmFmt} 附近不做。等上破 ${cwFmt} 或下破 ${pwFmt}。`;

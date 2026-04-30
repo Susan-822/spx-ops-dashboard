@@ -1823,3 +1823,78 @@ a { color: inherit; text-decoration: none; }
 .dp-level-tag.bearish { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; }
 .dp-level-tag.bullish { background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; }
 .dp-level-tag { padding:2px 8px; border-radius:12px; font-size:.75rem; font-weight:600; }
+
+/* ── ATM Trigger Lines Key Levels Card v2 ─────────────────────────────────── */
+.key-levels-subtitle { font-size: 11px; color: #9ca3af; font-weight: 400; }
+.kl-atm-center { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid #f3f4f6; margin-bottom: 10px; }
+.kl-atm-icon { font-size: 16px; }
+.kl-atm-label { font-size: 12px; color: #6b7280; flex: 1; }
+.kl-atm-val { font-size: 22px; font-weight: 800; color: #111827; }
+.kl-lock-badge { font-size: 10px; font-weight: 600; background: #fef3c7; color: #92400e; border-radius: 4px; padding: 2px 7px; }
+.kl-trigger-section { margin-bottom: 10px; padding: 8px 10px; border-radius: 8px; }
+.kl-trigger-section.bull-section { background: #f0fdf4; border: 1px solid #bbf7d0; }
+.kl-trigger-section.bear-section { background: #fef2f2; border: 1px solid #fecaca; }
+.kl-section-label { font-size: 11px; font-weight: 700; margin-bottom: 6px; }
+.kl-section-label.bull { color: #15803d; }
+.kl-section-label.bear { color: #dc2626; }
+.kl-trigger-row { display: flex; gap: 10px; margin-bottom: 6px; }
+.kl-trigger-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.kl-trigger-tag { font-size: 10px; color: #6b7280; }
+.kl-trigger-val { font-size: 16px; font-weight: 800; }
+.kl-trigger-val.bull { color: #16a34a; }
+.kl-trigger-val.bear { color: #dc2626; }
+.kl-target-row { font-size: 11px; color: #374151; margin-bottom: 3px; }
+.kl-target-label { color: #6b7280; }
+.kl-target-val { font-weight: 600; }
+.kl-inv-row { font-size: 10px; color: #9ca3af; }
+.kl-inv-label { color: #9ca3af; }
+.kl-inv-val { font-weight: 600; color: #6b7280; }
+.kl-far-walls { margin-top: 10px; padding: 6px 10px; background: #f9fafb; border-radius: 6px; font-size: 11px; }
+.kl-far-label { color: #6b7280; }
+.kl-far-val { font-weight: 600; color: #374151; margin: 0 4px; }
+.kl-far-note { color: #9ca3af; font-size: 10px; display: block; margin-top: 2px; }
+.kl-pin-warn { font-size: 11px; color: #b45309; background: #fef3c7; border-radius: 6px; padding: 6px 10px; margin-top: 6px; }
+
+/* ── Three-state Plan Grid v2 ─────────────────────────────────────────────── */
+.plan-grid.plan-locked { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; }
+.plan-grid.plan-bull   { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px; }
+.plan-grid.plan-bear   { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px; }
+.plan-val.locked-val { color: #92400e; font-weight: 700; }
+.plan-val.bull-cond  { color: #15803d; font-weight: 600; }
+.plan-val.bear-cond  { color: #dc2626; font-weight: 600; }
+.plan-icon.bull { color: #16a34a; }
+.plan-icon.bear { color: #dc2626; }
+.atm-trigger-row { background: rgba(0,0,0,0.02); border-radius: 6px; padding: 4px 6px; }
+
+/* ── Flow Dual Window (Radar) ─────────────────────────────────────────────── */
+.radar-flow-dual-window { display: flex; gap: 8px; margin: 10px 0; align-items: flex-start; }
+.radar-flow-window { flex: 1; }
+.radar-flow-window-label { font-size: 11px; font-weight: 600; color: #374151; margin-bottom: 6px; display: flex; align-items: center; gap: 4px; }
+.flow-window-tag { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
+.flow-window-tag.bull { background: #dcfce7; color: #15803d; }
+.flow-window-tag.bear { background: #fee2e2; color: #dc2626; }
+.flow-window-tag.neutral { background: #f3f4f6; color: #6b7280; }
+.radar-flow-window-divider { color: #d1d5db; font-size: 20px; padding-top: 16px; }
+.radar-flow-dual-narrative { display: flex; align-items: flex-start; gap: 6px; font-size: 11px; padding: 6px 10px; border-radius: 6px; margin: 8px 0; }
+.radar-flow-dual-narrative.aligned { background: #f0fdf4; color: #15803d; }
+.radar-flow-dual-narrative.diverged { background: #fef3c7; color: #92400e; }
+.dual-icon { font-size: 13px; flex-shrink: 0; }
+.dual-text { flex: 1; line-height: 1.4; }
+.radar-flow-extra { margin-top: 8px; }
+
+/* ── MM Path Card v2 (far walls + dual window) ────────────────────────────── */
+.mm-far-wall-note { font-size: 11px; color: #9ca3af; background: #f9fafb; border-radius: 6px; padding: 5px 10px; margin: 8px 0; }
+.mm-dual-window { display: flex; align-items: flex-start; gap: 6px; font-size: 11px; padding: 6px 10px; border-radius: 6px; margin: 8px 0; }
+.mm-dual-window.aligned { background: #f0fdf4; color: #15803d; }
+.mm-dual-window.diverged { background: #fef3c7; color: #92400e; }
+
+/* ── Radar Far Walls ──────────────────────────────────────────────────────── */
+.radar-far-walls { margin: 10px 0; padding: 8px 10px; background: #f9fafb; border-radius: 8px; }
+.radar-far-wall-label { font-size: 11px; font-weight: 600; color: #6b7280; margin-bottom: 6px; }
+.radar-far-wall-row { display: flex; gap: 8px; margin-bottom: 6px; }
+.radar-far-wall-box { flex: 1; padding: 6px 8px; border-radius: 6px; text-align: center; }
+.radar-far-wall-box.call { background: #fef2f2; border: 1px solid #fecaca; }
+.radar-far-wall-box.put  { background: #f0fdf4; border: 1px solid #bbf7d0; }
+.rfwb-label { font-size: 10px; color: #6b7280; display: block; margin-bottom: 2px; }
+.rfwb-val { font-size: 15px; font-weight: 700; color: #374151; }
+.radar-far-wall-note { font-size: 10px; color: #9ca3af; }

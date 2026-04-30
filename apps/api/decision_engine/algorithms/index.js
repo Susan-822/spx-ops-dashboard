@@ -27,3 +27,4 @@ export { runVolatilityEngine } from './volatility-engine.js';
 export { globalQueue as premiumAccelerationQueue } from './premium-acceleration-queue.js';
 export { buildDarkpoolBehaviorEngine } from './darkpool-behavior-engine.js';
 export { buildPriceValidationEngine } from './price-validation-engine.js';
+export { buildAtmTriggerEngine } from './atm-trigger-engine.js';

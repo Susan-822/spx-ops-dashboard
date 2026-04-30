@@ -1929,36 +1929,64 @@ function renderHome(signal) {
   const pcRatio    = sb.put_call_ratio != null ? sb.put_call_ratio.toFixed(2) : '--';
   const netPremFmt = mr.net_premium_fmt || '--';
 
-  // Key levels
+  // Key levels — v2: ATM trigger lines from atm_trigger_engine
   const atmFmt     = lv.atm_fmt     || '--';
-  const bullFmt    = lv.bull_trigger_fmt  || 'unavailable';
-  const bearFmt    = lv.bear_trigger_fmt  || 'unavailable';
+  // Near trigger lines (ATM±5/10) — homepage primary
+  const bull1Fmt   = lv.bull_trigger_fmt   || pc.bull_trigger_1_fmt || 'unavailable';
+  const bull2Fmt   = lv.bull_trigger_2_fmt || pc.bull_trigger_2_fmt || '--';
+  const bear1Fmt   = lv.bear_trigger_fmt   || pc.bear_trigger_1_fmt || 'unavailable';
+  const bear2Fmt   = lv.bear_trigger_2_fmt || pc.bear_trigger_2_fmt || '--';
+  const bullTgt1Fmt = lv.bull_target_1_fmt || pc.bull_target_1_fmt || '--';
+  const bullTgt2Fmt = lv.bull_target_2_fmt || pc.bull_target_2_fmt || '--';
+  const bearTgt1Fmt = lv.bear_target_1_fmt || pc.bear_target_1_fmt || '--';
+  const bearTgt2Fmt = lv.bear_target_2_fmt || pc.bear_target_2_fmt || '--';
+  const invBullFmt  = lv.invalidation_bull_fmt || pc.invalidation_bull_fmt || '--';
+  const invBearFmt  = lv.invalidation_bear_fmt || pc.invalidation_bear_fmt || '--';
+  const spotInLock  = lv.spot_in_lock_zone ?? pc.spot_in_lock_zone ?? true;
+  const triggerStatus = lv.trigger_status || pc.trigger_status || 'locked';
+  const triggerLabel  = lv.trigger_label  || pc.trigger_label  || null;
+  // Far walls (Radar only — NOT homepage triggers)
+  const farCallFmt = lv.global_call_wall_fmt || pc.global_call_wall_fmt || '--';
+  const farPutFmt  = lv.global_put_wall_fmt  || pc.global_put_wall_fmt  || '--';
+  // Legacy fields (kept for backward compat)
+  const bullFmt    = bull1Fmt;
+  const bearFmt    = bear1Fmt;
   const ldFmt      = lv.life_death_fmt    || '--';
   const flipDisp   = lv.gamma_flip_display || '翻转点不可判断';
   const wallStatus = lv.wall_status || 'unavailable';
   const pinWarn    = lv.pin_warning;
   const hint       = lv.hint || '';
+  // Flow dual window (5m+15m)
+  const ate = signal.atm_trigger_engine || {};
+  const fb2 = signal.flow_behavior_engine || {};
+  const flow5mLabel   = fb2.flow_5m_label  || null;
+  const flow15mLabel  = fb2.flow_15m_label || null;
+  const dualNarrative = fb2.dual_window_narrative || null;
+  const dualAligned   = fb2.dual_window_aligned ?? false;
 
-  // Plan lines — LOCKED 状态也显示完整六行指令
+  // Plan lines — v2: Three-state LONG_CALL / SHORT_PUT / LOCKED
+  // LOCKED state shows ATM±5/10 trigger lines with three-stage intraday plan
   const plan = pc.plan;
   const ab   = signal.ab_order_engine || {};
-  const abConf = ab.execution_confidence ?? 0;
-  // 可信度颜色
+  const abConf = ab.execution_confidence ?? pc.execution_confidence ?? 0;
   const confColor = abConf >= 70 ? 'conf-high' : abConf >= 40 ? 'conf-mid' : 'conf-low';
   const confLabel = abConf >= 70 ? '高可信，可执行' : abConf >= 40 ? '中可信，小仓等确认' : '低可信，只观察';
-  // 无论是否 LOCKED，都尝试从 ab_order_engine 提取六行指令
-  const abPlan = ab.plan_a ?? ab.plan_b ?? null;
-  const abBlocked = ab.status === 'blocked';
+  const abBlocked = pc.locked === true;
   const blockedReason = ab.blocked_reason === 'cold_start_or_off_hours'
     ? '非交易时段 / 价格历史不足，禁止开仓'
     : ab.blocked_reason === 'spot_missing' ? '现价缺失，禁止开仓' : (ab.blocked_reason ?? '等待条件满足');
-  const planData = plan || abPlan;
-  const planLines = planData ? `
-    <div class="plan-grid">
-      <div class="plan-row"><span class="plan-icon">◎</span><span class="plan-key">当前建议</span><span class="plan-val">${escapeHtml(planData.state ?? planData.headline ?? '--')}</span></div>
-      <div class="plan-row"><span class="plan-icon">◈</span><span class="plan-key">为什么</span><span class="plan-val">${escapeHtml(planData.why ?? planData.now ?? '--')}</span></div>
-      <div class="plan-row"><span class="plan-icon">⊕</span><span class="plan-key">进场</span><span class="plan-val entry-val">${escapeHtml(planData.entry ?? planData.wait_long ?? '--')}</span></div>
-      <div class="plan-row"><span class="plan-icon">◆</span><span class="plan-key">做什么</span><span class="plan-val action-val">${escapeHtml(planData.action ?? planData.wait_short ?? '--')}</span></div>
+  const planData = plan || (ab.plan_a ?? ab.plan_b ?? null);
+
+  // ── LOCKED state: show full ATM trigger observation plan ─────────────────
+  let planLines = '';
+  if (pc.direction === 'LONG_CALL') {
+    // LONG_CALL: show bull execution plan
+    planLines = planData ? `
+    <div class="plan-grid plan-bull">
+      <div class="plan-row"><span class="plan-icon bull">◎</span><span class="plan-key">当前建议</span><span class="plan-val bull">${escapeHtml(planData.state ?? '多头预案')}</span></div>
+      <div class="plan-row"><span class="plan-icon">◈</span><span class="plan-key">为什么</span><span class="plan-val">${escapeHtml(planData.why ?? '--')}</span></div>
+      <div class="plan-row"><span class="plan-icon">⊕</span><span class="plan-key">进场</span><span class="plan-val entry-val">${escapeHtml(planData.entry ?? '--')}</span></div>
+      <div class="plan-row"><span class="plan-icon">◆</span><span class="plan-key">做什么</span><span class="plan-val action-val">${escapeHtml(planData.action ?? '--')}</span></div>
       <div class="plan-row"><span class="plan-icon">⊗</span><span class="plan-key">止损</span><span class="plan-val stop-val">${escapeHtml(planData.stop ?? planData.invalidation ?? '--')}</span></div>
       <div class="plan-row"><span class="plan-icon">◎</span><span class="plan-key">目标</span><span class="plan-val target-val">${escapeHtml(planData.target ?? '--')}</span></div>
       <div class="plan-row full-row"><span class="plan-icon">⊘</span><span class="plan-key">禁做</span><span class="plan-val forbidden-val">${escapeHtml(planData.forbidden ?? '--')}</span></div>
@@ -1967,9 +1995,54 @@ function renderHome(signal) {
       <span class="plan-conf-label">可信度</span>
       <span class="plan-conf-val ${confColor}">${abConf}/100</span>
       <span class="plan-conf-desc ${confColor}">${confLabel}</span>
+    </div>` : `<div class="plan-locked-msg">多头预案数据不足</div>`;
+  } else if (pc.direction === 'SHORT_PUT') {
+    // SHORT_PUT: show bear execution plan
+    planLines = planData ? `
+    <div class="plan-grid plan-bear">
+      <div class="plan-row"><span class="plan-icon bear">◎</span><span class="plan-key">当前建议</span><span class="plan-val bear">${escapeHtml(planData.state ?? '空头预案')}</span></div>
+      <div class="plan-row"><span class="plan-icon">◈</span><span class="plan-key">为什么</span><span class="plan-val">${escapeHtml(planData.why ?? '--')}</span></div>
+      <div class="plan-row"><span class="plan-icon">⊕</span><span class="plan-key">进场</span><span class="plan-val entry-val">${escapeHtml(planData.entry ?? '--')}</span></div>
+      <div class="plan-row"><span class="plan-icon">◆</span><span class="plan-key">做什么</span><span class="plan-val action-val">${escapeHtml(planData.action ?? '--')}</span></div>
+      <div class="plan-row"><span class="plan-icon">⊗</span><span class="plan-key">止损</span><span class="plan-val stop-val">${escapeHtml(planData.stop ?? planData.invalidation ?? '--')}</span></div>
+      <div class="plan-row"><span class="plan-icon">◎</span><span class="plan-key">目标</span><span class="plan-val target-val">${escapeHtml(planData.target ?? '--')}</span></div>
+      <div class="plan-row full-row"><span class="plan-icon">⊘</span><span class="plan-key">禁做</span><span class="plan-val forbidden-val">${escapeHtml(planData.forbidden ?? '--')}</span></div>
     </div>
-    ${abBlocked ? `<div class="plan-locked-banner">${escapeHtml(blockedReason)}</div>` : ''}
-  ` : `<div class="plan-locked-msg">${escapeHtml(blockedReason)}</div>`;
+    <div class="plan-conf-row">
+      <span class="plan-conf-label">可信度</span>
+      <span class="plan-conf-val ${confColor}">${abConf}/100</span>
+      <span class="plan-conf-desc ${confColor}">${confLabel}</span>
+    </div>` : `<div class="plan-locked-msg">空头预案数据不足</div>`;
+  } else {
+    // LOCKED: show full ATM trigger observation plan (three-stage)
+    const lockWhy = planData?.why ?? (spotInLock
+      ? `价格在 ${bear1Fmt}–${bull1Fmt} ATM 锁仓区内，正 Gamma 磁吸，来回割。`
+      : `等 ${bull1Fmt} 站稳或 ${bear1Fmt} 跌破`);
+    planLines = `
+    <div class="plan-grid plan-locked">
+      <div class="plan-row"><span class="plan-icon">◎</span><span class="plan-key">当前建议</span><span class="plan-val locked-val">锁仓观察</span></div>
+      <div class="plan-row"><span class="plan-icon">◈</span><span class="plan-key">为什么</span><span class="plan-val">${escapeHtml(lockWhy)}</span></div>
+      <div class="plan-row"><span class="plan-icon">👁</span><span class="plan-key">观察</span><span class="plan-val">${escapeHtml(planData?.watch ?? `上方 ${bull1Fmt} 能不能站稳 / 下方 ${bear1Fmt} 能不能跌破`)}</span></div>
+      <div class="plan-row full-row atm-trigger-row">
+        <span class="plan-icon bull">↗</span>
+        <span class="plan-key">转多条件</span>
+        <span class="plan-val bull-cond">${escapeHtml(planData?.wait_long ?? `站稳 ${bull1Fmt}（第一触发），等 ${bull2Fmt} 确认，目标 ${bullTgt1Fmt}–${bullTgt2Fmt}`)}</span>
+      </div>
+      <div class="plan-row full-row atm-trigger-row">
+        <span class="plan-icon bear">↘</span>
+        <span class="plan-key">转空条件</span>
+        <span class="plan-val bear-cond">${escapeHtml(planData?.wait_short ?? `跌破 ${bear1Fmt}（第一触发），等 ${bear2Fmt} 确认，目标 ${bearTgt1Fmt}–${bearTgt2Fmt}`)}</span>
+      </div>
+      <div class="plan-row full-row"><span class="plan-icon">⊘</span><span class="plan-key">禁做</span><span class="plan-val forbidden-val">${escapeHtml(planData?.forbidden ?? `${bear1Fmt}–${bull1Fmt} ATM 锁仓区内禁止买 Call / Put`)}</span></div>
+      <div class="plan-row full-row"><span class="plan-icon">⊗</span><span class="plan-key">失效线</span><span class="plan-val stop-val">${escapeHtml(planData?.invalidation ?? `多头失效 ${invBullFmt} / 空头失效 ${invBearFmt}`)}</span></div>
+    </div>
+    <div class="plan-conf-row">
+      <span class="plan-conf-label">可信度</span>
+      <span class="plan-conf-val ${confColor}">${abConf}/100</span>
+      <span class="plan-conf-desc ${confColor}">${confLabel}</span>
+    </div>
+    ${abBlocked ? `<div class="plan-locked-banner">${escapeHtml(blockedReason)}</div>` : ''}`;
+  }
 
   // Darkpool levels — 使用 pos_desc 和 is_above_spot
   const dpLevels = (dr.levels || []).slice(0, 2).map((l) => {
@@ -2054,21 +2127,71 @@ function renderHome(signal) {
           ${planLines}
         </section>
 
-        <!-- RIGHT: Key Levels -->
+        <!-- RIGHT: Key Levels — v2: ATM±5/10 trigger lines -->
         <section class="key-levels-card">
           <div class="key-levels-header">
             <span class="key-levels-title">关键线</span>
-            <span class="key-levels-link">🔗</span>
+            <span class="key-levels-subtitle">0DTE 快进快出</span>
           </div>
-          <div class="key-levels-grid">
-            <div class="kl-row"><span class="kl-icon eye">👁</span><span class="kl-label">盘眼 ATM：</span><span class="kl-val neutral">${escapeHtml(atmFmt)}</span></div>
-            <div class="kl-row"><span class="kl-icon bull">↗</span><span class="kl-label">多头触发：</span><span class="kl-val ${bullFmt !== 'unavailable' ? 'bullish' : 'unavail'}">${escapeHtml(bullFmt)}</span></div>
-            <div class="kl-row"><span class="kl-icon bear">↘</span><span class="kl-label">空头触发：</span><span class="kl-val ${bearFmt !== 'unavailable' ? 'bearish' : 'unavail'}">${escapeHtml(bearFmt)}</span></div>
-            <div class="kl-row"><span class="kl-icon life">⊗</span><span class="kl-label">生死线：</span><span class="kl-val neutral">${escapeHtml(ldFmt)}</span></div>
+          <!-- ATM center line -->
+          <div class="kl-atm-center">
+            <span class="kl-atm-icon">👁</span>
+            <span class="kl-atm-label">盘眼 ATM</span>
+            <span class="kl-atm-val">${escapeHtml(atmFmt)}</span>
+            ${spotInLock ? '<span class="kl-lock-badge">锁仓区</span>' : ''}
+          </div>
+          <!-- Bull side -->
+          <div class="kl-trigger-section bull-section">
+            <div class="kl-section-label bull">↗ 多头方向</div>
+            <div class="kl-trigger-row">
+              <div class="kl-trigger-item">
+                <span class="kl-trigger-tag">第一触发</span>
+                <span class="kl-trigger-val bull">${escapeHtml(bull1Fmt)}</span>
+              </div>
+              <div class="kl-trigger-item">
+                <span class="kl-trigger-tag">确认</span>
+                <span class="kl-trigger-val bull">${escapeHtml(bull2Fmt)}</span>
+              </div>
+            </div>
+            <div class="kl-target-row">
+              <span class="kl-target-label">目标：</span>
+              <span class="kl-target-val">${escapeHtml(bullTgt1Fmt)} / ${escapeHtml(bullTgt2Fmt)}</span>
+            </div>
+            <div class="kl-inv-row">
+              <span class="kl-inv-label">失效线：</span>
+              <span class="kl-inv-val">${escapeHtml(invBullFmt)}</span>
+            </div>
+          </div>
+          <!-- Bear side -->
+          <div class="kl-trigger-section bear-section">
+            <div class="kl-section-label bear">↘ 空头方向</div>
+            <div class="kl-trigger-row">
+              <div class="kl-trigger-item">
+                <span class="kl-trigger-tag">第一触发</span>
+                <span class="kl-trigger-val bear">${escapeHtml(bear1Fmt)}</span>
+              </div>
+              <div class="kl-trigger-item">
+                <span class="kl-trigger-tag">确认</span>
+                <span class="kl-trigger-val bear">${escapeHtml(bear2Fmt)}</span>
+              </div>
+            </div>
+            <div class="kl-target-row">
+              <span class="kl-target-label">目标：</span>
+              <span class="kl-target-val">${escapeHtml(bearTgt1Fmt)} / ${escapeHtml(bearTgt2Fmt)}</span>
+            </div>
+            <div class="kl-inv-row">
+              <span class="kl-inv-label">失效线：</span>
+              <span class="kl-inv-val">${escapeHtml(invBearFmt)}</span>
+            </div>
+          </div>
+          <!-- Far walls (background only) -->
+          <div class="kl-far-walls">
+            <span class="kl-far-label">远端墙（背景）：</span>
+            <span class="kl-far-val">${escapeHtml(farCallFmt)} / ${escapeHtml(farPutFmt)}</span>
+            <span class="kl-far-note">只作背景，不作日内触发</span>
           </div>
           ${hint ? `<div class="kl-hint">💡 ${escapeHtml(hint)}</div>` : ''}
-          <div class="kl-flip-note">${escapeHtml(flipDisp)}</div>
-          ${wallStatus === 'unavailable' ? '<div class="kl-wall-warn">⚠ 墙位校验失败，不显示 Call Wall / Put Wall</div>' : ''}
+          ${pinWarn ? `<div class="kl-pin-warn">⚠ ${escapeHtml(pinWarn)}</div>` : ''}
         </section>
       </div>
 
@@ -2149,10 +2272,13 @@ function renderHome(signal) {
         </section>
       </div>
 
-      <!-- MARKET MAKER PATH CARD -->
+      <!-- MARKET MAKER PATH CARD — v2: ATM trigger lines + far walls + dual window -->
       ${(() => {
         const mmp = signal.mm_path_card || mr.mm_path_card || null;
         if (!mmp) return '';
+        const mmpDual = mmp.dual_window_narrative || null;
+        const mmpFarNote = mmp.far_wall_note || null;
+        const mmpAligned = mmp.dual_window_aligned ?? false;
         return `
         <section class="mm-path-card">
           <div class="mm-path-header">
@@ -2162,9 +2288,21 @@ function renderHome(signal) {
           <div class="mm-path-current">${escapeHtml(mmp.current_path || '--')}</div>
           <div class="mm-path-talk">${escapeHtml(mmp.talk || '--')}</div>
           <div class="mm-path-scenes">
-            <div class="mm-scene bull"><span class="mm-scene-label">上行情景</span><span class="mm-scene-val">${escapeHtml(mmp.bull_scene || '--')}</span></div>
-            <div class="mm-scene bear"><span class="mm-scene-label">下行情景</span><span class="mm-scene-val">${escapeHtml(mmp.bear_scene || '--')}</span></div>
+            <div class="mm-scene bull">
+              <span class="mm-scene-label">↗ 上方短线</span>
+              <span class="mm-scene-val">${escapeHtml(mmp.bull_scene || '--')}</span>
+            </div>
+            <div class="mm-scene bear">
+              <span class="mm-scene-label">↘ 下方短线</span>
+              <span class="mm-scene-val">${escapeHtml(mmp.bear_scene || '--')}</span>
+            </div>
           </div>
+          ${mmpFarNote ? `<div class="mm-far-wall-note">${escapeHtml(mmpFarNote)}</div>` : ''}
+          ${mmpDual ? `
+          <div class="mm-dual-window ${mmpAligned ? 'aligned' : 'diverged'}">
+            <span class="mm-dual-icon">${mmpAligned ? '✅' : '⚠'}</span>
+            <span class="mm-dual-text">${escapeHtml(mmpDual)}</span>
+          </div>` : ''}
           <div class="mm-path-action"><span class="mm-action-icon">→</span><span class="mm-action-text">${escapeHtml(mmp.current_action || '--')}</span></div>
         </section>`;
       })()}
@@ -2987,17 +3125,35 @@ function renderRadar(signal) {
         <span class="radar-global-label">Global GEX Cluster（仅 Radar 参考）：</span>
         ${lv.global_gex_clusters.slice(0,3).map(c => `<span class="radar-cluster-tag">${Number(c.strike).toFixed(0)} (${c.net_gex >= 0 ? '+' : ''}${Number(c.net_gex).toFixed(1)})</span>`).join(' ')}
       </div>` : ''}
+      <!-- Far walls (Radar only — NOT homepage triggers) -->
+      ${(lv.global_call_wall || lv.global_put_wall) ? `
+      <div class="radar-far-walls">
+        <div class="radar-far-wall-label">远端 Gamma 墙（Radar 背景）</div>
+        <div class="radar-far-wall-row">
+          <div class="radar-far-wall-box call"><span class="rfwb-label">远端 Call Wall</span><span class="rfwb-val">${lv.global_call_wall_fmt || '--'}</span></div>
+          <div class="radar-far-wall-box put"><span class="rfwb-label">远端 Put Wall</span><span class="rfwb-val">${lv.global_put_wall_fmt || '--'}</span></div>
+        </div>
+        <div class="radar-far-wall-note">⚠ 远端墙只作背景，不作日内进场触发线。</div>
+      </div>` : ''}
       <div class="radar-note">${escapeHtml(lv.gamma_flip_display || '--')}</div>
     </article>`;
 
-  // ── 3. Flow 资金雷达 ───────────────────────────────────────────────────────
+  // ── 3. Flow 资金雷达 — v2: 5m+15m 双窗口 ─────────────────────────────────
   const flowStatus = dh.flow?.status || 'MISSING';
+  // 5m window
   const netPremM   = ff.net_premium_5m != null ? (ff.net_premium_5m / 1e6).toFixed(1) : null;
   const callPremM  = ff.call_premium_5m != null ? (ff.call_premium_5m / 1e6).toFixed(1) : null;
   const putPremM   = ff.put_premium_5m  != null ? (Math.abs(ff.put_premium_5m) / 1e6).toFixed(1) : null;
   const pcVol      = ff.put_call_volume_ratio != null ? ff.put_call_volume_ratio.toFixed(2) : null;
   const pcPrem     = ff.put_call_premium_ratio != null ? ff.put_call_premium_ratio.toFixed(1) : null;
-
+  // 15m window (from flow_behavior_engine)
+  const netPrem15M  = fb.net_premium_15m_millions != null ? Number(fb.net_premium_15m_millions).toFixed(1) : null;
+  const call15M     = fb.call_premium_15m_millions != null ? Number(fb.call_premium_15m_millions).toFixed(1) : null;
+  const put15M      = fb.put_premium_15m_millions  != null ? Number(fb.put_premium_15m_millions).toFixed(1)  : null;
+  const flow5mLabel  = fb.flow_5m_label  || null;
+  const flow15mLabel = fb.flow_15m_label || null;
+  const dualNarr     = fb.dual_window_narrative || null;
+  const dualAligned  = fb.dual_window_aligned ?? false;
   const flowBlock = `
     <article class="radar-module">
       <div class="radar-module-header">
@@ -3005,16 +3161,37 @@ function renderRadar(signal) {
         ${statusBadge(flowStatus)}
       </div>
       <div class="radar-flow-conclusion">资金结论：<strong>${escapeHtml(fb.behavior_label || fb.behavior || '--')}</strong></div>
-      <div class="radar-flow-stats">
-        <div class="radar-flow-stat"><span class="rfs-label">Net Premium</span><span class="rfs-val ${netPremM != null && Number(netPremM) >= 0 ? 'bullish' : 'bearish'}">${netPremM != null ? (Number(netPremM) >= 0 ? '+' : '') + netPremM + 'M' : '--'}</span></div>
-        <div class="radar-flow-stat"><span class="rfs-label">Call Premium</span><span class="rfs-val bullish">${callPremM != null ? '+' + callPremM + 'M' : '--'}</span></div>
-        <div class="radar-flow-stat"><span class="rfs-label">Put Premium</span><span class="rfs-val bearish">${putPremM != null ? '+' + putPremM + 'M' : '--'}</span></div>
-        <div class="radar-flow-stat"><span class="rfs-label">P/C Premium</span><span class="rfs-val">${pcPrem != null ? pcPrem : 'unavailable'}</span></div>
+      <!-- 5m+15m dual window -->
+      <div class="radar-flow-dual-window">
+        <div class="radar-flow-window">
+          <div class="radar-flow-window-label">5m 窗口 ${flow5mLabel ? `<span class="flow-window-tag ${flow5mLabel.includes('多') ? 'bull' : flow5mLabel.includes('空') ? 'bear' : 'neutral'}">${escapeHtml(flow5mLabel)}</span>` : ''}</div>
+          <div class="radar-flow-stats">
+            <div class="radar-flow-stat"><span class="rfs-label">Net</span><span class="rfs-val ${netPremM != null && Number(netPremM) >= 0 ? 'bullish' : 'bearish'}">${netPremM != null ? (Number(netPremM) >= 0 ? '+' : '') + netPremM + 'M' : '--'}</span></div>
+            <div class="radar-flow-stat"><span class="rfs-label">Call</span><span class="rfs-val bullish">${callPremM != null ? '+' + callPremM + 'M' : '--'}</span></div>
+            <div class="radar-flow-stat"><span class="rfs-label">Put</span><span class="rfs-val bearish">${putPremM != null ? '+' + putPremM + 'M' : '--'}</span></div>
+            <div class="radar-flow-stat"><span class="rfs-label">P/C</span><span class="rfs-val">${pcPrem != null ? pcPrem : '--'}</span></div>
+          </div>
+        </div>
+        <div class="radar-flow-window-divider">│</div>
+        <div class="radar-flow-window">
+          <div class="radar-flow-window-label">15m 窗口 ${flow15mLabel ? `<span class="flow-window-tag ${flow15mLabel.includes('多') ? 'bull' : flow15mLabel.includes('空') ? 'bear' : 'neutral'}">${escapeHtml(flow15mLabel)}</span>` : ''}</div>
+          <div class="radar-flow-stats">
+            <div class="radar-flow-stat"><span class="rfs-label">Net</span><span class="rfs-val ${netPrem15M != null && Number(netPrem15M) >= 0 ? 'bullish' : 'bearish'}">${netPrem15M != null ? (Number(netPrem15M) >= 0 ? '+' : '') + netPrem15M + 'M' : '--'}</span></div>
+            <div class="radar-flow-stat"><span class="rfs-label">Call</span><span class="rfs-val bullish">${call15M != null ? '+' + call15M + 'M' : '--'}</span></div>
+            <div class="radar-flow-stat"><span class="rfs-label">Put</span><span class="rfs-val bearish">${put15M != null ? '+' + put15M + 'M' : '--'}</span></div>
+          </div>
+        </div>
+      </div>
+      ${dualNarr ? `
+      <div class="radar-flow-dual-narrative ${dualAligned ? 'aligned' : 'diverged'}">
+        <span class="dual-icon">${dualAligned ? '✅' : '⚠'}</span>
+        <span class="dual-text">${escapeHtml(dualNarr)}</span>
+      </div>` : ''}
+      <div class="radar-flow-extra">
         <div class="radar-flow-stat"><span class="rfs-label">P/C Volume</span><span class="rfs-val">${pcVol != null ? pcVol : 'unavailable'}</span></div>
       </div>
-      <div class="radar-note">资金偏空，但没有成量 P/C，方向结论降级。</div>
+      <div class="radar-note">${escapeHtml(fb.reason || '资金流向信号不足。')}</div>
     </article>`;
-
   // ── 4. Strike 战场 ────────────────────────────────────────────────────────
   const sbStatus = sb.status === 'partial' ? 'PARTIAL' : 'MISSING';
   const sbRows = (sb.rows || []).map((r) => `

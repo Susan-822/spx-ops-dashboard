@@ -51,7 +51,8 @@ import {
   runVolatilityEngine,
   premiumAccelerationQueue,
   buildDarkpoolBehaviorEngine,
-  buildPriceValidationEngine
+  buildPriceValidationEngine,
+  buildAtmTriggerEngine
 } from './algorithms/index.js';
 import { getPriceHistory } from '../state/price-history-buffer.js';
 import { getLiveRefreshLog } from '../scheduler/live-refresh-scheduler.js';
@@ -2183,12 +2184,24 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     put_premium: _putPrem5m,
     put_call_ratio: _pcRatio,
     prem_ticks: [],
+    premium_queue: premiumAccelerationQueue._queue ?? [],  // NEW: 5m+15m dual window
     gamma_regime: gammaRegimeEngine.gamma_regime,
     spot_position: gammaRegimeEngine.spot_position,
     darkpool_state: darkpoolGravity.state ?? null,
     put_wall: dealerWallMap.put_wall ?? rawNoteV2.uw_conclusion?.put_wall ?? null,
     call_wall: dealerWallMap.call_wall ?? rawNoteV2.uw_conclusion?.call_wall ?? null,
     spot_price: priceContract.live_price
+  });
+  // 4.3 ATM Trigger Engine — ATM±5/10/15/20 trigger lines for homepage
+  const atmTriggerEngine = buildAtmTriggerEngine({
+    spot: priceContract.live_price,
+    atm: atmEngine.atm,
+    near_call_wall: dealerWallMap.near_call_wall ?? null,
+    near_put_wall:  dealerWallMap.near_put_wall  ?? null,
+    gamma_regime:   gammaRegimeEngine.gamma_regime,
+    pin_risk:       atmEngine.pin_risk ?? 0,
+    flow_behavior:  flowBehaviorEngine.behavior,
+    execution_confidence: gammaRegimeEngine.scores?.execution_confidence ?? 0
   });
 
   // 4.5 Dark Pool Behavior Engine
@@ -2313,6 +2326,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     // L2.5 Institutional Engine outputs
     price_contract: priceContract,
     atm_engine: atmEngine,
+    atm_trigger_engine: atmTriggerEngine,
     gamma_regime_engine: gammaRegimeEngine,
     flow_behavior_engine: flowBehaviorEngineWithAccel,
     volatility_dashboard: volDashboard,

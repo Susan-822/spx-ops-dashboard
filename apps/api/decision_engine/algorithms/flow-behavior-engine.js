@@ -1,9 +1,9 @@
 /**
  * flow-behavior-engine.js
  *
- * Flow Behavior Classification Engine
+ * Flow Behavior Classification Engine (v2 — 5m+15m Dual Window)
  *
- * Classifies current flow into one of 4 behaviors:
+ * Classifies current flow into one of 6 behaviors:
  *  1. put_effective   — Put flow is real, bearish momentum confirmed
  *  2. put_squeezed    — Put flow exists but being absorbed/squeezed by support
  *  3. call_effective  — Call flow is real, bullish momentum confirmed
@@ -11,10 +11,18 @@
  *  5. mixed           — Conflicting signals, no clear direction
  *  6. neutral         — No significant flow detected
  *
- * Also computes:
- *  - Net Premium 15min acceleration (key institutional signal)
- *  - P/C ratio extreme detection
- *  - Flow aggression score
+ * v2 additions:
+ *  - flow_5m_direction:  Short-term momentum (last 5 minutes of net_prem queue)
+ *  - flow_15m_direction: Trend confirmation (last 15 minutes of net_prem queue)
+ *  - dual_window_aligned: true when 5m and 15m agree (boosts confidence)
+ *  - dual_window_label:  Human-readable dual window status
+ *  - flow_5m_delta:      Net premium change in last 5 minutes
+ *  - flow_15m_delta:     Net premium change in last 15 minutes
+ *
+ * Confidence boost rules:
+ *  - 5m and 15m both bullish → +1 confidence tier
+ *  - 5m and 15m both bearish → +1 confidence tier
+ *  - 5m and 15m disagree → downgrade to 'medium' max
  */
 
 function safeNumber(value) {
@@ -25,6 +33,67 @@ function safeNumber(value) {
 function safeMillions(value) {
   const n = safeNumber(value);
   return n != null ? Number((n / 1_000_000).toFixed(2)) : null;
+}
+
+/**
+ * Compute flow direction from a time-series queue within a time window.
+ * @param {Array} queue - Array of { net_premium, ts } objects (oldest first)
+ * @param {number} windowMs - Time window in milliseconds
+ * @returns {{ direction: 'bullish'|'bearish'|'flat'|'unknown', delta: number|null, label: string }}
+ */
+function computeWindowDirection(queue, windowMs) {
+  if (!Array.isArray(queue) || queue.length < 2) {
+    return { direction: 'unknown', delta: null, label: '数据不足' };
+  }
+
+  const now = Date.now();
+  const cutoff = now - windowMs;
+
+  // Filter entries within the window
+  const inWindow = queue.filter((e) => {
+    const ts = typeof e.ts === 'number' ? e.ts : Date.parse(e.ts);
+    return ts >= cutoff;
+  });
+
+  if (inWindow.length < 2) {
+    // Try to use oldest available entry as baseline
+    const oldest = queue[0];
+    const latest = queue[queue.length - 1];
+    const oldestPrem = safeNumber(oldest?.net_premium);
+    const latestPrem = safeNumber(latest?.net_premium);
+    if (oldestPrem == null || latestPrem == null) {
+      return { direction: 'unknown', delta: null, label: '数据不足' };
+    }
+    const delta = latestPrem - oldestPrem;
+    const deltaM = safeMillions(delta);
+    const sign = delta >= 0 ? '+' : '';
+    const windowLabel = windowMs === 5 * 60 * 1000 ? '5m' : '15m';
+    return {
+      direction: delta > 5_000_000 ? 'bullish' : delta < -5_000_000 ? 'bearish' : 'flat',
+      delta,
+      delta_millions: deltaM,
+      label: `${sign}$${deltaM != null ? Math.abs(deltaM).toFixed(0) : '--'}M/${windowLabel}（历史推算）`
+    };
+  }
+
+  const first = safeNumber(inWindow[0].net_premium);
+  const last  = safeNumber(inWindow[inWindow.length - 1].net_premium);
+
+  if (first == null || last == null) {
+    return { direction: 'unknown', delta: null, label: '数据异常' };
+  }
+
+  const delta = last - first;
+  const deltaM = safeMillions(delta);
+  const sign = delta >= 0 ? '+' : '';
+  const windowLabel = windowMs === 5 * 60 * 1000 ? '5m' : '15m';
+  const label = `${sign}$${deltaM != null ? Math.abs(deltaM).toFixed(0) : '--'}M/${windowLabel}`;
+
+  // Threshold: $5M for 5m window, $15M for 15m window
+  const threshold = windowMs <= 5 * 60 * 1000 ? 5_000_000 : 15_000_000;
+  const direction = delta > threshold ? 'bullish' : delta < -threshold ? 'bearish' : 'flat';
+
+  return { direction, delta, delta_millions: deltaM, label };
 }
 
 /**
@@ -123,7 +192,7 @@ function classifyFlowBehavior({
 }
 
 /**
- * Compute 15-minute net premium acceleration
+ * Compute 15-minute net premium acceleration (legacy, kept for compatibility)
  * @param {Array} prem_ticks - array of { timestamp, net_premium } objects
  */
 function calcPremAcceleration(prem_ticks = []) {
@@ -168,7 +237,22 @@ function calcPremAcceleration(prem_ticks = []) {
 }
 
 /**
- * Main Flow Behavior Engine
+ * Main Flow Behavior Engine (v2 — 5m+15m Dual Window)
+ *
+ * @param {object} params
+ * @param {number} params.net_premium      - Current net premium (5m snapshot)
+ * @param {number} params.call_premium     - Current call premium
+ * @param {number} params.put_premium      - Current put premium
+ * @param {number} params.put_call_ratio   - P/C ratio
+ * @param {Array}  params.prem_ticks       - Legacy prem ticks (for backward compat)
+ * @param {Array}  params.premium_queue    - New: time-series queue from PremiumAccelerationQueue
+ *                                           Each entry: { net_premium, call_premium, put_premium, ts }
+ * @param {string} params.gamma_regime     - 'positive' | 'negative' | 'neutral' | 'unknown'
+ * @param {string} params.spot_position    - Spot position relative to gamma flip
+ * @param {string} params.darkpool_state   - Darkpool state
+ * @param {number} params.put_wall         - Near put wall
+ * @param {number} params.call_wall        - Near call wall
+ * @param {number} params.spot_price       - Current SPX spot price
  */
 export function buildFlowBehaviorEngine({
   net_premium = null,
@@ -176,6 +260,7 @@ export function buildFlowBehaviorEngine({
   put_premium = null,
   put_call_ratio = null,
   prem_ticks = [],
+  premium_queue = [],   // NEW: time-series queue for 5m/15m window computation
   gamma_regime = 'unknown',
   spot_position = 'unknown',
   darkpool_state = null,
@@ -189,8 +274,36 @@ export function buildFlowBehaviorEngine({
   const pcRatio = safeNumber(put_call_ratio);
   const spot = safeNumber(spot_price);
 
-  // Classify behavior
-  const { behavior, confidence, reason } = classifyFlowBehavior({
+  // ── 5m + 15m Dual Window Flow Direction ────────────────────────────────────
+  // Use premium_queue if available (from PremiumAccelerationQueue._queue)
+  // Fall back to prem_ticks for legacy compatibility
+  const queueForWindows = premium_queue.length > 0 ? premium_queue : prem_ticks.map((t) => ({
+    net_premium: t.net_premium,
+    ts: typeof t.timestamp === 'number' ? t.timestamp : Date.parse(t.timestamp)
+  }));
+
+  const flow5m  = computeWindowDirection(queueForWindows, 5  * 60 * 1000);
+  const flow15m = computeWindowDirection(queueForWindows, 15 * 60 * 1000);
+
+  // Dual window alignment
+  const bothKnown = flow5m.direction !== 'unknown' && flow15m.direction !== 'unknown';
+  const dualAligned = bothKnown && flow5m.direction === flow15m.direction && flow5m.direction !== 'flat';
+  const dualConflict = bothKnown && flow5m.direction !== 'flat' && flow15m.direction !== 'flat'
+    && flow5m.direction !== flow15m.direction;
+
+  let dualWindowLabel = '双窗口数据不足';
+  if (bothKnown) {
+    if (dualAligned) {
+      dualWindowLabel = `5m ${flow5m.label} + 15m ${flow15m.label} 一致 → 方向可信`;
+    } else if (dualConflict) {
+      dualWindowLabel = `5m ${flow5m.label} 与 15m ${flow15m.label} 冲突 → 方向降级`;
+    } else {
+      dualWindowLabel = `5m ${flow5m.label} / 15m ${flow15m.label}`;
+    }
+  }
+
+  // ── Classify behavior ──────────────────────────────────────────────────────
+  const { behavior, confidence: rawConfidence, reason } = classifyFlowBehavior({
     net_premium: netPrem,
     call_premium: callPrem,
     put_premium: putPrem,
@@ -203,10 +316,21 @@ export function buildFlowBehaviorEngine({
     spot
   });
 
-  // 15-minute acceleration
+  // ── Confidence adjustment based on dual window ─────────────────────────────
+  let confidence = rawConfidence;
+  if (dualAligned) {
+    // Boost: both windows agree
+    if (confidence === 'low') confidence = 'medium';
+    else if (confidence === 'medium') confidence = 'high';
+  } else if (dualConflict) {
+    // Downgrade: windows conflict
+    if (confidence === 'high') confidence = 'medium';
+  }
+
+  // ── 15-minute acceleration (legacy) ───────────────────────────────────────
   const acceleration = calcPremAcceleration(prem_ticks);
 
-  // P/C ratio extremes
+  // ── P/C ratio extremes ─────────────────────────────────────────────────────
   const pcExtreme = pcRatio != null
     ? pcRatio > 1.8
       ? { extreme: true, type: 'extreme_bearish', label: `P/C ${pcRatio.toFixed(2)} — 散户极端恐慌`, color: 'red' }
@@ -219,17 +343,18 @@ export function buildFlowBehaviorEngine({
             : { extreme: false, type: 'normal', label: `P/C ${pcRatio.toFixed(2)} — 正常`, color: 'gray' }
     : { extreme: false, type: 'unavailable', label: 'P/C 数据未接入', color: 'gray' };
 
-  // Flow aggression score (0–100)
+  // ── Flow aggression score (0–100) ──────────────────────────────────────────
   let aggressionScore = 0;
   if (netPrem != null) {
     const absM = Math.abs(netPrem) / 1_000_000;
     aggressionScore += Math.min(50, absM * 2);
   }
-  if (acceleration.is_accelerating) aggressionScore += 30;
-  if (pcExtreme.extreme) aggressionScore += 20;
+  if (acceleration.is_accelerating) aggressionScore += 20;
+  if (pcExtreme.extreme) aggressionScore += 15;
+  if (dualAligned) aggressionScore += 15;  // Bonus for dual window alignment
   aggressionScore = Math.min(100, Math.round(aggressionScore));
 
-  // Behavior labels
+  // ── Behavior labels ────────────────────────────────────────────────────────
   const behaviorLabels = {
     put_effective: { label: 'Put 有效', label_en: 'PUT EFFECTIVE', color: 'red', icon: '⬇' },
     put_squeezed: { label: 'Put 被绞', label_en: 'PUT SQUEEZED', color: 'amber', icon: '⚡' },
@@ -241,7 +366,7 @@ export function buildFlowBehaviorEngine({
 
   const behaviorMeta = behaviorLabels[behavior] || behaviorLabels.neutral;
 
-  // Prohibit direction based on behavior
+  // ── Prohibit direction based on behavior ───────────────────────────────────
   const prohibit = {
     put_effective: 'CALL',
     put_squeezed: 'PUT',
@@ -250,6 +375,18 @@ export function buildFlowBehaviorEngine({
     mixed: 'BOTH',
     neutral: null
   }[behavior] ?? null;
+
+  // ── Dual window narrative ──────────────────────────────────────────────────
+  let dualWindowNarrative = '';
+  if (dualAligned && flow5m.direction === 'bullish') {
+    dualWindowNarrative = `5m+15m 双窗口同步偏多（${flow5m.label} / ${flow15m.label}），多头动能可信。`;
+  } else if (dualAligned && flow5m.direction === 'bearish') {
+    dualWindowNarrative = `5m+15m 双窗口同步偏空（${flow5m.label} / ${flow15m.label}），空头动能可信。`;
+  } else if (dualConflict) {
+    dualWindowNarrative = `5m 和 15m 方向冲突（${flow5m.label} vs ${flow15m.label}），方向降级，等确认。`;
+  } else if (bothKnown) {
+    dualWindowNarrative = `5m ${flow5m.label} / 15m ${flow15m.label}，方向待确认。`;
+  }
 
   return {
     behavior,
@@ -267,7 +404,22 @@ export function buildFlowBehaviorEngine({
     put_premium: putPrem,
     put_call_ratio: pcRatio,
 
-    // Acceleration
+    // ── NEW: 5m + 15m Dual Window ──────────────────────────────────────────
+    flow_5m_direction:  flow5m.direction,
+    flow_5m_delta:      flow5m.delta,
+    flow_5m_delta_millions: flow5m.delta_millions,
+    flow_5m_label:      flow5m.label,
+    flow_15m_direction: flow15m.direction,
+    flow_15m_delta:     flow15m.delta,
+    flow_15m_delta_millions: flow15m.delta_millions,
+    flow_15m_label:     flow15m.label,
+    dual_window_aligned: dualAligned,
+    dual_window_conflict: dualConflict,
+    dual_window_label:  dualWindowLabel,
+    dual_window_narrative: dualWindowNarrative || null,
+    queue_size: queueForWindows.length,
+
+    // Acceleration (legacy)
     acceleration,
 
     // P/C extreme
