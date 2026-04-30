@@ -1939,23 +1939,44 @@ function renderHome(signal) {
   const pinWarn    = lv.pin_warning;
   const hint       = lv.hint || '';
 
-  // Plan lines
+  // Plan lines — LOCKED 状态也显示完整六行指令
   const plan = pc.plan;
-  const planLines = plan ? `
+  const ab   = signal.ab_order_engine || {};
+  const abConf = ab.execution_confidence ?? 0;
+  // 可信度颜色
+  const confColor = abConf >= 70 ? 'conf-high' : abConf >= 40 ? 'conf-mid' : 'conf-low';
+  const confLabel = abConf >= 70 ? '高可信，可执行' : abConf >= 40 ? '中可信，小仓等确认' : '低可信，只观察';
+  // 无论是否 LOCKED，都尝试从 ab_order_engine 提取六行指令
+  const abPlan = ab.plan_a ?? ab.plan_b ?? null;
+  const abBlocked = ab.status === 'blocked';
+  const blockedReason = ab.blocked_reason === 'cold_start_or_off_hours'
+    ? '非交易时段 / 价格历史不足，禁止开仓'
+    : ab.blocked_reason === 'spot_missing' ? '现价缺失，禁止开仓' : (ab.blocked_reason ?? '等待条件满足');
+  const planData = plan || abPlan;
+  const planLines = planData ? `
     <div class="plan-grid">
-      <div class="plan-row"><span class="plan-icon">◎</span><span class="plan-key">状态</span><span class="plan-val">${escapeHtml(plan.state)}</span></div>
-      <div class="plan-row"><span class="plan-icon">◈</span><span class="plan-key">为什么</span><span class="plan-val">${escapeHtml(plan.why)}</span></div>
-      <div class="plan-row"><span class="plan-icon">⊕</span><span class="plan-key">进场</span><span class="plan-val entry-val">${escapeHtml(plan.entry)}</span></div>
-      <div class="plan-row"><span class="plan-icon">◆</span><span class="plan-key">做什么</span><span class="plan-val action-val">${escapeHtml(plan.action)}</span></div>
-      <div class="plan-row"><span class="plan-icon">⊗</span><span class="plan-key">止损</span><span class="plan-val stop-val">${escapeHtml(plan.stop)}</span></div>
-      <div class="plan-row"><span class="plan-icon">◎</span><span class="plan-key">目标</span><span class="plan-val target-val">${escapeHtml(plan.target)}</span></div>
-      <div class="plan-row full-row"><span class="plan-icon">⊘</span><span class="plan-key">禁忌</span><span class="plan-val forbidden-val">${escapeHtml(plan.forbidden)}</span></div>
-    </div>` : `<div class="plan-locked-msg">${escapeHtml(pc.locked_reason || '等待条件满足')}</div>`;
+      <div class="plan-row"><span class="plan-icon">◎</span><span class="plan-key">当前建议</span><span class="plan-val">${escapeHtml(planData.state ?? planData.headline ?? '--')}</span></div>
+      <div class="plan-row"><span class="plan-icon">◈</span><span class="plan-key">为什么</span><span class="plan-val">${escapeHtml(planData.why ?? planData.now ?? '--')}</span></div>
+      <div class="plan-row"><span class="plan-icon">⊕</span><span class="plan-key">进场</span><span class="plan-val entry-val">${escapeHtml(planData.entry ?? planData.wait_long ?? '--')}</span></div>
+      <div class="plan-row"><span class="plan-icon">◆</span><span class="plan-key">做什么</span><span class="plan-val action-val">${escapeHtml(planData.action ?? planData.wait_short ?? '--')}</span></div>
+      <div class="plan-row"><span class="plan-icon">⊗</span><span class="plan-key">止损</span><span class="plan-val stop-val">${escapeHtml(planData.stop ?? planData.invalidation ?? '--')}</span></div>
+      <div class="plan-row"><span class="plan-icon">◎</span><span class="plan-key">目标</span><span class="plan-val target-val">${escapeHtml(planData.target ?? '--')}</span></div>
+      <div class="plan-row full-row"><span class="plan-icon">⊘</span><span class="plan-key">禁做</span><span class="plan-val forbidden-val">${escapeHtml(planData.forbidden ?? '--')}</span></div>
+    </div>
+    <div class="plan-conf-row">
+      <span class="plan-conf-label">可信度</span>
+      <span class="plan-conf-val ${confColor}">${abConf}/100</span>
+      <span class="plan-conf-desc ${confColor}">${confLabel}</span>
+    </div>
+    ${abBlocked ? `<div class="plan-locked-banner">${escapeHtml(blockedReason)}</div>` : ''}
+  ` : `<div class="plan-locked-msg">${escapeHtml(blockedReason)}</div>`;
 
-  // Darkpool levels
-  const dpLevels = (dr.levels || []).slice(0, 2).map((l) =>
-    `<div class="dp-level-row"><span class="dp-level-num">${escapeHtml(l.level_fmt)}</span><span class="dp-level-prem">${escapeHtml(l.premium_fmt)}</span><span class="dp-level-tag ${l.behavior === 'breakout' ? 'bearish' : 'bullish'}">${escapeHtml(l.label)}</span></div>`
-  ).join('');
+  // Darkpool levels — 使用 pos_desc 和 is_above_spot
+  const dpLevels = (dr.levels || []).slice(0, 2).map((l) => {
+    const tagClass = l.is_above_spot ? 'bearish' : 'bullish';
+    const desc = l.pos_desc || l.label || '--';
+    return `<div class="dp-level-row"><span class="dp-level-num">${escapeHtml(l.level_fmt)}</span><span class="dp-level-prem">${escapeHtml(l.premium_fmt)}</span><span class="dp-level-tag ${tagClass}">${escapeHtml(desc)}</span></div>`;
+  }).join('');
 
   // IV gauge needle (0-100%)
   const ivRankVal  = vd.iv_rank ?? 0;
@@ -2061,6 +2082,7 @@ function renderHome(signal) {
           </div>
           <div class="bottom-card-big-title">${escapeHtml(mr.title || '--')}</div>
           <div class="bottom-card-body">${escapeHtml(mr.body || '--')}</div>
+          ${mr.mm_what_to_do ? `<div class="mm-what-to-do"><span class="mm-icon">🏦</span><span class="mm-text">${escapeHtml(mr.mm_what_to_do)}</span></div>` : ''}
           <div class="bottom-card-stats">
             <span class="stat-item">P/C：<strong>${escapeHtml(pcRatio)}</strong></span>
             <span class="stat-sep">｜</span>
@@ -2120,13 +2142,32 @@ function renderHome(signal) {
             </div>
           </div>
           <div class="vol-stats">
-            <div class="vol-stat-row"><span class="vol-stat-label">VIX</span><span class="vol-stat-val ${vixColor}">${escapeHtml(vixFmt)}</span></div>
-            <div class="vol-stat-row"><span class="vol-stat-label">风险情绪</span><span class="vol-stat-val ${vixColor}">${escapeHtml(vixSent)}</span></div>
+            <div class="vol-stat-row"><span class="vol-stat-label">来源</span><span class="vol-stat-val ${vx.status === 'missing' ? 'missing' : 'gray'}">${escapeHtml(vx.source || 'FMP')}</span></div>
+            <div class="vol-stat-row"><span class="vol-stat-label">状态</span><span class="vol-stat-val ${vx.status === 'missing' ? 'missing' : vixColor}">${vx.status === 'missing' ? (vx.source_status === 'limit_reach' ? 'FMP 超限' : '不可用') : escapeHtml(vixSent)}</span></div>
           </div>
-          <div class="vol-comment">${vx.status === 'missing' ? `<span class="data-missing">VIX 数据不可用（${escapeHtml(vx.source_status || 'unavailable')}），当前不参与判断</span>` : escapeHtml(vixComment)}</div>
+          <div class="vol-comment">${vx.status === 'missing' ? `<span class="data-missing">${escapeHtml(vixComment)}</span>` : escapeHtml(vixComment)}</div>
         </section>
       </div>
 
+      <!-- MARKET MAKER PATH CARD -->
+      ${(() => {
+        const mmp = signal.mm_path_card || mr.mm_path_card || null;
+        if (!mmp) return '';
+        return `
+        <section class="mm-path-card">
+          <div class="mm-path-header">
+            <span class="mm-path-icon">🏦</span>
+            <span class="mm-path-title">做市商路径</span>
+          </div>
+          <div class="mm-path-current">${escapeHtml(mmp.current_path || '--')}</div>
+          <div class="mm-path-talk">${escapeHtml(mmp.talk || '--')}</div>
+          <div class="mm-path-scenes">
+            <div class="mm-scene bull"><span class="mm-scene-label">上行情景</span><span class="mm-scene-val">${escapeHtml(mmp.bull_scene || '--')}</span></div>
+            <div class="mm-scene bear"><span class="mm-scene-label">下行情景</span><span class="mm-scene-val">${escapeHtml(mmp.bear_scene || '--')}</span></div>
+          </div>
+          <div class="mm-path-action"><span class="mm-action-icon">→</span><span class="mm-action-text">${escapeHtml(mmp.current_action || '--')}</span></div>
+        </section>`;
+      })()}
       <!-- FORBIDDEN BAR -->
       ${hasForbidden ? `
       <div class="forbidden-bar">

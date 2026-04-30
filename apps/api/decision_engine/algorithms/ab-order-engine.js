@@ -189,16 +189,42 @@ export function buildAbOrderEngine({
   }
   if (execution_confidence < 40) {
     const _isColdStart = execution_confidence === 0;
-    const _blockedMsg = _isColdStart
-      ? '【冷启动锁定】非交易时段 / 价格历史不足，禁止开仓。开盘后约 10 分钟自动解锁。'
-      : `【置信度不足】当前置信度 ${execution_confidence}/100，低于执行阈值 40，等待数据改善后解锁。`;
+    const _confLabel = execution_confidence === 0 ? '低｜只观察'
+      : execution_confidence < 40 ? `低｜只观察 (${execution_confidence}/100)`
+      : execution_confidence < 70 ? `中｜小仓等确认 (${execution_confidence}/100)`
+      : `高｜可执行 (${execution_confidence}/100)`;
+    const _atmFmt = atm != null ? String(Math.round(atm)) : '--';
+    const _cwFmt  = call_wall != null ? String(Math.round(call_wall)) : '--';
+    const _pwFmt  = put_wall  != null ? String(Math.round(put_wall))  : '--';
+    const _gfFmt  = gamma_flip != null ? String(Math.round(gamma_flip)) : '--';
+    // LOCKED 状态也输出完整六行指令，方便前端显示
+    const _lockedPlan = {
+      state:        '锁仓观察',
+      why:          _isColdStart
+        ? `正 Gamma + ATM ${_atmFmt} 吸附，非交易时段 / 价格历史不足，${_atmFmt} 附近容易来回割。`
+        : `置信度不足（${execution_confidence}/100），等待数据改善。ATM ${_atmFmt} 附近不要乱做。`,
+      watch:        `上方 ${_cwFmt} / 下方 ${_pwFmt} 能不能站稳。`,
+      wait_long:    `站稳 ${_cwFmt}，回踩不破 ${_atmFmt}。`,
+      wait_short:   `跌破 ${_pwFmt}，反抽站不回。`,
+      forbidden:    `${_atmFmt} ATM 附近不要乱买 Call / Put。`,
+      invalidation: `开盘后价格历史满 10 分钟自动解锁。`,
+      confidence:   execution_confidence,
+      confidence_label: _confLabel,
+      summary:      _isColdStart
+        ? `可信度 ${execution_confidence}/100｜低｜只观察`
+        : `可信度 ${execution_confidence}/100｜低｜只观察`
+    };
     return {
       status: 'blocked',
-      status_cn: _isColdStart ? '冷启动 / 非交易时段，禁止开仓' : `执行置信度不足 (${execution_confidence}/100)，不生成预案`,
-      plan_a: null, plan_b: null,
-      headline: _blockedMsg,
-      blocked_reason: _isColdStart ? 'cold_start_or_off_hours' : `置信度 ${execution_confidence}/100 < 40`,
-      execution_confidence
+      status_cn: _isColdStart ? '非交易时段 / 价格历史不足，禁止开仓' : `可信度低，只观察 (${execution_confidence}/100)`,
+      plan_a: _lockedPlan,
+      plan_b: null,
+      headline: _isColdStart
+        ? `锁仓观察｜可信度 ${execution_confidence}/100 低`
+        : `锁仓观察｜可信度 ${execution_confidence}/100 低`,
+      blocked_reason: _isColdStart ? 'cold_start_or_off_hours' : `可信度低 ${execution_confidence}/100`,
+      execution_confidence,
+      confidence_label: _confLabel
     };
   }
 

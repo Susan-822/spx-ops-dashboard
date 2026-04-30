@@ -62,10 +62,30 @@ function buildPrimaryCard(signal) {
     invalidation: ab.plan_a.invalidation ?? '--'
   } : null;
 
+  // 可信度三档颜色
+  const conf = ab.execution_confidence ?? 0;
+  let confLabel = '低｜只观察';
+  let confColor = 'gray';
+  if      (conf >= 70) { confLabel = '高｜可执行';      confColor = 'green'; }
+  else if (conf >= 40) { confLabel = '中｜小仓等确认';  confColor = 'amber'; }
+  else                 { confLabel = '低｜只观察';       confColor = 'gray';  }
+  // LOCKED 状态也输出完整六行指令（从 ab.plan_a 读取，blocked 时已有 _lockedPlan）
+  const lockedPlan = ab.plan_a ? {
+    state:        ab.plan_a.state        ?? '锁仓观察',
+    why:          ab.plan_a.why          ?? '--',
+    watch:        ab.plan_a.watch        ?? '--',
+    wait_long:    ab.plan_a.wait_long    ?? '--',
+    wait_short:   ab.plan_a.wait_short   ?? '--',
+    forbidden:    ab.plan_a.forbidden    ?? '--',
+    invalidation: ab.plan_a.invalidation ?? '--',
+    confidence:   conf,
+    confidence_label: confLabel
+  } : null;
   return {
     direction, direction_label: directionLabel, direction_color: directionColor, badge,
     headline, sub_headline: subHeadline,
-    plan, plan_b: ab.plan_b ?? null,
+    plan: ab.status !== 'blocked' ? plan : lockedPlan,
+    plan_b: ab.plan_b ?? null,
     spot, spot_fmt: spotFmt,
     spot_source: pc.spot_source ?? '--',
     spot_status: pc.spot_status ?? 'unknown',
@@ -75,7 +95,10 @@ function buildPrimaryCard(signal) {
     scene_warnings: pve.active_scenes ?? [],
     alert_level: pve.alert_level ?? 'normal',
     locked: ab.status === 'blocked',
-    locked_reason: ab.blocked_reason ?? null
+    locked_reason: ab.blocked_reason ?? null,
+    execution_confidence: conf,
+    confidence_label: confLabel,
+    confidence_color: confColor
   };
 }
 
@@ -191,13 +214,13 @@ function buildMoneyRead(signal) {
   const fb = signal.flow_behavior_engine || {};
   const uf = signal.uw_factors || {};
   const ff = uf.flow_factors || {};
-
+  const gr = signal.gamma_regime_engine || {};
+  const dw = signal.dealer_wall_map || {};
   const behavior  = fb.behavior ?? 'neutral';
   const netPremM  = fb.net_premium_millions ?? null;
   const pcRatio   = fb.put_call_ratio ?? null;
   const callPremM = ff.call_premium_5m != null ? Number((ff.call_premium_5m / 1_000_000).toFixed(1)) : null;
   const putPremM  = ff.put_premium_5m  != null ? Number((ff.put_premium_5m  / 1_000_000).toFixed(1)) : null;
-
   const titleMap = {
     put_effective:  '偏空且有效',
     put_squeezed:   '偏空但有托盘',
@@ -207,7 +230,6 @@ function buildMoneyRead(signal) {
     neutral:        '无明显方向'
   };
   const title = titleMap[behavior] ?? '无明显方向';
-
   let body = fb.reason ?? '资金流向信号不足。';
   if (behavior === 'put_squeezed') {
     body = 'Put 仍然重，但价格没有继续跌，不能追最低点。';
@@ -216,9 +238,51 @@ function buildMoneyRead(signal) {
     const ac = callPremM != null ? Math.abs(callPremM).toFixed(1) : '--';
     body = `资金偏多但 Put 仍重（Put ${ap}M > Call ${ac}M），方向降级。`;
   }
-
+  // ── 做市商路径 ──────────────────────────────────────────────────────────────
+  const atmVal  = signal.atm_engine?.atm ?? null;
+  const cwVal   = dw.near_call_wall ?? null;
+  const pwVal   = dw.near_put_wall  ?? null;
+  const atmFmt  = atmVal != null ? String(Math.round(atmVal))  : '--';
+  const cwFmt   = cwVal  != null ? String(Math.round(cwVal))   : '--';
+  const pwFmt   = pwVal  != null ? String(Math.round(pwVal))   : '--';
+  const gammaRegime = gr.gamma_regime ?? 'unknown';
+  let mmPath = '方向不明，等待数据。';
+  let mmTalk = '做市商路径不明，等待数据改善。';
+  let mmBullScene = `站稳 ${cwFmt}，说明上方卖压被吃掉，才转多。`;
+  let mmBearScene = `跌破 ${pwFmt}，说明托盘失败，才转空。`;
+  let mmAction    = `${atmFmt} ATM 附近锁仓，等方向确认。`;
+  if (gammaRegime === 'positive') {
+    mmPath   = '正 Gamma 吸回 ATM。';
+    mmTalk   = `做市商更容易把价格吸回 ${atmFmt} ATM 附近，让 Call 和 Put 都磨损。${atmFmt} 附近不要乱做，等 ${cwFmt} 站稳或 ${pwFmt} 跌破。`;
+    mmAction = `${atmFmt} ATM 附近不做，等 ${cwFmt} 站稳或 ${pwFmt} 跌破。`;
+  } else if (gammaRegime === 'negative') {
+    mmPath   = '负 Gamma 放大波动。';
+    mmTalk   = `负 Gamma 环境，做市商需要反向对冲，价格波动容易被放大，单边行情概率更高。方向确认后可以跟，但要快进快出。`;
+    mmAction = `方向确认后可以跟，但要快进快出，不要在 ${atmFmt} 附近磨。`;
+  }
+  const mmPathCard = {
+    current_path:   mmPath,
+    talk:           mmTalk,
+    bull_scene:     mmBullScene,
+    bear_scene:     mmBearScene,
+    current_action: mmAction,
+    gamma_regime:   gammaRegime
+  };
+  // 做市商会干嘛（资金模块内嵌）
+  let mmWhatToDo = `${atmFmt} 附近不做。等上破 ${cwFmt} 或下破 ${pwFmt}。`;
+  if (behavior === 'put_squeezed') {
+    mmWhatToDo = `Put 还重，但价格不跌，说明下方有人托。${atmFmt} 附近不追空，等 ${pwFmt} 真正跌破。`;
+  } else if (behavior === 'mixed') {
+    mmWhatToDo = `有资金在托，但空头保护盘还没撤。${atmFmt} 附近不做，等 ${cwFmt} 站稳或 ${pwFmt} 跌破。`;
+  } else if (behavior === 'call_effective') {
+    mmWhatToDo = `Call 流入有效，但先等 ${cwFmt} 站稳确认，不要在 ${atmFmt} 附近追多。`;
+  } else if (behavior === 'put_effective') {
+    mmWhatToDo = `Put 流入有效，但先等 ${pwFmt} 跌破确认，不要在 ${atmFmt} 附近追空。`;
+  }
   return {
     title, body,
+    mm_what_to_do: mmWhatToDo,
+    mm_path_card: mmPathCard,
     put_call_ratio: pcRatio != null ? Number(pcRatio.toFixed(2)) : null,
     net_premium_fmt: netPremM != null ? (netPremM >= 0 ? '+' : '') + netPremM.toFixed(1) + 'M' : '--',
     call_premium_fmt: callPremM != null ? '+' + Math.abs(callPremM).toFixed(1) + 'M' : '--',
@@ -232,50 +296,73 @@ function buildDarkpoolRead(signal) {
   const dp  = signal.darkpool_behavior_engine || {};
   const pc  = signal.price_contract || {};
   const isMarketHours = _isMarketHours();
-
   const clusters = dp.clusters ?? [];
   const behavior = dp.behavior ?? 'unknown';
   const spot     = pc.spot ?? pc.live_price ?? null;
-
   let title = '暗盘数据不足';
   let body  = '暗盘数据待接入。';
-
   if (clusters.length > 0) {
     const top   = clusters[0];
     const level = top.spx_level ?? dp.spx_level ?? null;
     const prem  = top.total_premium_millions ?? null;
     const lvl2  = clusters[1]?.spx_level;
-
     if (isMarketHours) {
-      if (behavior === 'breakout' || behavior === 'upper_dispatch') {
-        title = '上方派发';
-        body  = `${fmt(level)}${lvl2 ? `–${fmt(lvl2)}` : ''} 有大额成交，价格站不回容易被压。`;
-      } else if (behavior === 'breakdown' || behavior === 'lower_brake_zone') {
-        title = '下方承接';
-        body  = `${fmt(level)} 有大额成交，机构可能在底部承接。`;
+      if (behavior === 'upper_dispatch' || behavior === 'breakout') {
+        title = '上面有人压';
+        body  = `${fmt(level)}${lvl2 ? `–${fmt(lvl2)}` : ''} 有大额成交，价格冲到这里站不上说明上面有人压；站稳说明卖压被吃掉。`;
+      } else if (behavior === 'lower_brake_zone' || behavior === 'breakdown') {
+        title = '下面有人托';
+        body  = `${fmt(level)} 有大额成交，价格回踩这里不破说明下面有人托；跌破收不回说明托盘失败。`;
       } else if (behavior === 'cluster_wall') {
         title = '暗盘墙位';
-        body  = `${fmt(level)} 附近有强暗盘聚集，价格容易在此震荡。`;
+        body  = `${fmt(level)} 附近有强暗盘聚集，价格容易在此来回震荡。`;
       } else {
         title = dp.behavior_cn ?? '暗盘活跃';
         body  = `暗盘区 ${fmt(level)}${prem != null ? `，成交 $${prem.toFixed(1)}M` : ''}。`;
       }
     } else {
-      const isAbove = spot != null && level != null && level > spot;
-      title = isAbove ? '暗盘区在现价上方' : '暗盘区在现价下方';
-      body  = `暗盘区 ${fmt(level)}（仅作位置参考，非交易时段不判断动能）。`;
+      // 非交易时段：只显示位置，不判断动能
+      title = '暗盘脚印';
+      const parts = clusters.slice(0, 2).map((c) => {
+        const lv = c.spx_level ?? null;
+        const pr = c.total_premium_millions ?? null;
+        const isAbove = spot != null && lv != null && lv > spot;
+        const posLabel = isAbove ? '上面压盘位' : '下面托盘位';
+        return `${fmt(lv)} ${posLabel}${pr != null ? `（$${pr.toFixed(1)}M）` : ''}`;
+      });
+      body = (parts.length > 0 ? parts.join('，') + '。' : '') + '等开盘确认。';
     }
   }
-
-  const levelList = clusters.slice(0, 3).map((c) => ({
-    level: c.spx_level ?? null,
-    level_fmt: c.spx_level != null ? fmt(c.spx_level) : '--',
-    premium_fmt: c.total_premium_millions != null ? `$${c.total_premium_millions.toFixed(1)}M` : '--',
-    behavior: c.behavior ?? 'unknown',
-    behavior_cn: c.behavior_cn ?? '--',
-    label: c.behavior_cn ?? c.behavior ?? '--'
-  }));
-
+  const levelList = clusters.slice(0, 3).map((c) => {
+    const lv = c.spx_level ?? null;
+    const pr = c.total_premium_millions ?? null;
+    const isAbove = spot != null && lv != null && lv > spot;
+    let posLabel, posDesc, posDetail;
+    if (isMarketHours) {
+      posLabel  = c.behavior_cn ?? c.behavior ?? '--';
+      posDesc   = c.behavior === 'upper_dispatch' ? '上面有人压' : c.behavior === 'lower_brake_zone' ? '下面有人托' : posLabel;
+      posDetail = c.behavior === 'upper_dispatch'
+        ? '站不上 = 有人压｜站稳 = 卖压被吃掉'
+        : c.behavior === 'lower_brake_zone'
+        ? '不破 = 有人托｜跌破收不回 = 托盘失败'
+        : posLabel;
+    } else {
+      posLabel  = isAbove ? '上面压盘位' : '下面托盘位';
+      posDesc   = '等开盘确认';
+      posDetail = isAbove ? '冲不上 = 有人压｜站稳 = 卖压被吃掉' : '不破 = 有人托｜跌破收不回 = 托盘失败';
+    }
+    return {
+      level: lv,
+      level_fmt: lv != null ? fmt(lv) : '--',
+      premium_fmt: pr != null ? `$${pr.toFixed(1)}M` : '--',
+      behavior: c.behavior ?? 'unknown',
+      behavior_cn: c.behavior_cn ?? '--',
+      label: posLabel,
+      pos_desc: posDesc,
+      pos_detail: posDetail,
+      is_above_spot: isAbove
+    };
+  });
   return {
     title, body,
     levels: levelList,
@@ -324,22 +411,27 @@ function buildVolDashboard(signal) {
 function buildVixDashboard(signal) {
   const vd  = signal.volatility_dashboard || {};
   const vix = vd.vix ?? null;
-
-  let riskSentiment = '正常'; let riskColor = 'green';
-  let commentary = '没有恐慌，不支持脑追 Put。';
+  const vixSource = vd.vix_source ?? 'FMP';
+  const vixSourceStatus = vd.vix_source_status ?? (vix != null ? 'live' : 'limit_reach');
+  let riskSentiment, riskColor, commentary;
   if (vix != null) {
     if      (vix > 30) { riskSentiment = '极度恐慌'; riskColor = 'red';   commentary = `VIX ${vix.toFixed(1)} 极度恐慌，IV 溢价高，买 Put 成本极高。`; }
     else if (vix > 20) { riskSentiment = '恐慌';     riskColor = 'amber'; commentary = `VIX ${vix.toFixed(1)} 偏高，市场有恐慌情绪，买方成本上升。`; }
     else if (vix > 15) { riskSentiment = '正常偏高'; riskColor = 'amber'; commentary = `VIX ${vix.toFixed(1)} 正常偏高，可以做买方但需快进快出。`; }
-    else               { riskSentiment = '正常';     riskColor = 'green'; commentary = `VIX ${vix.toFixed(1)} 正常，没有恐慌，不支持脑追 Put。`; }
+    else               { riskSentiment = '正常';     riskColor = 'green'; commentary = `VIX ${vix.toFixed(1)} 正常，没有恐慌，不支持无脑追 Put。`; }
+  } else {
+    // VIX 不可用时，不允许显示"正常"
+    riskSentiment = '不参与判断';
+    riskColor     = 'gray';
+    const sourceMsg = vixSourceStatus === 'limit_reach' ? 'FMP 今日超限' : 'VIX 数据不可用';
+    commentary    = `${sourceMsg}，VIX 暂不参与主控判断。`;
   }
-
   return {
-    vix, vix_fmt: vix != null ? vix.toFixed(1) : '--',
+    vix, vix_fmt: vix != null ? vix.toFixed(1) : '不可用',
     risk_sentiment: riskSentiment, risk_color: riskColor,
     commentary, status: vix != null ? 'live' : 'missing',
-    source: vix != null ? 'FMP' : 'unavailable',
-    source_status: vix != null ? 'live' : 'limit_reach'
+    source: vixSource,
+    source_status: vixSourceStatus
   };
 }
 
@@ -494,11 +586,13 @@ function _isMarketHours() {
 
 // ── Main Export ────────────────────────────────────────────────────────────────
 export function buildSignalFormatter(signal) {
+  const moneyRead = buildMoneyRead(signal);
   return {
     primary_card:  buildPrimaryCard(signal),
     sentiment_bar: buildSentimentBar(signal),
     levels:        buildLevels(signal),
-    money_read:    buildMoneyRead(signal),
+    money_read:    moneyRead,
+    mm_path_card:  moneyRead.mm_path_card ?? null,
     darkpool_read: buildDarkpoolRead(signal),
     vol_dashboard: buildVolDashboard(signal),
     vix_dashboard: buildVixDashboard(signal),
