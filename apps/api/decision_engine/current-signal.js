@@ -1,4 +1,5 @@
 import { getMockScenario } from './mock-scenarios.js';
+import { runDataHealthEngine } from './data-health-engine.js';
 import { normalizeMockScenario } from '../normalizer/build-normalized-signal.js';
 import { runMasterEngine } from './master-engine.js';
 import { getTradingViewSnapshot } from '../storage/tradingview-snapshot.js';
