@@ -24,6 +24,9 @@ import { sendJson, readJsonBody, secureCompare } from './helpers.js';
 import { ingestUwSummary } from '../../../integrations/unusual-whales/ingest/uw-ingest.js';
 import { writeUwSnapshot } from '../state/uwSnapshotStore.js';
 import { refreshUwProvider } from '../state/uwProvider.js';
+import { buildAbAlertTestMessage, sendAbTelegramAlerts } from '../alerts/telegram-ab-alert.js';
+import { detectAbStateChange, resetAbStateWatcher } from '../state/ab-state-watcher.js';
+import { sendTelegramReal } from '../adapters/telegram/real.js';
 
 function getBuildMetadata() {
   return {
@@ -438,6 +441,32 @@ export async function handleApiRoute(req, res) {
         accepted: false,
         message: error.message,
         is_mock: false
+      });
+    }
+  }
+
+  // ── A/B 单 Telegram 测试端点 ──────────────────────────────────────────────
+  if (req.method === 'POST' && url.pathname === '/telegram/test-ab') {
+    const body = await readJsonBody(req);
+    try {
+      // 1. 构建测试消息（模拟 status_ready 事件）
+      const spot = typeof body.spot === 'number' ? body.spot : 7152;
+      const text = buildAbAlertTestMessage({ spot_price: spot });
+
+      // 2. 直接发送（不经过去重，测试专用）
+      const result = await sendTelegramReal({ text });
+      const ok = result.configured === true;
+      return sendJson(res, ok ? 200 : 503, {
+        accepted: ok,
+        message: ok ? 'A/B 单测试消息已发送至 Telegram。' : (result.message || 'Telegram 未配置或未启用'),
+        is_mock: !ok,
+        preview: text,
+      });
+    } catch (error) {
+      return sendJson(res, 502, {
+        accepted: false,
+        message: error.message,
+        is_mock: false,
       });
     }
   }
