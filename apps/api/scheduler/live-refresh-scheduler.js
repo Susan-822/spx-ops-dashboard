@@ -28,6 +28,9 @@ import {
   createAdaptiveScheduler,
   getAdaptiveScheduler,
 } from './adaptive-refresh-scheduler.js';
+import { detectAbStateChange } from '../state/ab-state-watcher.js';
+import { sendAbTelegramAlerts } from '../alerts/telegram-ab-alert.js';
+import { getCurrentSignal } from '../decision_engine/current-signal.js';
 
 // ─── Fixed intervals for non-UW jobs (milliseconds) ──────────────────────────
 const FIXED_INTERVALS = {
@@ -195,6 +198,36 @@ async function runUwEndpointRefresh(endpointName) {
     ok ? 'ok' : 'degraded',
     `UW [${endpointName}] refresh: status=${status}, mode=${_schedulerMode}`
   );
+
+  // ── A/B 单状态变化检测 → Telegram 告警 ─────────────────────────────────────
+  // Fire-and-forget: run after UW snapshot is refreshed, non-blocking.
+  // getCurrentSignal() recomputes the full signal pipeline (including ab_order_engine).
+  // Only runs when TELEGRAM_ENABLED=true to avoid unnecessary computation.
+  queueMicrotask(async () => {
+    try {
+      const telegramEnabled =
+        String(process.env.TELEGRAM_ENABLED || '').toLowerCase() === 'true';
+      if (!telegramEnabled) return;
+
+      const signal = await getCurrentSignal();
+      const ab = signal?.ab_order_engine;
+      if (!ab) return;
+
+      const events = detectAbStateChange(ab);
+      if (events.length === 0) return;
+
+      const result = await sendAbTelegramAlerts(events);
+      if (result.sent > 0) {
+        console.log(
+          `[scheduler] A/B alert sent: ${result.sent} sent, ` +
+          `${result.skipped} skipped, ${result.errors} errors`
+        );
+      }
+    } catch (err) {
+      // Never crash the scheduler — log and continue
+      console.error('[scheduler] ab-state-watcher error:', err.message);
+    }
+  });
 }
 
 // ─── Fixed job implementations ────────────────────────────────────────────────
