@@ -62,28 +62,30 @@
  * Intervals are set to match TTL so each endpoint fetches at most once per interval.
  */
 export const NORMAL_INTERVALS = Object.freeze({
-  flow_recent:           10_000,   //  10 s — UW spot + flow
-  net_prem_ticks:        20_000,   //  20 s — net premium
-  market_tide:           30_000,   //  30 s — market tide
-  options_volume:        60_000,   //  60 s — P/C volume
-  darkpool_spy:         120_000,   // 120 s — dark pool SPY
-  greek_exposure_strike:300_000,   // 300 s — GEX by strike
-  interpolated_iv:      300_000,   // 300 s — IV
-  iv_rank:              300_000,   // 300 s — IV rank
+  flow_recent:            60_000,   //  60 s — UW spot + flow  (1440/day)
+  net_prem_ticks:         90_000,   //  90 s — net premium     ( 960/day)
+  market_tide:           120_000,   // 120 s — market tide     ( 720/day)
+  options_volume:        300_000,   // 300 s — P/C volume      ( 288/day)
+  darkpool_spy:          600_000,   // 600 s — dark pool SPY   ( 144/day)
+  greek_exposure_strike: 900_000,   // 900 s — GEX by strike   (  96/day)
+  interpolated_iv:       900_000,   // 900 s — IV              (  96/day)
+  iv_rank:               900_000,   // 900 s — IV rank         (  96/day)
+  // TOTAL ~3840 req/day — well within 15,000 daily limit (74% buffer)
 });
 
 /**
  * Turbo mode intervals — activated when near key levels
  */
 export const TURBO_INTERVALS = Object.freeze({
-  flow_recent:            5_000,   //   5 s
-  net_prem_ticks:        10_000,   //  10 s
-  market_tide:           15_000,   //  15 s
-  options_volume:        30_000,   //  30 s (not in spec but reasonable)
-  darkpool_spy:          60_000,   //  60 s
-  greek_exposure_strike:120_000,   // 120 s
-  interpolated_iv:      120_000,   // 120 s (not in spec but reasonable)
-  iv_rank:              300_000,   // 300 s (unchanged)
+  flow_recent:            20_000,   //  20 s — near key level (was 5s)
+  net_prem_ticks:         30_000,   //  30 s (was 10s)
+  market_tide:            45_000,   //  45 s (was 15s)
+  options_volume:        120_000,   // 120 s (was 30s)
+  darkpool_spy:          300_000,   // 300 s (was 60s)
+  greek_exposure_strike: 600_000,   // 600 s (was 120s)
+  interpolated_iv:       600_000,   // 600 s (was 120s)
+  iv_rank:               900_000,   // 900 s (unchanged)
+  // TURBO total ~6048 req/day — still within 15,000 limit
 });
 
 /**
@@ -106,14 +108,14 @@ export const MINIMAL_ENDPOINTS = new Set([
 
 // ─── Stale thresholds (seconds) ───────────────────────────────────────────────
 const STALE_THRESHOLDS = {
-  flow_recent:            30,
-  net_prem_ticks:         60,
-  market_tide:            90,
-  options_volume:        180,
-  darkpool_spy:          360,
-  greek_exposure_strike: 900,
-  interpolated_iv:       900,
-  iv_rank:               900,
+  flow_recent:           120,   // 2× normal interval
+  net_prem_ticks:        180,
+  market_tide:           240,
+  options_volume:        600,
+  darkpool_spy:         1200,
+  greek_exposure_strike:1800,
+  interpolated_iv:      1800,
+  iv_rank:              1800,
 };
 
 // ─── Exponential backoff config ───────────────────────────────────────────────
