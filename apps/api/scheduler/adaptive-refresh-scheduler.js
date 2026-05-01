@@ -33,6 +33,55 @@
  *   scheduler.stop();
  */
 
+// ─── US market hours gate ────────────────────────────────────────────────────
+/**
+ * Returns true if current UTC time falls within US regular trading hours:
+ *   Monday–Friday, 09:30–16:00 US Eastern Time.
+ *
+ * EDT (summer, UTC-4): 13:30–20:00 UTC
+ * EST (winter, UTC-5): 14:30–21:00 UTC
+ *
+ * We use a simple UTC-offset approach:
+ *   - Last Sunday in March → second Sunday in November: EDT (UTC-4)
+ *   - Otherwise: EST (UTC-5)
+ *
+ * Pre-market (09:00–09:30 ET) is intentionally excluded — UW data is
+ * unreliable before regular session open.
+ */
+function isUsMarketHours() {
+  const now   = new Date();
+  const dow   = now.getUTCDay();          // 0=Sun … 6=Sat
+  if (dow === 0 || dow === 6) return false; // weekend
+
+  // Determine whether we are in EDT or EST
+  const year  = now.getUTCFullYear();
+  const month = now.getUTCMonth() + 1;    // 1-12
+
+  // DST start: 2nd Sunday in March at 02:00 EST = 07:00 UTC
+  const dstStart = (() => {
+    const d = new Date(Date.UTC(year, 2, 1));          // March 1
+    const firstSun = (7 - d.getUTCDay()) % 7;         // days to first Sunday
+    return new Date(Date.UTC(year, 2, 1 + firstSun + 7, 7)); // +7 days = 2nd Sunday 07:00 UTC
+  })();
+
+  // DST end: 1st Sunday in November at 02:00 EDT = 06:00 UTC
+  const dstEnd = (() => {
+    const d = new Date(Date.UTC(year, 10, 1));         // November 1
+    const firstSun = (7 - d.getUTCDay()) % 7;
+    return new Date(Date.UTC(year, 10, 1 + firstSun, 6)); // 1st Sunday 06:00 UTC
+  })();
+
+  const isEDT = now >= dstStart && now < dstEnd;
+  const offsetHours = isEDT ? 4 : 5;    // UTC-4 (EDT) or UTC-5 (EST)
+
+  // Convert UTC to ET minutes-of-day
+  const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const etMinutes  = ((utcMinutes - offsetHours * 60) + 1440) % 1440;
+
+  // Regular session: 09:30–16:00 ET
+  return etMinutes >= 9 * 60 + 30 && etMinutes < 16 * 60;
+}
+
 // ─── Interval tables (milliseconds) ──────────────────────────────────────────
 
 /**
@@ -362,19 +411,26 @@ export class AdaptiveRefreshScheduler {
     }, delayMs).unref?.();
   }
 
-  async _runEndpoint(name) {
+   async _runEndpoint(name) {
     if (!this._started) return;
-
     const state = this._endpointState[name];
     if (!state) return;
+
+    // ── Market-hours gate ──────────────────────────────────────────────────────
+    // Skip UW API calls outside US regular trading hours (09:30–16:00 ET,
+    // Mon–Fri) to preserve the 15,000 req/day quota.
+    // Allow override via env var UW_IGNORE_MARKET_HOURS=true for testing.
+    if (!isUsMarketHours() && process.env.UW_IGNORE_MARKET_HOURS !== 'true') {
+      // Silently skip — no log spam, no backoff penalty
+      return;
+    }
 
     // Respect backoff
     if (state.backoff_until && Date.now() < state.backoff_until) {
       const waitSec = Math.round((state.backoff_until - Date.now()) / 1000);
       console.log(`[adaptive-scheduler] ${name} in backoff, ${waitSec}s remaining`);
-      return;
+       return;
     }
-
     try {
       await this._onRefresh(name);
       this.recordSuccess(name);
