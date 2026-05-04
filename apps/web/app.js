@@ -2177,6 +2177,7 @@ function renderHome(signal) {
   const bear1Fmt   = lv.bear_trigger_fmt   || pc.bear_trigger_1_fmt || null;
   const bear2Fmt   = lv.bear_trigger_2_fmt || pc.bear_trigger_2_fmt || '--';
   // If trigger lines missing, use price_contract.atm_5 as last-resort display fallback
+  const _pc2 = signal.price_contract || {};
   const _atm5 = _pc2.atm_5 ?? null;
   const _bull1Display = bull1Fmt ?? (_atm5 != null ? String(_atm5 + 5) : null);
   const _bear1Display = bear1Fmt ?? (_atm5 != null ? String(_atm5 - 5) : null);
