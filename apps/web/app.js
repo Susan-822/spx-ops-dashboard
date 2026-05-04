@@ -2144,7 +2144,7 @@ function renderHome(signal) {
   const pc  = signal.primary_card  || {};
   const sb  = signal.sentiment_bar || {};
   const lv  = signal.levels        || {};
-  const mr  = signal.money_read    || {};
+  const mr  = signal.money_read    || {}; // [legacy] 仅供 mm_path_card 使用，资金分析已迁移到 capital_flow
   const dr  = signal.darkpool_read || {};
   const vd  = signal.vol_dashboard || {};
   const vx  = signal.vix_dashboard || {};
@@ -2169,7 +2169,7 @@ function renderHome(signal) {
   const sentLabel  = sb.label || '中性';
   const sentSub    = sb.sub   || '';
   const pcRatio    = sb.put_call_ratio != null ? sb.put_call_ratio.toFixed(2) : '--';
-  const netPremFmt = mr.net_premium_fmt || '--';
+  const netPremFmt = ((signal.home_view_model || {}).order_plan || {}).capital_flow?.net_premium_fmt || mr.net_premium_fmt || '--'; // [v2] 优先读 capital_flow
 
   // ── home_view_model: 首页唯一数据源 ─────────────────────────────────────────
   // renderHome 只读 signal.home_view_model，禁止直接读 engine 字段
@@ -2572,8 +2572,7 @@ function renderHome(signal) {
 
         <!-- RIGHT: Vertical aux cards (资金/暗盘/波动率/VIX) -->
         <aside class="aux-sidebar">
-          <!-- Money Read -->
-          <section class="aux-card money-read-card capital-flow-card">
+          <section class="aux-card capital-flow-card">
             <div class="aux-card-header">
               <span class="aux-card-icon">💰</span>
               <span class="aux-card-title">资金实况</span>
@@ -2589,9 +2588,9 @@ function renderHome(signal) {
               // [HVM v2] 无论 LOCKED/WAIT/READY，都显示 capital_flow 完整分析
               // 只读 hvm.order_plan.capital_flow，禁止直接读 flow_behavior_engine
               const _cf = (hvm.order_plan || {}).capital_flow || {};
-              const _headline    = _cf.headline    || mr.title || '--';
-              const _detail      = _cf.detail      || mr.body  || '--';
-              const _mmAction    = _cf.mm_action   || mr.mm_what_to_do || '--';
+              const _headline    = _cf.headline    || '--';
+              const _detail      = _cf.detail      || '--';
+              const _mmAction    = _cf.mm_action   || '--';
               const _tradeImpact = _cf.trade_impact || '--';
               const _tradeGate   = _cf.trade_gate  || 'DEGRADED';
               const _divDetected = _cf.divergence_detected === true;
