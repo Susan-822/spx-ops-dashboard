@@ -180,26 +180,41 @@ export async function handleApiRoute(req, res) {
   }
 
   if (req.method === 'GET' && url.pathname === '/sources/status') {
-    const signal = await getCurrentSignal(scenario);
-    return sendJson(res, 200, {
-      items: signal.source_status,
-      stale_flags: signal.stale_flags,
-      stale_reason: signal.stale_reason,
-      scheduler: createSchedulerState(),
-      scenario: signal.scenario,
-      is_mock: true
-    });
+    try {
+      const signal = await getCurrentSignal(scenario);
+      return sendJson(res, 200, {
+        items: signal.source_status,
+        stale_flags: signal.stale_flags,
+        stale_reason: signal.stale_reason,
+        scheduler: createSchedulerState(),
+        scenario: signal.scenario,
+        is_mock: true
+      });
+    } catch (err) {
+      console.error('[/sources/status] Error:', err.message);
+      return sendJson(res, 500, { error: 'Sources status failed', message: err.message });
+    }
   }
 
   if (req.method === 'GET' && url.pathname === '/signals/current') {
-    const signal = await getCurrentSignal(scenario);
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    return sendJson(res, 200, {
-      ...signal,
-      ...getBuildMetadata()
-    });
+    try {
+      const signal = await getCurrentSignal(scenario);
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      return sendJson(res, 200, {
+        ...signal,
+        ...getBuildMetadata()
+      });
+    } catch (err) {
+      console.error('[/signals/current] Error:', err.stack || err.message);
+      return sendJson(res, 500, {
+        error: 'Signal computation failed',
+        message: err.message,
+        is_mock: false,
+        ...getBuildMetadata()
+      });
+    }
   }
 
   if (req.method === 'POST' && url.pathname === '/uw/refresh') {

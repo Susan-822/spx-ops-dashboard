@@ -94,11 +94,19 @@ export function createServer() {
       return sendUnauthorized(res);
     }
 
-    const handled = await handleApiRoute(req, res);
-    if (handled !== false) {
-      return;
+    try {
+      const handled = await handleApiRoute(req, res);
+      if (handled !== false) {
+        return;
+      }
+      return serveStatic(req, res);
+    } catch (err) {
+      console.error('[server] Unhandled route error:', err.stack || err.message);
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: 'Internal server error', message: err.message, is_mock: false }));
+      }
     }
-    return serveStatic(req, res);
   });
 }
 
