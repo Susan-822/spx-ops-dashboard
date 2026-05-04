@@ -379,8 +379,13 @@ export function buildFlowBehaviorEngine({
   }[behavior] ?? null;
 
   // ── Dual window narrative ──────────────────────────────────────────────────
+  // Phase 3 fix: when behavior === 'put_squeezed', NEVER output "空头动能可信"
+  // because put_squeezed means the bearish flow is being absorbed (positive gamma / darkpool)
   let dualWindowNarrative = '';
-  if (dualAligned && flow5m.direction === 'bullish') {
+  if (behavior === 'put_squeezed' && dualAligned && flow5m.direction === 'bearish') {
+    // Put flow heavy but being absorbed — downgrade bearish narrative
+    dualWindowNarrative = `Put 很重（${flow5m.label} / ${flow15m.label}），但动能被吸收（${reason || '正 Gamma / 暗池承接'}），空头动能降级，LOCKED。`;
+  } else if (dualAligned && flow5m.direction === 'bullish') {
     dualWindowNarrative = `5m+15m 双窗口同步偏多（${flow5m.label} / ${flow15m.label}），多头动能可信。`;
   } else if (dualAligned && flow5m.direction === 'bearish') {
     dualWindowNarrative = `5m+15m 双窗口同步偏空（${flow5m.label} / ${flow15m.label}），空头动能可信。`;
@@ -419,6 +424,8 @@ export function buildFlowBehaviorEngine({
     dual_window_conflict: dualConflict,
     dual_window_label:  dualWindowLabel,
     dual_window_narrative: dualWindowNarrative || null,
+    // Phase 3 fix: explicit flag for frontend LOCKED display
+    put_squeezed_locked: behavior === 'put_squeezed' && dualAligned && flow5m.direction === 'bearish',
     queue_size: queueForWindows.length,
     // Phase 4 fix: detect suspicious same-value windows (cache reuse or fallback bug)
     suspicious_same_window: (

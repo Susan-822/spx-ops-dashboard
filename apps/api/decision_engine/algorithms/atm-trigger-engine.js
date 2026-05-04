@@ -50,14 +50,18 @@ function fmt(n, d = 0) {
 function classifyWall(wallLevel, atm, side) {
   if (wallLevel == null || atm == null) return { near: null, far: wallLevel };
   const dist = Math.abs(wallLevel - atm);
+  // Phase 2 fix: expanded near-wall threshold from 50pt to 150pt
+  // Rationale: SPX 0DTE walls at ATM+60~120pt are still valid intraday execution walls
+  // (e.g. ATM=7240, Call Wall=7300 → dist=60pt → should be "near", not "far")
+  const NEAR_THRESHOLD = 150;
   if (side === 'call') {
     // Call wall must be above ATM
     if (wallLevel <= atm) return { near: null, far: wallLevel };
-    return dist <= 50 ? { near: wallLevel, far: null } : { near: null, far: wallLevel };
+    return dist <= NEAR_THRESHOLD ? { near: wallLevel, far: null } : { near: null, far: wallLevel };
   } else {
     // Put wall must be below ATM
     if (wallLevel >= atm) return { near: null, far: wallLevel };
-    return dist <= 50 ? { near: wallLevel, far: null } : { near: null, far: wallLevel };
+    return dist <= NEAR_THRESHOLD ? { near: wallLevel, far: null } : { near: null, far: wallLevel };
   }
 }
 

@@ -1328,6 +1328,7 @@ function isSniperZone(spot, wall, threshold = 2) {
 function renderHudZoneGamma(signal) {
   const gr = signal.gamma_regime_engine || {};
   const atm = signal.atm_engine || {};
+  const dw = signal.dealer_wall_map || {};
   const spot = (signal.price_contract && signal.price_contract.live_price != null)
     ? signal.price_contract.live_price
     : (signal.observation_price && signal.observation_price.value != null ? signal.observation_price.value : null);
@@ -1337,8 +1338,11 @@ function renderHudZoneGamma(signal) {
   const regimeSubMap = { positive: '做市商阻尼 · 均值回归 · 卖权策略占优', negative: '做市商放波 · 趋势加速 · 买权策略占优', transitional: '环境切换中，谨慎双向', unknown: '等待 UW 数据' };
   const regimeSub = regimeSubMap[regime] || '';
   const score = (gr.scores && gr.scores.execution_confidence != null) ? gr.scores.execution_confidence : 0;
-  const callWall = gr.call_wall != null ? gr.call_wall : null;
-  const putWall  = gr.put_wall  != null ? gr.put_wall  : null;
+  // Phase 2 fix: ONLY read near walls from dealer_wall_map (±500pt GEX-based)
+  // NEVER fallback to gamma_regime_engine.call_wall (which may be far/global wall)
+  const callWall = dw.near_call_wall != null ? Number(dw.near_call_wall) : null;
+  const putWall  = dw.near_put_wall  != null ? Number(dw.near_put_wall)  : null;
+  const nearWallMissing = callWall == null && putWall == null;
   const gammaFlip = gr.gamma_flip != null ? gr.gamma_flip : null;
   const atmVal = atm.atm != null ? atm.atm : null;
   const atmTrend = atm.atm_trend || 'stable';
@@ -1372,14 +1376,14 @@ function renderHudZoneGamma(signal) {
           <div class="gamma-flip-sub">${spot != null && gammaFlip != null ? (spot > gammaFlip ? '现价在翻转点上方' : '现价在翻转点下方') : '--'}</div>
         </div>
         <div class="gamma-flip-item">
-          <div class="gamma-flip-label">Call Wall</div>
-          <div class="gamma-flip-value bearish">${fmtLevel(callWall)}</div>
-          <div class="gamma-flip-sub">${distanceLabel(spot, callWall)}</div>
+          <div class="gamma-flip-label">Call Wall<span class="wall-source-tag">近端</span></div>
+          <div class="gamma-flip-value bearish">${callWall != null ? fmtLevel(callWall) : '<span class="data-missing gex-wall-missing">GEX 近端墙缺失</span>'}</div>
+          <div class="gamma-flip-sub">${callWall != null ? distanceLabel(spot, callWall) : 'LOCKED · 不做 0DTE'}</div>
         </div>
         <div class="gamma-flip-item">
-          <div class="gamma-flip-label">Put Wall</div>
-          <div class="gamma-flip-value bullish">${fmtLevel(putWall)}</div>
-          <div class="gamma-flip-sub">${distanceLabel(spot, putWall)}</div>
+          <div class="gamma-flip-label">Put Wall<span class="wall-source-tag">近端</span></div>
+          <div class="gamma-flip-value bullish">${putWall != null ? fmtLevel(putWall) : '<span class="data-missing gex-wall-missing">GEX 近端墙缺失</span>'}</div>
+          <div class="gamma-flip-sub">${putWall != null ? distanceLabel(spot, putWall) : 'LOCKED · 不做 0DTE'}</div>
         </div>
       </div>
       <div class="atm-magnet-row">
@@ -1401,8 +1405,9 @@ function renderHudZoneExecution(signal) {
   const dw  = signal.dealer_wall_map     || {};
   const spot = pc.live_price != null ? pc.live_price
     : (signal.observation_price?.value ?? null);
-  const callWall  = gr.call_wall  ?? dw.call_wall  ?? null;
-  const putWall   = gr.put_wall   ?? dw.put_wall   ?? null;
+  // Phase 2 fix: ONLY read near walls from dealer_wall_map (no fallback to gamma_regime_engine)
+  const callWall  = dw.near_call_wall != null ? Number(dw.near_call_wall) : null;
+  const putWall   = dw.near_put_wall  != null ? Number(dw.near_put_wall)  : null;
   const gammaFlip = gr.gamma_flip ?? dw.gamma_flip ?? null;
 
   // Prefer darkpool_behavior_engine levels (SPX-mapped), fallback to legacy gravity

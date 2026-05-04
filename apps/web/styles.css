@@ -2223,3 +2223,24 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
   border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 5px;
   padding: 4px 8px; margin-top: 3px;
 }
+
+/* Phase 2 fix: near wall source tag and missing state */
+.wall-source-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 600;
+  color: #64748b;
+  background: rgba(100, 116, 139, 0.12);
+  border: 1px solid rgba(100, 116, 139, 0.25);
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin-left: 4px;
+  vertical-align: middle;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.gex-wall-missing {
+  color: #f59e0b !important;
+  font-size: 11px;
+  font-weight: 600;
+}
