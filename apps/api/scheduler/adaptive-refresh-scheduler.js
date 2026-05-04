@@ -35,18 +35,19 @@
 
 // ─── US market hours gate ────────────────────────────────────────────────────
 /**
- * Returns true if current UTC time falls within US regular trading hours:
- *   Monday–Friday, 09:30–16:00 US Eastern Time.
+ * Returns true if current UTC time falls within the active trading window:
+ *   Monday–Friday, 09:00–14:00 US Eastern Time.
  *
- * EDT (summer, UTC-4): 13:30–20:00 UTC
- * EST (winter, UTC-5): 14:30–21:00 UTC
+ * 09:00 ET start: captures pre-open flow + first 30 min before regular open.
+ * 14:00 ET end:   covers the most active trading hours; user typically
+ *                 stops trading by 14:00 ET.
+ *
+ * EDT (summer, UTC-4): 13:00–18:00 UTC
+ * EST (winter, UTC-5): 14:00–19:00 UTC
  *
  * We use a simple UTC-offset approach:
- *   - Last Sunday in March → second Sunday in November: EDT (UTC-4)
+ *   - 2nd Sunday in March → 1st Sunday in November: EDT (UTC-4)
  *   - Otherwise: EST (UTC-5)
- *
- * Pre-market (09:00–09:30 ET) is intentionally excluded — UW data is
- * unreliable before regular session open.
  */
 function isUsMarketHours() {
   const now   = new Date();
@@ -78,8 +79,8 @@ function isUsMarketHours() {
   const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
   const etMinutes  = ((utcMinutes - offsetHours * 60) + 1440) % 1440;
 
-  // Regular session: 09:30–16:00 ET
-  return etMinutes >= 9 * 60 + 30 && etMinutes < 16 * 60;
+  // Active window: 09:00–14:00 ET
+  return etMinutes >= 9 * 60 && etMinutes < 14 * 60;
 }
 
 // ─── Interval tables (milliseconds) ──────────────────────────────────────────
@@ -111,15 +112,15 @@ function isUsMarketHours() {
  * Intervals are set to match TTL so each endpoint fetches at most once per interval.
  */
 export const NORMAL_INTERVALS = Object.freeze({
-  flow_recent:            60_000,   //  60 s — UW spot + flow  (1440/day)
-  net_prem_ticks:         90_000,   //  90 s — net premium     ( 960/day)
-  market_tide:           120_000,   // 120 s — market tide     ( 720/day)
-  options_volume:        300_000,   // 300 s — P/C volume      ( 288/day)
-  darkpool_spy:          600_000,   // 600 s — dark pool SPY   ( 144/day)
-  greek_exposure_strike: 900_000,   // 900 s — GEX by strike   (  96/day)
-  interpolated_iv:       900_000,   // 900 s — IV              (  96/day)
-  iv_rank:               900_000,   // 900 s — IV rank         (  96/day)
-  // TOTAL ~3840 req/day — well within 15,000 daily limit (74% buffer)
+  flow_recent:            60_000,   //  60 s — UW spot + flow  ( 300/day @ 5h)
+  net_prem_ticks:         90_000,   //  90 s — net premium     ( 200/day)
+  market_tide:           120_000,   // 120 s — market tide     ( 150/day)
+  options_volume:        300_000,   // 300 s — P/C volume      (  60/day)
+  darkpool_spy:          600_000,   // 600 s — dark pool SPY   (  30/day)
+  greek_exposure_strike: 900_000,   // 900 s — GEX by strike   (  20/day)
+  interpolated_iv:       900_000,   // 900 s — IV              (  20/day)
+  iv_rank:               900_000,   // 900 s — IV rank         (  20/day)
+  // TOTAL ~800 req/day (09:00-14:00 ET, 5h) — 80% buffer vs 15,000 limit
 });
 
 /**
@@ -417,8 +418,10 @@ export class AdaptiveRefreshScheduler {
     if (!state) return;
 
     // ── Market-hours gate ──────────────────────────────────────────────────────
-    // Skip UW API calls outside US regular trading hours (09:30–16:00 ET,
+    // Skip UW API calls outside active trading window (09:00–14:00 ET,
     // Mon–Fri) to preserve the 15,000 req/day quota.
+    // Normal mode: ~800 req/day | Turbo mode: ~2,190 req/day
+    // Both well within 15,000 daily limit (80%+ buffer).
     // Allow override via env var UW_IGNORE_MARKET_HOURS=true for testing.
     if (!isUsMarketHours() && process.env.UW_IGNORE_MARKET_HOURS !== 'true') {
       // Silently skip — no log spam, no backoff penalty
