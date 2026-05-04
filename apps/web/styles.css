@@ -2430,3 +2430,14 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
   letter-spacing: 0.5px;
   margin-left: 8px;
 }
+
+/* ATM trigger line diagnostic note */
+.atm-diag-note {
+  background: rgba(255, 180, 0, 0.12);
+  border: 1px solid rgba(255, 180, 0, 0.4);
+  border-radius: 6px;
+  color: #ffb400;
+  font-size: 12px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+}

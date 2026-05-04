@@ -312,13 +312,13 @@ function buildLevels(signal) {
 
     // ── Near trigger lines (ATM±5/10) — homepage primary ──────────────────
     bull_trigger:       bull1,
-    bull_trigger_fmt:   bull1 != null ? fmt(bull1) : 'unavailable',
+    bull_trigger_fmt:   bull1 != null ? fmt(bull1) : null,
     bull_trigger_2:     bull2,
-    bull_trigger_2_fmt: bull2 != null ? fmt(bull2) : 'unavailable',
+    bull_trigger_2_fmt: bull2 != null ? fmt(bull2) : null,
     bear_trigger:       bear1,
-    bear_trigger_fmt:   bear1 != null ? fmt(bear1) : 'unavailable',
+    bear_trigger_fmt:   bear1 != null ? fmt(bear1) : null,
     bear_trigger_2:     bear2,
-    bear_trigger_2_fmt: bear2 != null ? fmt(bear2) : 'unavailable',
+    bear_trigger_2_fmt: bear2 != null ? fmt(bear2) : null,
 
     // ── Targets ────────────────────────────────────────────────────────────
     bull_target_1: ate.bull_target_1 ?? null,

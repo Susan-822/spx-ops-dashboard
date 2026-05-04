@@ -2154,16 +2154,34 @@ function renderHome(signal) {
   // Key levels — v2: ATM trigger lines from atm_trigger_engine
   const atmFmt     = lv.atm_fmt     || '--';
   // Near trigger lines (ATM±5/10) — homepage primary
-  const bull1Fmt   = lv.bull_trigger_fmt   || pc.bull_trigger_1_fmt || 'unavailable';
+  // ATM diagnostics: determine why trigger lines may be missing
+  const _ate = signal.atm_trigger_engine || {};
+  const _pc2 = signal.price_contract     || {};
+  const _atmMissing  = _ate.atm == null;
+  const _spotMissing = _pc2.live_price == null || _pc2.spot_gate_open === false;
+  const _atmDiag = _atmMissing && _spotMissing
+    ? '价格未接入（非交易时段或数据源离线）'
+    : _atmMissing
+    ? 'ATM 计算失败（spot 存在但 ATM 未生成）'
+    : '触发线映射失败';
+  const bull1Fmt   = lv.bull_trigger_fmt   || pc.bull_trigger_1_fmt || null;
   const bull2Fmt   = lv.bull_trigger_2_fmt || pc.bull_trigger_2_fmt || '--';
-  const bear1Fmt   = lv.bear_trigger_fmt   || pc.bear_trigger_1_fmt || 'unavailable';
+  const bear1Fmt   = lv.bear_trigger_fmt   || pc.bear_trigger_1_fmt || null;
   const bear2Fmt   = lv.bear_trigger_2_fmt || pc.bear_trigger_2_fmt || '--';
+  // If trigger lines missing, use price_contract.atm_5 as last-resort display fallback
+  const _atm5 = _pc2.atm_5 ?? null;
+  const _bull1Display = bull1Fmt ?? (_atm5 != null ? String(_atm5 + 5) : null);
+  const _bear1Display = bear1Fmt ?? (_atm5 != null ? String(_atm5 - 5) : null);
+  const _bull2Display = bull2Fmt !== '--' ? bull2Fmt : (_atm5 != null ? String(_atm5 + 10) : '--');
+  const _bear2Display = bear2Fmt !== '--' ? bear2Fmt : (_atm5 != null ? String(_atm5 - 10) : '--');
   const bullTgt1Fmt = lv.bull_target_1_fmt || pc.bull_target_1_fmt || '--';
   const bullTgt2Fmt = lv.bull_target_2_fmt || pc.bull_target_2_fmt || '--';
   const bearTgt1Fmt = lv.bear_target_1_fmt || pc.bear_target_1_fmt || '--';
   const bearTgt2Fmt = lv.bear_target_2_fmt || pc.bear_target_2_fmt || '--';
   const invBullFmt  = lv.invalidation_bull_fmt || pc.invalidation_bull_fmt || '--';
   const invBearFmt  = lv.invalidation_bear_fmt || pc.invalidation_bear_fmt || '--';
+  const _invBullDisplay = invBullFmt !== '--' ? invBullFmt : (_atm5 != null ? String(_atm5 - 10) : '--');
+  const _invBearDisplay = invBearFmt !== '--' ? invBearFmt : (_atm5 != null ? String(_atm5 + 10) : '--');
   const spotInLock  = lv.spot_in_lock_zone ?? pc.spot_in_lock_zone ?? true;
   const triggerStatus = lv.trigger_status || pc.trigger_status || 'locked';
   const triggerLabel  = lv.trigger_label  || pc.trigger_label  || null;
@@ -2237,26 +2255,36 @@ function renderHome(signal) {
     </div>` : `<div class="plan-locked-msg">空头预案数据不足</div>`;
   } else {
     // LOCKED: show full ATM trigger observation plan (three-stage)
+    // Use display fallbacks so LOCKED state always shows ATM observation lines
+    const _b1 = _bull1Display ?? '待接入';
+    const _r1 = _bear1Display ?? '待接入';
+    const _b2 = _bull2Display !== '--' ? _bull2Display : (_atm5 != null ? String(_atm5 + 10) : '--');
+    const _r2 = _bear2Display !== '--' ? _bear2Display : (_atm5 != null ? String(_atm5 - 10) : '--');
+    const _invB = _invBullDisplay !== '--' ? _invBullDisplay : (_atm5 != null ? String(_atm5 - 10) : '--');
+    const _invR = _invBearDisplay !== '--' ? _invBearDisplay : (_atm5 != null ? String(_atm5 + 10) : '--');
+    const _atmDiagNote = (_bull1Display == null && _atm5 == null)
+      ? `<div class="atm-diag-note">⚠ ATM 触发线缺失：${escapeHtml(_atmDiag)}</div>` : '';
     const lockWhy = planData?.why ?? (spotInLock
-      ? `价格在 ${bear1Fmt}–${bull1Fmt} ATM 锁仓区内，正 Gamma 磁吸，来回割。`
-      : `等 ${bull1Fmt} 站稳或 ${bear1Fmt} 跌破`);
+      ? `价格在 ${_r1}–${_b1} ATM 锁仓区内，正 Gamma 磁吸，来回割。`
+      : `等 ${_b1} 站稳或 ${_r1} 跌破`);
     planLines = `
+    ${_atmDiagNote}
     <div class="plan-grid plan-locked">
       <div class="plan-row"><span class="plan-icon">◎</span><span class="plan-key">当前建议</span><span class="plan-val locked-val">锁仓观察</span></div>
       <div class="plan-row"><span class="plan-icon">◈</span><span class="plan-key">为什么</span><span class="plan-val">${escapeHtml(lockWhy)}</span></div>
-      <div class="plan-row"><span class="plan-icon">👁</span><span class="plan-key">观察</span><span class="plan-val">${escapeHtml(planData?.watch ?? `上方 ${bull1Fmt} 能不能站稳 / 下方 ${bear1Fmt} 能不能跌破`)}</span></div>
+      <div class="plan-row"><span class="plan-icon">👁</span><span class="plan-key">观察</span><span class="plan-val">${escapeHtml(planData?.watch ?? `上方 ${_b1} 能不能站稳 / 下方 ${_r1} 能不能跌破`)}</span></div>
       <div class="plan-row full-row atm-trigger-row">
         <span class="plan-icon bull">↗</span>
         <span class="plan-key">转多条件</span>
-        <span class="plan-val bull-cond">${escapeHtml(planData?.wait_long ?? `站稳 ${bull1Fmt}（第一触发），等 ${bull2Fmt} 确认，目标 ${bullTgt1Fmt}–${bullTgt2Fmt}`)}</span>
+        <span class="plan-val bull-cond">${escapeHtml(planData?.wait_long ?? `站稳 ${_b1}（第一触发），等 ${_b2} 确认，目标 ${bullTgt1Fmt !== '--' ? bullTgt1Fmt : (_atm5 != null ? String(_atm5 + 15) : '--')}–${bullTgt2Fmt !== '--' ? bullTgt2Fmt : (_atm5 != null ? String(_atm5 + 20) : '--')}`)}</span>
       </div>
       <div class="plan-row full-row atm-trigger-row">
         <span class="plan-icon bear">↘</span>
         <span class="plan-key">转空条件</span>
-        <span class="plan-val bear-cond">${escapeHtml(planData?.wait_short ?? `跌破 ${bear1Fmt}（第一触发），等 ${bear2Fmt} 确认，目标 ${bearTgt1Fmt}–${bearTgt2Fmt}`)}</span>
+        <span class="plan-val bear-cond">${escapeHtml(planData?.wait_short ?? `跌破 ${_r1}（第一触发），等 ${_r2} 确认，目标 ${bearTgt1Fmt !== '--' ? bearTgt1Fmt : (_atm5 != null ? String(_atm5 - 15) : '--')}–${bearTgt2Fmt !== '--' ? bearTgt2Fmt : (_atm5 != null ? String(_atm5 - 20) : '--')}`)}</span>
       </div>
-      <div class="plan-row full-row"><span class="plan-icon">⊘</span><span class="plan-key">禁做</span><span class="plan-val forbidden-val">${escapeHtml(planData?.forbidden ?? `${bear1Fmt}–${bull1Fmt} ATM 锁仓区内禁止买 Call / Put`)}</span></div>
-      <div class="plan-row full-row"><span class="plan-icon">⊗</span><span class="plan-key">失效线</span><span class="plan-val stop-val">${escapeHtml(planData?.invalidation ?? `多头失效 ${invBullFmt} / 空头失效 ${invBearFmt}`)}</span></div>
+      <div class="plan-row full-row"><span class="plan-icon">⊘</span><span class="plan-key">禁做</span><span class="plan-val forbidden-val">${escapeHtml(planData?.forbidden ?? `${_r1}–${_b1} ATM 锁仓区内禁止买 Call / Put`)}</span></div>
+      <div class="plan-row full-row"><span class="plan-icon">⊗</span><span class="plan-key">失效线</span><span class="plan-val stop-val">${escapeHtml(planData?.invalidation ?? `多头失效 ${_invB} / 空头失效 ${_invR}`)}</span></div>
     </div>
     <div class="plan-conf-row">
       <span class="plan-conf-label">可信度</span>
