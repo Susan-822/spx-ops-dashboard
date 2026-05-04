@@ -231,7 +231,18 @@ export function buildAbOrderEngine({
     const gammaNote = gamma_regime === 'positive'
       ? '\u6b63 Gamma \u78c1\u5438\uff0c\u505a\u5e02\u5546\u66f4\u5bb9\u6613\u628a\u4ef7\u683c\u62c9\u56de ' + fmt(atm) + ' ATM\uff0c\u8ba9 Call \u548c Put \u90fd\u78e8\u635f\u3002'
       : '\u7f6e\u4fe1\u5ea6\u4e0d\u8db3\uff0c\u7b49\u5f85\u6570\u636e\u6539\u5584\u3002ATM ' + fmt(atm) + ' \u9644\u8fd1\u4e0d\u8981\u4e71\u505a\u3002';
-    const _lockedPlan = {
+    // 根据 flow_behavior 推断倾向方向（LOCKED 下只是预案，不是执行信号）
+    const _lockedDir = (() => {
+      if (flow_behavior === 'call_effective' || flow_behavior === 'put_squeezed') return 'BULLISH';
+      if (flow_behavior === 'put_effective' || flow_behavior === 'call_capped') return 'BEARISH';
+      return 'WAIT'; // mixed / neutral → 真正无方向
+    })();
+    const _lockedDirCn = _lockedDir === 'BULLISH' ? '多头预案' : _lockedDir === 'BEARISH' ? '空头预案' : '等待方向';
+        const _lockedPlan = {
+      direction:    _lockedDir,
+      direction_cn: _lockedDirCn,
+      tp1:          _lockedDir === 'BULLISH' ? fmt(T.bullTgt1) : (_lockedDir === 'BEARISH' ? fmt(T.bearTgt1) : '--'),
+      tp2:          _lockedDir === 'BULLISH' ? fmt(T.bullTgt2) : (_lockedDir === 'BEARISH' ? fmt(T.bearTgt2) : '--'),
       state:        '\u9501\u4ed3\u89c2\u5bdf',
       why:          gammaNote,
       watch:        '\u4e0a\u65b9 ' + fmt(T.bull1) + ' \u80fd\u4e0d\u80fd\u7ad9\u7a33 / \u4e0b\u65b9 ' + fmt(T.bear1) + ' \u80fd\u4e0d\u80fd\u8dcc\u7834',
@@ -278,7 +289,7 @@ export function buildAbOrderEngine({
   const _flowTooClose = _flowGapRatio != null && _flowGapRatio < 0.15;
   if (_flowTooClose) {
     const _gapPct = (_flowGapRatio * 100).toFixed(1);
-    const _waitPlan = makeWaitPlan({
+    const _waitPlanBase = makeWaitPlan({
       reason: 'Call/Put Flow \u5dee\u8ddd\u4ec5 ' + _gapPct + '%\uff0c\u4e0d\u8db3 15% \u9608\u5024\uff0c\u8d44\u91d1\u65b9\u5411\u4e0d\u660e\u786e\u3002\u7b49\u5f85 Flow \u5206\u5316\u540e\u518d\u8bc4\u4f30\u3002'
     });
     return {
@@ -320,7 +331,7 @@ export function buildAbOrderEngine({
     const _netGexFmt = net_gex != null
       ? (net_gex >= 0 ? '+' : '') + (net_gex / 1e6).toFixed(2) + 'M'
       : '\u63a5\u8fd1 0';
-    const _waitPlan = makeWaitPlan({
+    const _waitPlanBase2 = makeWaitPlan({
       reason: 'Gamma \u4e2d\u6027\uff08Net GEX ' + _netGexFmt + '\uff09\uff0c\u505a\u5e02\u5546\u5904\u4e8e\u96f6\u8f74\u9644\u8fd1\uff0c\u65b9\u5411\u4e0d\u660e\u786e\u3002\u7b49\u5f85 GEX \u660e\u786e\u504f\u5411\u540e\u518d\u8bc4\u4f30\u3002'
     });
     return {

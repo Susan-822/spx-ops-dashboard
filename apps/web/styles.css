@@ -2842,3 +2842,118 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
   color: #6b7280;
   margin-top: 4px;
 }
+
+/* ── 三态预案颜色系统 ─────────────────────────────────────────────────────── */
+
+/* PENDING（黄色）：有方向但条件未满足 */
+.plan-pending-bull {
+  border-left: 3px solid #f5a623;
+  background: linear-gradient(135deg, rgba(245,166,35,0.08) 0%, rgba(245,166,35,0.03) 100%);
+}
+.plan-pending-bear {
+  border-left: 3px solid #f5a623;
+  background: linear-gradient(135deg, rgba(245,166,35,0.08) 0%, rgba(245,166,35,0.03) 100%);
+}
+.plan-pending {
+  border-left: 3px solid #888;
+  background: rgba(136,136,136,0.05);
+}
+
+/* VOID（空白）：无方向，等待下一单条件 */
+.plan-void {
+  border-left: 3px solid #444;
+  background: rgba(68,68,68,0.05);
+  opacity: 0.7;
+}
+.ab-void-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  color: #666;
+  text-align: center;
+}
+.ab-void-icon {
+  font-size: 28px;
+  color: #555;
+  margin-bottom: 8px;
+}
+.ab-void-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #888;
+  margin-bottom: 4px;
+}
+.ab-void-reason {
+  font-size: 12px;
+  color: #666;
+  line-height: 1.5;
+}
+
+/* PENDING 横幅 */
+.ab-pending-plan-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(245,166,35,0.12);
+  border: 1px solid rgba(245,166,35,0.3);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+.ab-pending-icon {
+  font-size: 14px;
+}
+.ab-pending-text {
+  font-size: 12px;
+  color: #f5a623;
+  font-weight: 500;
+}
+
+/* WAIT 横幅 */
+.ptab-wait-bar {
+  background: rgba(245,166,35,0.1);
+  border: 1px solid rgba(245,166,35,0.25);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #f5a623;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+/* 状态标签（行内） */
+.plan-state-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.plan-state-ready {
+  background: rgba(0,200,100,0.15);
+  color: #00c864;
+  border: 1px solid rgba(0,200,100,0.3);
+}
+.plan-state-pending {
+  background: rgba(245,166,35,0.15);
+  color: #f5a623;
+  border: 1px solid rgba(245,166,35,0.3);
+}
+
+/* PENDING 状态下方向图标颜色 */
+.bull-pending { color: #f5a623; }
+.bear-pending { color: #f5a623; }
+
+/* Tab 按钮三态 */
+.ptab-btn-ready {
+  border-color: rgba(0,200,100,0.5) !important;
+  color: #00c864 !important;
+}
+.ptab-btn-pending {
+  border-color: rgba(245,166,35,0.5) !important;
+  color: #f5a623 !important;
+}

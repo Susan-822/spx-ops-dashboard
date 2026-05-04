@@ -2093,12 +2093,23 @@ function renderGexUrgencyChart(signal) {
 
 
 // ── renderPlanCard: 渲染单个方向预案卡片（主做/备选 Tab 使用）────────────────────
-function renderPlanCard(plan, label, triggerStatus, abStatus) {
-  if (!plan) return '<div class="ab-wait-block"><div class="ab-wait-icon">—</div><div class="ab-wait-title">暂无预案</div></div>';
+function renderPlanCard(plan, label, triggerStatus, abStatus, planState) {
+  if (!plan) return '<div class="ab-void-block"><div class="ab-void-icon">○</div><div class="ab-void-title">暂无预案</div></div>';
   const isBull = (plan.direction || '').toUpperCase() === 'BULLISH' || (plan.direction || '').toUpperCase() === 'LONG';
   const isBear = (plan.direction || '').toUpperCase() === 'BEARISH' || (plan.direction || '').toUpperCase() === 'SHORT';
-  const colorCls = isBull ? 'plan-bull' : isBear ? 'plan-bear' : 'plan-locked';
-  const iconCls  = isBull ? 'bull' : isBear ? 'bear' : '';
+  // 三态颜色：ready=绿色，pending=黄色，void/其他=灰色
+  const _state = planState || (abStatus === 'blocked' || abStatus === 'wait' ? 'pending' : 'ready');
+  let colorCls, iconCls;
+  if (_state === 'ready') {
+    colorCls = isBull ? 'plan-bull' : isBear ? 'plan-bear' : 'plan-locked';
+    iconCls  = isBull ? 'bull' : isBear ? 'bear' : '';
+  } else if (_state === 'pending') {
+    colorCls = isBull ? 'plan-pending-bull' : isBear ? 'plan-pending-bear' : 'plan-pending';
+    iconCls  = isBull ? 'bull-pending' : isBear ? 'bear-pending' : '';
+  } else {
+    colorCls = 'plan-void';
+    iconCls  = '';
+  }
   const waitLine = isBull
     ? (plan.wait_long  || plan.action_now || '--')
     : isBear
@@ -2107,9 +2118,18 @@ function renderPlanCard(plan, label, triggerStatus, abStatus) {
   const doNotList = Array.isArray(plan.do_not) ? plan.do_not : [];
   const confVal = plan.execution_confidence ?? null;
   const confCls = confVal != null ? (confVal >= 70 ? 'conf-high' : confVal >= 40 ? 'conf-mid' : 'conf-low') : 'conf-low';
-  const confLbl = confVal != null ? (confVal >= 70 ? '高可信，可执行' : confVal >= 40 ? '中可信，小仓等确认' : '低可信，只观察') : '低可信，只观察';
+  // 可信度标签：PENDING 时不显示"可执行"
+  const confLbl = _state === 'pending'
+    ? (confVal != null ? (confVal >= 70 ? '高可信，等触发' : confVal >= 40 ? '中可信，等确认' : '低可信，只观察') : '只观察')
+    : (confVal != null ? (confVal >= 70 ? '高可信，可执行' : confVal >= 40 ? '中可信，小仓等确认' : '低可信，只观察') : '低可信，只观察');
+  // 状态标签
+  const stateTag = _state === 'ready'
+    ? '<span class="plan-state-tag plan-state-ready">● 可执行</span>'
+    : _state === 'pending'
+    ? '<span class="plan-state-tag plan-state-pending">● 等触发</span>'
+    : '';
   return `<div class="plan-grid ${colorCls}">
-    <div class="plan-row"><span class="plan-icon ${iconCls}">◎</span><span class="plan-key">方向</span><span class="plan-val ${iconCls}">${escapeHtml(label)}</span></div>
+    <div class="plan-row"><span class="plan-icon ${iconCls}">◎</span><span class="plan-key">方向</span><span class="plan-val ${iconCls}">${escapeHtml(label)}${stateTag}</span></div>
     <div class="plan-row"><span class="plan-icon">◈</span><span class="plan-key">品种</span><span class="plan-val">${escapeHtml(plan.instrument || '--')}</span></div>
     <div class="plan-row"><span class="plan-icon">⊕</span><span class="plan-key">等什么</span><span class="plan-val entry-val">${escapeHtml(waitLine)}</span></div>
     <div class="plan-row"><span class="plan-icon">◆</span><span class="plan-key">目标</span><span class="plan-val target-val">${escapeHtml(plan.tp1 || '--')} → ${escapeHtml(plan.tp2 || '--')}</span></div>
@@ -2460,72 +2480,74 @@ function renderHome(signal) {
                 const _showPrimary  = _op2.show_primary_plan === true;
                 const _showBackup   = _op2.show_backup_plan  === true;
                 const _planNote     = _op2.plan_note || null;
-                // Tab 2: 主做（A单）— LOCKED 下显示预案，但标注"未触发"
+                // Tab 2: 主做（A单）— 三态显示：READY(绿)/PENDING(黄)/VOID(空白)
                 let tab2Html = '<div class="ptab-pane" id="ptab-pane-main" style="display:none">';
-                if (isLocked && _showPrimary && _opPrimary) {
-                  // LOCKED 下：显示 A单预案，但加"禁做"标注
-                  const _lockedBanner = '<div class="ab-locked-plan-banner">' +
-                    '<span class="ab-locked-icon">🔒</span>' +
-                    '<span class="ab-locked-text">预案观察｜禁止执行 — ' + escapeHtml(_opPrimary.blocked_reason || '等确认') + '</span>' +
+                const _ps = _opPrimary ? (_opPrimary.plan_state || 'VOID') : 'VOID';
+                if (_ps === 'VOID' || !_showPrimary || !_opPrimary) {
+                  // 空白：无方向，等待下一单条件
+                  const _voidReason = (planA2 && planA2.rationale)
+                    || (hvmSt.scenario === 'flow_gap_too_small' ? 'Call/Put Flow 差距不足 15%，资金尚未分化'
+                    : hvmSt.scenario === 'gex_near_zero' ? 'Gamma 中性，做市商处于零轴附近'
+                    : '等待方向明确后再评估');
+                  tab2Html += '<div class="ab-void-block">' +
+                    '<div class="ab-void-icon">○</div>' +
+                    '<div class="ab-void-title">等待下一单条件</div>' +
+                    '<div class="ab-void-reason">' + escapeHtml(_voidReason) + '</div>' +
                     '</div>';
-                  // DUAL 模式：双向观察预案（LOCKED 时 plan_a 有 wait_long/wait_short 但无方向）
-                  if (_opPrimary.side === 'DUAL') {
-                    const _dualCard = '<div class="ab-dual-observe-block">' +
-                      '<div class="ab-dual-observe-title">📋 双向观察预案（LOCKED）</div>' +
-                      (_opPrimary.watch ? '<div class="ab-dual-observe-watch">👁 ' + escapeHtml(_opPrimary.watch) + '</div>' : '') +
-                      '<div class="ab-dual-observe-row">' +
-                        '<span class="ab-dual-dir bull">↗ 转多</span>' +
-                        '<span class="ab-dual-cond">' + escapeHtml(_opPrimary.wait_long || _opPrimary.entry || '--') + '</span>' +
-                      '</div>' +
-                      '<div class="ab-dual-observe-row">' +
-                        '<span class="ab-dual-dir bear">↘ 转空</span>' +
-                        '<span class="ab-dual-cond">' + escapeHtml(_opPrimary.wait_short || _opPrimary.confirm || '--') + '</span>' +
-                      '</div>' +
-                      (_opPrimary.forbidden ? '<div class="ab-dual-forbidden">⊘ 禁做：' + escapeHtml(_opPrimary.forbidden) + '</div>' : '') +
-                      (_opPrimary.stop && _opPrimary.stop !== '--' ? '<div class="ab-dual-stop">⊗ 失效线：' + escapeHtml(_opPrimary.stop) + '</div>' : '') +
+                } else if (_ps === 'PENDING') {
+                  // 黄色：有方向但条件未满足（LOCKED/WAIT/DEGRADED）
+                  const _pendingBanner = '<div class="ab-pending-plan-banner">' +
+                    '<span class="ab-pending-icon">⏳</span>' +
+                    '<span class="ab-pending-text">' + escapeHtml(_opPrimary.display_mode || 'A单预案') + ' — ' + escapeHtml(_opPrimary.blocked_reason || '等确认') + '</span>' +
                     '</div>';
-                    tab2Html += _lockedBanner + _dualCard;
-                  } else {
-                    tab2Html += _lockedBanner + renderPlanCard(_opPrimary.raw || planA2, aIsBull2 ? 'A单预案（多）' : 'A单预案（空）', trigStat3, abStatus2);
-                  }
-                } else if (!planA2 || dirA2 === 'WAIT') {
-                  const _waitScenario = hvmSt.scenario || abScenario2 || null;
-                  const waitReason2 = (planA2 && planA2.rationale)
-                    || (_waitScenario === 'flow_gap_too_small' ? 'Call/Put Flow 差距不足 15%，资金尚未分化'
-                    : _waitScenario === 'gex_near_zero' ? 'Gamma 中性，做市商处于零轴附近'
-                    : '等待 Gamma 环境明确后再评估');
-                  tab2Html += '<div class="ab-wait-block"><div class="ab-wait-icon">—</div><div class="ab-wait-title">当前观望，不开仓</div><div class="ab-wait-reason">' + escapeHtml(waitReason2) + '</div></div>';
-                } else if (isOpposite2) {
-                  tab2Html += '<div class="ab-dual-label">双向等待，等方向确认后执行对应单</div>' +
-                    renderPlanCard(planA2, aIsBull2 ? '多单' : '空单', trigStat3, abStatus2);
+                  tab2Html += _pendingBanner + renderPlanCard(_opPrimary.raw || planA2,
+                    (_opPrimary.side === 'LONG' ? 'A单预案（多）' : 'A单预案（空）'),
+                    trigStat3, abStatus2, 'pending');
                 } else {
-                  tab2Html += renderPlanCard(planA2, aIsBull2 ? '多单' : '空单', trigStat3, abStatus2);
+                  // READY：绿色可执行
+                  tab2Html += renderPlanCard(_opPrimary.raw || planA2,
+                    (aIsBull2 ? '多单' : '空单'),
+                    trigStat3, abStatus2, 'ready');
                 }
                 tab2Html += '</div>';
-                // Tab 3: 备选（B单）— LOCKED 下同样显示预案
+                // Tab 3: 备选（B单）— 三态显示
                 let tab3Html = '<div class="ptab-pane" id="ptab-pane-alt" style="display:none">';
-                if (isLocked && _showBackup && _opBackup) {
-                  const _lockedBannerB = '<div class="ab-locked-plan-banner">' +
-                    '<span class="ab-locked-icon">🔒</span>' +
-                    '<span class="ab-locked-text">备选观察｜禁止执行 — ' + escapeHtml(_opBackup.blocked_reason || '等确认') + '</span>' +
+                const _psB = _opBackup ? (_opBackup.plan_state || 'VOID') : 'VOID';
+                if (_psB === 'VOID' || !_showBackup || !_opBackup) {
+                  tab3Html += '<div class="ab-void-block">' +
+                    '<div class="ab-void-icon">○</div>' +
+                    '<div class="ab-void-title">暂无备选方案</div>' +
+                    '<div class="ab-void-reason">当前场景只有单一方向预案</div>' +
                     '</div>';
-                  tab3Html += _lockedBannerB + renderPlanCard(_opBackup.raw || planB2, bIsBull2 ? 'B单预案（多）' : 'B单预案（空）', trigStat3, abStatus2);
-                } else if (!planB2 || dirB2 === 'WAIT') {
-                  tab3Html += '<div class="ab-wait-block"><div class="ab-wait-icon">—</div><div class="ab-wait-title">暂无备选方案</div><div class="ab-wait-reason">当前场景只有单一方向预案</div></div>';
-                } else if (isOpposite2) {
-                  tab3Html += renderPlanCard(planB2, bIsBull2 ? '多单（备选）' : '空单（备选）', trigStat3, abStatus2);
+                } else if (_psB === 'PENDING') {
+                  const _pendingBannerB = '<div class="ab-pending-plan-banner">' +
+                    '<span class="ab-pending-icon">⏳</span>' +
+                    '<span class="ab-pending-text">' + escapeHtml(_opBackup.display_mode || 'B单预案') + ' — ' + escapeHtml(_opBackup.blocked_reason || '等确认') + '</span>' +
+                    '</div>';
+                  tab3Html += _pendingBannerB + renderPlanCard(_opBackup.raw || planB2,
+                    (_opBackup.side === 'LONG' ? 'B单预案（多）' : 'B单预案（空）'),
+                    trigStat3, abStatus2, 'pending');
                 } else {
-                  tab3Html += renderPlanCard(planB2, bIsBull2 ? '多单（备选）' : '空单（备选）', trigStat3, abStatus2);
+                  tab3Html += renderPlanCard(_opBackup.raw || planB2,
+                    (bIsBull2 ? '多单（备选）' : '空单（备选）'),
+                    trigStat3, abStatus2, 'ready');
                 }
                 tab3Html += '</div>';
-                // Tab 标题：根据 order_plan.display_mode 和 isLocked 决定
+                // Tab 标题：根据 plan_state 决定（READY/PENDING/VOID）
                 let mainTabLabel, altTabLabel;
-                if (isLocked) {
-                  mainTabLabel = (_showPrimary && _opPrimary) ? (_opPrimary.display_mode || 'A单预案') : '主做';
-                  altTabLabel  = (_showBackup  && _opBackup)  ? (_opBackup.display_mode  || 'B单预案') : '备选';
+                if (_ps === 'READY') {
+                  mainTabLabel = aIsBull2 ? '多单' : '空单';
+                } else if (_ps === 'PENDING') {
+                  mainTabLabel = _opPrimary ? (_opPrimary.display_mode || 'A单预案') : '主做';
                 } else {
-                  mainTabLabel = (!planA2 || dirA2 === 'WAIT') ? '主做' : (aIsBull2 ? '多单' : '空单');
-                  altTabLabel  = (!planB2 || dirB2 === 'WAIT') ? '备选' : (bIsBull2 ? '备选（多）' : '备选（空）');
+                  mainTabLabel = '主做';
+                }
+                if (_psB === 'READY') {
+                  altTabLabel = bIsBull2 ? '备选（多）' : '备选（空）';
+                } else if (_psB === 'PENDING') {
+                  altTabLabel = _opBackup ? (_opBackup.display_mode || 'B单预案') : '备选';
+                } else {
+                  altTabLabel = '备选';
                 }
                 // LOCKED 时在 Tab 导航下方显示 plan_note 摘要
                 const _planNoteHtml = (isLocked && _planNote)
@@ -2534,10 +2556,10 @@ function renderHome(signal) {
                 return '<div class="ptab-container" data-tab-id="primary-tabs">' +
                   '<div class="ptab-nav">' +
                     '<button class="ptab-btn active" data-tab="eye">盘眼</button>' +
-                    '<button class="ptab-btn' + (isLocked ? ' ptab-btn-locked' : '') + '" data-tab="main">' + escapeHtml(mainTabLabel) + '</button>' +
-                    '<button class="ptab-btn' + (isLocked ? ' ptab-btn-locked' : '') + '" data-tab="alt">' + escapeHtml(altTabLabel) + '</button>' +
+                    '<button class="ptab-btn' + (_ps === 'PENDING' ? ' ptab-btn-pending' : _ps === 'READY' ? ' ptab-btn-ready' : '') + '" data-tab="main">' + escapeHtml(mainTabLabel) + '</button>' +
+                    '<button class="ptab-btn' + (_psB === 'PENDING' ? ' ptab-btn-pending' : _psB === 'READY' ? ' ptab-btn-ready' : '') + '" data-tab="alt">' + escapeHtml(altTabLabel) + '</button>' +
                   '</div>' +
-                  (isLocked ? '<div class="ptab-locked-bar">🔒 LOCKED — 禁止开仓，以下为观察预案</div>' : '') +
+                  (abStatus2 === 'blocked' ? '<div class="ptab-locked-bar">🔒 LOCKED — 禁止开仓，以下为观察预案</div>' : abStatus2 === 'wait' ? '<div class="ptab-wait-bar">⏳ WAIT — 等待确认，以下为预备预案</div>' : '') +
                   _planNoteHtml +
                   '<div class="ptab-body">' +
                     tab1Html + tab2Html + tab3Html +
