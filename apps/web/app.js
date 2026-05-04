@@ -2236,275 +2236,184 @@ function renderHome(signal) {
           </div>
           <div class="primary-card-body">
             <div class="primary-card-gex">${renderGexUrgencyChart(signal)}</div>
-            <div class="primary-card-signal">${planLines}</div>
-          </div>
-        </section>
+            <div class="primary-card-signal">
+              ${planLines}
+              <!-- THREE-TAB PANEL: 盘眼 / 主做 / 备选 -->
+              ${(() => {
+                const abEng2 = signal.ab_order_engine || {};
+                const ateEng2 = signal.atm_trigger_engine || {};
+                const planA2 = abEng2.plan_a || null;
+                const planB2 = abEng2.plan_b || null;
+                const abStatus2 = abEng2.status || 'blocked';
+                const abConf3 = abEng2.execution_confidence ?? 0;
+                const abScenario2 = abEng2.scenario || null;
+                const trigStat3 = ateEng2.trigger_status || triggerStatus || 'locked';
+                const dirA2 = planA2 ? (planA2.direction || 'WAIT').toUpperCase() : 'WAIT';
+                const dirB2 = planB2 ? (planB2.direction || 'WAIT').toUpperCase() : 'WAIT';
+                const aIsBull2 = dirA2 === 'BULLISH' || dirA2 === 'LONG';
+                const aIsBear2 = dirA2 === 'BEARISH' || dirA2 === 'SHORT';
+                const bIsBull2 = dirB2 === 'BULLISH' || dirB2 === 'LONG';
+                const bIsBear2 = dirB2 === 'BEARISH' || dirB2 === 'SHORT';
+                const isOpposite2 = planA2 && planB2 && ((aIsBull2 && bIsBear2) || (aIsBear2 && bIsBull2));
+                const confCls3 = abConf3 >= 70 ? 'conf-high' : abConf3 >= 40 ? 'conf-mid' : 'conf-low';
+                const confLbl3 = abConf3 >= 70 ? '高可信，可执行' : abConf3 >= 40 ? '中可信，小仓等确认' : '低可信，只观察';
+                const sceneMap2 = {
+                  'positive_put_squeezed':  '底部背离',
+                  'negative_put_effective': '空头动能',
+                  'positive_call_capped':   '震荡夹击',
+                  'negative_call_effective':'多头突破',
+                  'positive_call_effective':'正Gamma突破',
+                  'negative_put_squeezed':  '空头陷阱'
+                };
+                const sceneLabel2 = abScenario2 ? (sceneMap2[abScenario2] || abScenario2) : null;
 
-        <!-- RIGHT: Key Levels — v3: Dynamic A/B Order Status Card -->
-        ${(() => {
-          const abEng = signal.ab_order_engine || {};
-          const ateEng = signal.atm_trigger_engine || {};
-          const planA = abEng.plan_a || null;
-          const planB = abEng.plan_b || null;
-          const abStatus = abEng.status || 'blocked';
-          const abConf2 = abEng.execution_confidence ?? 0;
-          const abScenario = abEng.scenario || null;
+                // Tab 1: 盘眼
+                const tab1Html =
+                  '<div class="ptab-pane" id="ptab-pane-eye">' +
+                    '<div class="ptab-atm-row">' +
+                      '<span class="ptab-atm-icon">👁</span>' +
+                      '<span class="ptab-atm-label">盘眼 ATM</span>' +
+                      '<span class="ptab-atm-val">' + escapeHtml(atmFmt) + '</span>' +
+                      (spotInLock ? '<span class="kl-lock-badge">锁仓区</span>' : '') +
+                      (sceneLabel2 ? '<span class="kl-scene-tag">' + escapeHtml(sceneLabel2) + '</span>' : '') +
+                    '</div>' +
+                    '<div class="ptab-conf-row">' +
+                      '<span class="ptab-conf-label">可信度</span>' +
+                      '<div class="ab-conf-bar-wrap">' +
+                        '<div class="ab-conf-bar-track">' +
+                          '<div class="ab-conf-bar-fill ' + confCls3 + '" style="width:' + Math.min(100, abConf3) + '%"></div>' +
+                        '</div>' +
+                      '</div>' +
+                      '<span class="ab-conf-val ' + confCls3 + '">' + abConf3 + '/100</span>' +
+                      '<span class="ab-conf-desc ' + confCls3 + '">' + confLbl3 + '</span>' +
+                    '</div>' +
+                    '<div class="ptab-far-walls">' +
+                      '<span class="kl-far-label">远端墙（背景）：</span>' +
+                      '<span class="kl-far-val">' + escapeHtml(farCallFmt) + ' / ' + escapeHtml(farPutFmt) + '</span>' +
+                      '<span class="kl-far-note">只作背景，不作日内触发</span>' +
+                    '</div>' +
+                    (hint    ? '<div class="kl-hint">💡 ' + escapeHtml(hint) + '</div>' : '') +
+                    (pinWarn ? '<div class="kl-pin-warn">⚠ ' + escapeHtml(pinWarn) + '</div>' : '') +
+                  '</div>';
 
-          function getOrderStatus(plan, trigStat, abStat) {
-            if (!plan || (plan.direction || '').toUpperCase() === 'WAIT') return 'waiting';
-            if (abStat === 'blocked') return 'blocked';
-            const dir = (plan.direction || '').toUpperCase();
-            if (abStat === 'ready') {
-              if ((dir === 'BULLISH' || dir === 'LONG') && (trigStat === 'bull_triggered' || trigStat === 'bull_watching')) return 'ready';
-              if ((dir === 'BEARISH' || dir === 'SHORT') && (trigStat === 'bear_triggered' || trigStat === 'bear_watching')) return 'ready';
-              return 'waiting';
-            }
-            return 'waiting';
-          }
+                // Tab 2: 主做
+                let tab2Html = '<div class="ptab-pane" id="ptab-pane-main" style="display:none">';
+                if (!planA2 || dirA2 === 'WAIT') {
+                  const waitReason2 = (planA2 && planA2.rationale)
+                    || (abEng2.forced_wait_reason === 'flow_gap_too_small' ? 'Call/Put Flow 差距不足 15%，资金尚未分化'
+                    : abEng2.forced_wait_reason === 'gex_near_zero' ? 'Gamma 中性，做市商处于零轴附近'
+                    : '等待 Gamma 环境明确后再评估');
+                  tab2Html += '<div class="ab-wait-block"><div class="ab-wait-icon">—</div><div class="ab-wait-title">当前观望，不开仓</div><div class="ab-wait-reason">' + escapeHtml(waitReason2) + '</div></div>';
+                } else if (isOpposite2) {
+                  tab2Html += '<div class="ab-dual-label">双向等待，等方向确认后执行对应单</div>' +
+                    renderPlanCard(planA2, aIsBull2 ? '空单' : '多单', trigStat3, abStatus2);
+                } else {
+                  tab2Html += renderPlanCard(planA2, aIsBull2 ? '多单' : '空单', trigStat3, abStatus2);
+                }
+                tab2Html += '</div>';
 
-          function statusBadge(status, dir) {
-            const dl = (dir === 'BULLISH' || dir === 'LONG') ? '多' : (dir === 'BEARISH' || dir === 'SHORT') ? '空' : '观望';
-            if (status === 'ready')   return '<span class="ab-status-badge ready">'   + dl + ' 放行</span>';
-            if (status === 'blocked') return '<span class="ab-status-badge blocked">失效</span>';
-            if (dir === 'WAIT')       return '<span class="ab-status-badge waiting">等待</span>';
-            return '<span class="ab-status-badge waiting">' + dl + ' 等待</span>';
-          }
+                // Tab 3: 备选
+                let tab3Html = '<div class="ptab-pane" id="ptab-pane-alt" style="display:none">';
+                if (!planB2 || dirB2 === 'WAIT') {
+                  tab3Html += '<div class="ab-wait-block"><div class="ab-wait-icon">—</div><div class="ab-wait-title">暂无备选方案</div><div class="ab-wait-reason">当前场景只有单一方向预案</div></div>';
+                } else if (isOpposite2) {
+                  tab3Html += renderPlanCard(planB2, bIsBull2 ? '多单（备选）' : '空单（备选）', trigStat3, abStatus2);
+                } else {
+                  tab3Html += renderPlanCard(planB2, bIsBull2 ? '多单（备选）' : '空单（备选）', trigStat3, abStatus2);
+                }
+                tab3Html += '</div>';
 
-          function dirIcon(dir) {
-            if (dir === 'BULLISH' || dir === 'LONG')   return '↗';
-            if (dir === 'BEARISH' || dir === 'SHORT')  return '↘';
-            return '—';
-          }
+                const mainTabLabel = (!planA2 || dirA2 === 'WAIT') ? '主做' : (aIsBull2 ? '多单' : '空单');
+                const altTabLabel  = (!planB2 || dirB2 === 'WAIT') ? '备选' : (bIsBull2 ? '备选（多）' : '备选（空）');
 
-          function dirCls(dir) {
-            if (dir === 'BULLISH' || dir === 'LONG')   return 'bull';
-            if (dir === 'BEARISH' || dir === 'SHORT')  return 'bear';
-            return 'neutral';
-          }
-
-          function renderPlanCard(plan, label, trigStat, abStat) {
-            if (!plan) return '';
-            const status   = getOrderStatus(plan, trigStat, abStat);
-            const dir      = (plan.direction || 'WAIT').toUpperCase();
-            const cls      = dirCls(dir);
-            const icon     = dirIcon(dir);
-            const dirCn    = plan.direction_cn || (dir === 'BULLISH' || dir === 'LONG' ? '多头方向单' : dir === 'BEARISH' || dir === 'SHORT' ? '空头方向单' : '观望');
-            const badge    = statusBadge(status, dir);
-            const instr    = plan.instrument   || '--';
-            const actionNow= plan.action_now   || '--';
-            const waitCond = (dir === 'BULLISH' || dir === 'LONG') ? (plan.wait_long || '--') : (plan.wait_short || '--');
-            const forbidden= plan.forbidden    || '--';
-            const inv      = plan.invalidation || '--';
-            const tp1      = plan.tp1          || '--';
-            const tp2      = plan.tp2          || '--';
-            const rationale= plan.rationale    || '';
-            const rowCls   = 'ab-status-row ' + status;
-            return (
-              '<div class="ab-plan-card ' + cls + ' ' + status + '">' +
-                '<div class="ab-plan-header">' +
-                  '<span class="ab-plan-label ' + cls + '">' + escapeHtml(label) + ' ' + icon + ' ' + escapeHtml(dirCn) + '</span>' +
-                  badge +
-                '</div>' +
-                '<div class="ab-plan-instrument">' + escapeHtml(instr) + '</div>' +
-                '<div class="' + rowCls + '">' +
-                  '<div class="ab-plan-row">' +
-                    '<span class="ab-plan-key">入场条件</span>' +
-                    '<span class="ab-plan-val entry">' + escapeHtml(waitCond) + '</span>' +
+                return '<div class="ptab-container" data-tab-id="primary-tabs">' +
+                  '<div class="ptab-nav">' +
+                    '<button class="ptab-btn active" data-tab="eye">盘眼</button>' +
+                    '<button class="ptab-btn" data-tab="main">' + escapeHtml(mainTabLabel) + '</button>' +
+                    '<button class="ptab-btn" data-tab="alt">' + escapeHtml(altTabLabel) + '</button>' +
                   '</div>' +
-                  '<div class="ab-plan-row">' +
-                    '<span class="ab-plan-key">现在动作</span>' +
-                    '<span class="ab-plan-val action">' + escapeHtml(actionNow) + '</span>' +
+                  '<div class="ptab-body">' +
+                    tab1Html + tab2Html + tab3Html +
                   '</div>' +
-                  '<div class="ab-plan-row">' +
-                    '<span class="ab-plan-key">目标一</span>' +
-                    '<span class="ab-plan-val target">' + escapeHtml(tp1) + '</span>' +
-                  '</div>' +
-                  '<div class="ab-plan-row">' +
-                    '<span class="ab-plan-key">目标二</span>' +
-                    '<span class="ab-plan-val target">' + escapeHtml(tp2) + '</span>' +
-                  '</div>' +
-                  '<div class="ab-plan-row">' +
-                    '<span class="ab-plan-key">止损 / 失效</span>' +
-                    '<span class="ab-plan-val stop">' + escapeHtml(inv) + '</span>' +
-                  '</div>' +
-                  '<div class="ab-plan-row forbidden-row">' +
-                    '<span class="ab-plan-key">禁做</span>' +
-                    '<span class="ab-plan-val forbidden">' + escapeHtml(forbidden) + '</span>' +
-                  '</div>' +
-                  (rationale ? '<div class="ab-plan-rationale">' + escapeHtml(rationale) + '</div>' : '') +
-                '</div>' +
-              '</div>'
-            );
-          }
-
-          const trigStat2  = ateEng.trigger_status || triggerStatus || 'locked';
-
-          // ── 方向显示逻辑：以 plan_a.direction 为主方向 ──────────────────
-          const dirA = planA ? (planA.direction || 'WAIT').toUpperCase() : 'WAIT';
-          const dirB = planB ? (planB.direction || 'WAIT').toUpperCase() : 'WAIT';
-          const aIsBull = dirA === 'BULLISH' || dirA === 'LONG';
-          const aIsBear = dirA === 'BEARISH' || dirA === 'SHORT';
-          const bIsBull = dirB === 'BULLISH' || dirB === 'LONG';
-          const bIsBear = dirB === 'BEARISH' || dirB === 'SHORT';
-          // 多空相反 = 震荡夹击场景
-          const isOpposite = planA && planB && ((aIsBull && bIsBear) || (aIsBear && bIsBull));
-          // 同向备选
-          const isSameDir  = planA && planB && !isOpposite && dirB !== 'WAIT';
-
-          let plansHtml = '';
-          if (!planA || dirA === 'WAIT') {
-            // 观望：不显示任何方向单
-            const waitReason = (planA && planA.rationale)
-              || (abEng.forced_wait_reason === 'flow_gap_too_small' ? 'Call/Put Flow 差距不足 15%，资金尚未分化'
-              : abEng.forced_wait_reason === 'gex_near_zero' ? 'Gamma 中性，做市商处于零轴附近'
-              : '等待 Gamma 环境明确后再评估');
-            plansHtml = '<div class="ab-wait-block">' +
-              '<div class="ab-wait-icon">—</div>' +
-              '<div class="ab-wait-title">当前观望，不开仓</div>' +
-              '<div class="ab-wait-reason">' + escapeHtml(waitReason) + '</div>' +
-            '</div>';
-          } else if (isOpposite) {
-            // 震荡夹击：两张卡片都显示，标注方向
-            plansHtml = '<div class="ab-dual-label">双向等待，等方向确认后执行对应单</div>' +
-              renderPlanCard(planA, aIsBull ? '多单' : '空单', trigStat2, abStatus) +
-              renderPlanCard(planB, bIsBull ? '多单（备选）' : '空单（备选）', trigStat2, abStatus);
-          } else {
-            // 主方向明确：只显示 plan_a，plan_b 折叠为备选
-            plansHtml = renderPlanCard(planA, aIsBull ? '多单' : '空单', trigStat2, abStatus);
-            if (isSameDir) {
-              plansHtml += '<details class="ab-alt-details">' +
-                '<summary class="ab-alt-summary">备选方案：' + escapeHtml(planB.instrument || '--') + '</summary>' +
-                '<div class="ab-alt-body">' + escapeHtml(planB.rationale || planB.direction_cn || '') + '</div>' +
-              '</details>';
-            }
-          }
-
-          const confCls2 = abConf2 >= 70 ? 'conf-high' : abConf2 >= 40 ? 'conf-mid' : 'conf-low';
-          const confLbl2 = abConf2 >= 70 ? '高可信，可执行' : abConf2 >= 40 ? '中可信，小仓等确认' : '低可信，只观察';
-
-          const sceneMap = {
-            'positive_put_squeezed':  '底部背离',
-            'negative_put_effective': '空头动能',
-            'positive_call_capped':   '震荡夹击',
-            'negative_call_effective':'多头突破',
-            'positive_call_effective':'正Gamma突破',
-            'negative_put_squeezed':  '空头陷阱'
-          };
-          const sceneLabel = abScenario ? (sceneMap[abScenario] || abScenario) : null;
-
-          return (
-            '<section class="key-levels-card ab-order-card">' +
-              '<div class="key-levels-header">' +
-                '<span class="key-levels-title">' +
-                  (aIsBull ? '多单' : aIsBear ? '空单' : 'A/B 单') +
-                '</span>' +
-                '<span class="key-levels-subtitle">0DTE 执行预案</span>' +
-              '</div>' +
-              '<div class="kl-atm-center">' +
-                '<span class="kl-atm-icon">👁</span>' +
-                '<span class="kl-atm-label">盘眼 ATM</span>' +
-                '<span class="kl-atm-val">' + escapeHtml(atmFmt) + '</span>' +
-                (spotInLock ? '<span class="kl-lock-badge">锁仓区</span>' : '') +
-                (sceneLabel ? '<span class="kl-scene-tag">' + escapeHtml(sceneLabel) + '</span>' : '') +
-              '</div>' +
-              '<div class="ab-plans-container">' + plansHtml + '</div>' +
-              '<div class="ab-conf-row">' +
-                '<span class="ab-conf-label">可信度</span>' +
-                '<div class="ab-conf-bar-wrap">' +
-                  '<div class="ab-conf-bar-track">' +
-                    '<div class="ab-conf-bar-fill ' + confCls2 + '" style="width:' + Math.min(100, abConf2) + '%"></div>' +
-                  '</div>' +
-                '</div>' +
-                '<span class="ab-conf-val ' + confCls2 + '">' + abConf2 + '/100</span>' +
-                '<span class="ab-conf-desc ' + confCls2 + '">' + confLbl2 + '</span>' +
-              '</div>' +
-              '<div class="kl-far-walls">' +
-                '<span class="kl-far-label">远端墙（背景）：</span>' +
-                '<span class="kl-far-val">' + escapeHtml(farCallFmt) + ' / ' + escapeHtml(farPutFmt) + '</span>' +
-                '<span class="kl-far-note">只作背景，不作日内触发</span>' +
-              '</div>' +
-              (hint    ? '<div class="kl-hint">💡 ' + escapeHtml(hint) + '</div>' : '') +
-              (pinWarn ? '<div class="kl-pin-warn">⚠ ' + escapeHtml(pinWarn) + '</div>' : '') +
-            '</section>'
-          );
-        })()}
-      </div>
-
-      <!-- BOTTOM CARDS ROW -->
-      <div class="home-bottom-row">
-        <!-- Money Read -->
-        <section class="bottom-card money-read-card">
-          <div class="bottom-card-header">
-            <span class="bottom-card-icon">👥</span>
-            <span class="bottom-card-title">资金人话</span>
-          </div>
-          <div class="bottom-card-big-title">${escapeHtml(mr.title || '--')}</div>
-          <div class="bottom-card-body">${escapeHtml(mr.body || '--')}</div>
-          ${mr.mm_what_to_do ? `<div class="mm-what-to-do"><span class="mm-icon">🏦</span><span class="mm-text">${escapeHtml(mr.mm_what_to_do)}</span></div>` : ''}
-          <div class="bottom-card-stats">
-            <span class="stat-item">P/C：<strong>${escapeHtml(pcRatio)}</strong></span>
-            <span class="stat-sep">｜</span>
-            <span class="stat-item">Net Premium：<strong>${escapeHtml(netPremFmt)}</strong></span>
-          </div>
-        </section>
-
-        <!-- Darkpool Read -->
-        <section class="bottom-card darkpool-read-card">
-          <div class="bottom-card-header">
-            <span class="bottom-card-icon">👁</span>
-            <span class="bottom-card-title">暗盘人话</span>
-          </div>
-          <div class="bottom-card-big-title">${escapeHtml(dr.title || '--')}</div>
-          <div class="bottom-card-body">${escapeHtml(dr.body || '--')}</div>
-          <div class="dp-levels">${dpLevels || '<span class="data-missing">暗盘数据待接入</span>'}</div>
-        </section>
-
-        <!-- Vol Dashboard -->
-        <section class="bottom-card vol-card">
-          <div class="bottom-card-header">
-            <span class="bottom-card-icon">〜</span>
-            <span class="bottom-card-title">波动率仪表盘</span>
-          </div>
-          <div class="gauge-wrap">
-            <div class="gauge-arc">
-              <svg viewBox="0 0 120 70" class="gauge-svg">
-                <path d="M10,65 A55,55,0,0,1,110,65" fill="none" stroke="#e5e7eb" stroke-width="10" stroke-linecap="round"/>
-                <path d="M10,65 A55,55,0,0,1,110,65" fill="none" stroke="${ivRankVal > 60 ? '#ef4444' : ivRankVal > 30 ? '#f59e0b' : '#22c55e'}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${ivNeedlePct * 1.73} 173"/>
-              </svg>
-              <div class="gauge-center-val">${escapeHtml(ivRankFmt)}</div>
-              <div class="gauge-center-label">IV Rank</div>
+                '</div>';
+              })()}
             </div>
           </div>
-          <div class="vol-stats">
-            <div class="vol-stat-row"><span class="vol-stat-label">IV Rank</span><span class="vol-stat-val">${escapeHtml(ivRankFmt)}</span></div>
-            <div class="vol-stat-row"><span class="vol-stat-label">IV30</span><span class="vol-stat-val">${escapeHtml(iv30Fmt)}</span></div>
-            <div class="vol-stat-row"><span class="vol-stat-label">买方风险</span><span class="vol-stat-val ${buyerColor}">${escapeHtml(buyerRisk)}</span></div>
-          </div>
-          <div class="vol-comment">${escapeHtml(volComment)}</div>
         </section>
 
-        <!-- VIX Dashboard -->
-        <section class="bottom-card vix-card">
-          <div class="bottom-card-header">
-            <span class="bottom-card-icon">⚡</span>
-            <span class="bottom-card-title">VIX 仪表盘</span>
-          </div>
-          <div class="gauge-wrap">
-            <div class="gauge-arc">
-              <svg viewBox="0 0 120 70" class="gauge-svg">
-                <path d="M10,65 A55,55,0,0,1,110,65" fill="none" stroke="#e5e7eb" stroke-width="10" stroke-linecap="round"/>
-                <path d="M10,65 A55,55,0,0,1,110,65" fill="none" stroke="${vixColor === 'red' ? '#ef4444' : vixColor === 'amber' ? '#f59e0b' : '#22c55e'}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${vixNeedle * 1.73} 173"/>
-              </svg>
-              <div class="gauge-center-val ${vx.status === 'missing' ? 'missing' : ''}">${vx.status === 'missing' ? '--' : escapeHtml(vixFmt)}</div>
-              <div class="gauge-center-label">VIX</div>
+        <!-- RIGHT: Vertical aux cards (资金/暗盘/波动率/VIX) -->
+        <aside class="aux-sidebar">
+          <!-- Money Read -->
+          <section class="aux-card money-read-card">
+            <div class="aux-card-header">
+              <span class="aux-card-icon">👥</span>
+              <span class="aux-card-title">资金人话</span>
             </div>
-          </div>
-          <div class="vol-stats">
-            <div class="vol-stat-row"><span class="vol-stat-label">来源</span><span class="vol-stat-val ${vx.status === 'missing' ? 'missing' : 'gray'}">${escapeHtml(vx.source || 'FMP')}</span></div>
-            <div class="vol-stat-row"><span class="vol-stat-label">状态</span><span class="vol-stat-val ${vx.status === 'missing' ? 'missing' : vixColor}">${vx.status === 'missing' ? (vx.source_status === 'limit_reach' ? 'FMP 超限' : '不可用') : escapeHtml(vixSent)}</span></div>
-          </div>
-          <div class="vol-comment">${vx.status === 'missing' ? `<span class="data-missing">${escapeHtml(vixComment)}</span>` : escapeHtml(vixComment)}</div>
-        </section>
+            <div class="aux-card-big-title">${escapeHtml(mr.title || '--')}</div>
+            <div class="aux-card-body">${escapeHtml(mr.body || '--')}</div>
+            ${mr.mm_what_to_do ? `<div class="mm-what-to-do"><span class="mm-icon">🏦</span><span class="mm-text">${escapeHtml(mr.mm_what_to_do)}</span></div>` : ''}
+            <div class="aux-card-stats">
+              <span class="stat-item">P/C：<strong>${escapeHtml(pcRatio)}</strong></span>
+              <span class="stat-sep">｜</span>
+              <span class="stat-item">Net Premium：<strong>${escapeHtml(netPremFmt)}</strong></span>
+            </div>
+          </section>
+          <!-- Darkpool Read -->
+          <section class="aux-card darkpool-read-card">
+            <div class="aux-card-header">
+              <span class="aux-card-icon">👁</span>
+              <span class="aux-card-title">暗盘人话</span>
+            </div>
+            <div class="aux-card-big-title">${escapeHtml(dr.title || '--')}</div>
+            <div class="aux-card-body">${escapeHtml(dr.body || '--')}</div>
+            <div class="dp-levels">${dpLevels || '<span class="data-missing">暗盘数据待接入</span>'}</div>
+          </section>
+          <!-- Vol Dashboard -->
+          <section class="aux-card vol-card">
+            <div class="aux-card-header">
+              <span class="aux-card-icon">〜</span>
+              <span class="aux-card-title">波动率仪表盘</span>
+            </div>
+            <div class="gauge-wrap">
+              <div class="gauge-arc">
+                <svg viewBox="0 0 120 70" class="gauge-svg">
+                  <path d="M10,65 A55,55,0,0,1,110,65" fill="none" stroke="#e5e7eb" stroke-width="10" stroke-linecap="round"/>
+                  <path d="M10,65 A55,55,0,0,1,110,65" fill="none" stroke="${ivRankVal > 60 ? '#ef4444' : ivRankVal > 30 ? '#f59e0b' : '#22c55e'}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${ivNeedlePct * 1.73} 173"/>
+                </svg>
+                <div class="gauge-center-val">${escapeHtml(ivRankFmt)}</div>
+                <div class="gauge-center-label">IV Rank</div>
+              </div>
+            </div>
+            <div class="vol-stats">
+              <div class="vol-stat-row"><span class="vol-stat-label">IV Rank</span><span class="vol-stat-val">${escapeHtml(ivRankFmt)}</span></div>
+              <div class="vol-stat-row"><span class="vol-stat-label">IV30</span><span class="vol-stat-val">${escapeHtml(iv30Fmt)}</span></div>
+              <div class="vol-stat-row"><span class="vol-stat-label">买方风险</span><span class="vol-stat-val ${buyerColor}">${escapeHtml(buyerRisk)}</span></div>
+            </div>
+            <div class="vol-comment">${escapeHtml(volComment)}</div>
+          </section>
+          <!-- VIX Dashboard -->
+          <section class="aux-card vix-card">
+            <div class="aux-card-header">
+              <span class="aux-card-icon">⚡</span>
+              <span class="aux-card-title">VIX 仪表盘</span>
+            </div>
+            <div class="gauge-wrap">
+              <div class="gauge-arc">
+                <svg viewBox="0 0 120 70" class="gauge-svg">
+                  <path d="M10,65 A55,55,0,0,1,110,65" fill="none" stroke="#e5e7eb" stroke-width="10" stroke-linecap="round"/>
+                  <path d="M10,65 A55,55,0,0,1,110,65" fill="none" stroke="${vixColor === 'red' ? '#ef4444' : vixColor === 'amber' ? '#f59e0b' : '#22c55e'}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${vixNeedle * 1.73} 173"/>
+                </svg>
+                <div class="gauge-center-val ${vx.status === 'missing' ? 'missing' : ''}">${vx.status === 'missing' ? '--' : escapeHtml(vixFmt)}</div>
+                <div class="gauge-center-label">VIX</div>
+              </div>
+            </div>
+            <div class="vol-stats">
+              <div class="vol-stat-row"><span class="vol-stat-label">来源</span><span class="vol-stat-val ${vx.status === 'missing' ? 'missing' : 'gray'}">${escapeHtml(vx.source || 'FMP')}</span></div>
+              <div class="vol-stat-row"><span class="vol-stat-label">状态</span><span class="vol-stat-val ${vx.status === 'missing' ? 'missing' : vixColor}">${vx.status === 'missing' ? (vx.source_status === 'limit_reach' ? 'FMP 超限' : '不可用') : escapeHtml(vixSent)}</span></div>
+            </div>
+            <div class="vol-comment">${vx.status === 'missing' ? `<span class="data-missing">${escapeHtml(vixComment)}</span>` : escapeHtml(vixComment)}</div>
+          </section>
+        </aside>
       </div>
 
       <!-- MARKET MAKER PATH CARD — v2: ATM trigger lines + far walls + dual window -->
@@ -3685,6 +3594,19 @@ function renderPage(signal) {
     ${path === '/radar' ? renderRadar(signal) : renderHome(signal)}
   `;
   bindScenarioSelector();
+  // Tab switching for primary-tabs
+  document.querySelectorAll('.ptab-container').forEach(container => {
+    container.querySelectorAll('.ptab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        container.querySelectorAll('.ptab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        container.querySelectorAll('.ptab-pane').forEach(p => { p.style.display = 'none'; });
+        const pane = container.querySelector('#ptab-pane-' + tab);
+        if (pane) pane.style.display = 'block';
+      });
+    });
+  });
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
