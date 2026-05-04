@@ -231,7 +231,7 @@ export function buildCapitalFlowReading(signal) {
   }
 
   // 做市商行动建议（基于 gamma 状态和资金背离）
-  mmAction = mr.mm_what_to_do || gammaState.mm_behavior;
+  mmAction = gammaState.mm_behavior || null; // [v3] mr.mm_what_to_do 已废弃，直接用 gammaState.mm_behavior
 
   // ── A单 执行门控 ──────────────────────────────────────────────────────────
   let tradeGate = 'DEGRADED';
