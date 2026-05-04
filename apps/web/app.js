@@ -1980,20 +1980,21 @@ function renderHudPanel(signal) {
 
 // ── GEX Urgency Chart (distance-driven, SVG) ─────────────────────────────────
 function renderGexUrgencyChart(signal) {
-  const diag  = signal.uw_wall_diagnostics || {};
-  const dw    = signal.dealer_wall_map || {};  // Phase 2: 近端墙（±500pt）
+  // diag (uw_wall_diagnostics) removed — Radar-only, not used in this chart
+  const dw    = signal.dealer_wall_map || {};  // gex_local_call/put_wall (±30pt)
   const pc    = signal.primary_card || {};
   const spot  = pc.spot != null ? Number(pc.spot) : null;
   // Phase 2 fix: 首页 GEX 图优先读取 dealer_wall_map 近端墙（±500pt），
   // 避免 uw_wall_diagnostics 可能返回远端 strike（如 6850/8000）
   const nearCallW = dw.gex_local_call_wall != null ? Number(dw.gex_local_call_wall) : null;  // ±30pt local only
   const nearPutW  = dw.gex_local_put_wall  != null ? Number(dw.gex_local_put_wall)  : null;  // ±30pt local only
-  const callW = nearCallW ?? (diag.call_wall != null ? Number(diag.call_wall) : null);
-  const putW  = nearPutW  ?? (diag.put_wall  != null ? Number(diag.put_wall)  : null);
+  // AUDIT FIX: No fallback to uw_wall_diagnostics.call_wall — that is a Radar-only field
+  const callW = nearCallW;  // gex_local_call_wall only (±30pt)
+  const putW  = nearPutW;   // gex_local_put_wall only (±30pt)
 
-  // Gamma labels from top_call/put_gamma_strikes[0].value
-  const callGamma = diag.top_call_gamma_strikes?.[0]?.value;
-  const putGamma  = diag.top_put_gamma_strikes?.[0]?.value;
+  // Gamma labels: not available without uw_wall_diagnostics (Radar-only)
+  const callGamma = null;
+  const putGamma  = null;
   function fmtGamma(v) {
     if (v == null) return 'N/A';
     const m = v / 1e6;
@@ -2461,18 +2462,36 @@ function renderHome(signal) {
               <span class="aux-card-icon">👥</span>
               <span class="aux-card-title">资金人话</span>
             </div>
-            <div class="aux-card-big-title">${escapeHtml(mr.title || '--')}</div>
-            <div class="aux-card-body">${escapeHtml(mr.body || '--')}</div>
-            ${mr.mm_what_to_do ? `<div class="mm-what-to-do"><span class="mm-icon">🏦</span><span class="mm-text">${escapeHtml(mr.mm_what_to_do)}</span></div>` : ''}
-            <div class="aux-card-stats">
-              <div class="flow-stats-new">
-                <div class="stat-row"><span class="stat-label">P/C Volume:</span><span class="stat-val">${escapeHtml(fb2.pc_volume_ratio ?? pcRatio)}</span></div>
-                <div class="stat-row"><span class="stat-label">P/C Premium:</span><span class="stat-val">${escapeHtml(fb2.pc_premium_ratio ?? '--')}</span></div>
-                <div class="stat-row"><span class="stat-label">P/C Primary:</span><span class="stat-val">${escapeHtml(fb2.pc_primary_ratio ?? pcRatio)}</span></div>
-                <div class="stat-row"><span class="stat-label">Directional Net Premium:</span><span class="stat-val">${escapeHtml(fb2.directional_net_premium != null ? (fb2.directional_net_premium / 1e6).toFixed(1) + 'M' : netPremFmt)}</span></div>
-                <div class="stat-row"><span class="stat-label">Flow 状态:</span><span class="stat-val">${escapeHtml(fb2.flow_narrative ?? '--')}</span></div>
-              </div>
-            </div>
+            ${(() => {
+              // Final Decision Gate: LOCKED/WAIT 时资金人话只输出降级文案
+              const _mrStatus = signal.ab_order_engine?.status || signal.primary_card?.badge || 'LOCKED';
+              const _mrLocked = _mrStatus === 'blocked' || _mrStatus === 'wait' || _mrStatus === 'LOCKED';
+              const _mrAllowDir = fb2.homepage_allow_direction !== false;
+              if (_mrLocked || !_mrAllowDir) {
+                return `
+                  <div class="aux-card-big-title">方向降级</div>
+                  <div class="aux-card-body">当前处于 LOCKED / WAIT 状态，不做 0DTE，等确认。</div>
+                  <div class="aux-card-stats">
+                    <div class="flow-stats-new">
+                      <div class="stat-row"><span class="stat-label">Flow 状态:</span><span class="stat-val">${escapeHtml(fb2.flow_narrative ?? '方向降级，等确认。')}</span></div>
+                      <div class="stat-row"><span class="stat-label">Flow 质量:</span><span class="stat-val">${escapeHtml(fb2.flow_quality ?? 'DEGRADED')}</span></div>
+                    </div>
+                  </div>`;
+              }
+              return `
+                <div class="aux-card-big-title">${escapeHtml(mr.title || '--')}</div>
+                <div class="aux-card-body">${escapeHtml(mr.body || '--')}</div>
+                ${mr.mm_what_to_do ? `<div class="mm-what-to-do"><span class="mm-icon">🏦</span><span class="mm-text">${escapeHtml(mr.mm_what_to_do)}</span></div>` : ''}
+                <div class="aux-card-stats">
+                  <div class="flow-stats-new">
+                    <div class="stat-row"><span class="stat-label">P/C Volume:</span><span class="stat-val">${escapeHtml(fb2.pc_volume_ratio ?? pcRatio)}</span></div>
+                    <div class="stat-row"><span class="stat-label">P/C Premium:</span><span class="stat-val">${escapeHtml(fb2.pc_premium_ratio ?? '--')}</span></div>
+                    <div class="stat-row"><span class="stat-label">P/C Primary:</span><span class="stat-val">${escapeHtml(fb2.pc_primary_ratio ?? pcRatio)}</span></div>
+                    <div class="stat-row"><span class="stat-label">Directional Net Premium:</span><span class="stat-val">${escapeHtml(fb2.directional_net_premium != null ? (fb2.directional_net_premium / 1e6).toFixed(1) + 'M' : netPremFmt)}</span></div>
+                    <div class="stat-row"><span class="stat-label">Flow 状态:</span><span class="stat-val">${escapeHtml(fb2.flow_narrative ?? '--')}</span></div>
+                  </div>
+                </div>`;
+            })()}
           </section>
           <!-- Darkpool Read -->
           <section class="aux-card darkpool-read-card">

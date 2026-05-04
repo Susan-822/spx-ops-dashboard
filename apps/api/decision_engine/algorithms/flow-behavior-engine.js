@@ -393,8 +393,14 @@ export function buildFlowBehaviorEngine({
   // ── Dual window narrative ──────────────────────────────────────────────────
   // Phase 3 fix: when behavior === 'put_squeezed', NEVER output "空头动能可信"
   // because put_squeezed means the bearish flow is being absorbed (positive gamma / darkpool)
+  // ── DEGRADED guard: 5m delta === 15m delta 说明窗口数据相同（缓存复用），不可信 ──
+  const _isDegraded = flow5m.is_fallback || flow15m.is_fallback ||
+    (flow5m.delta != null && flow15m.delta != null && flow5m.delta === flow15m.delta);
   let dualWindowNarrative = '';
-  if (behavior === 'put_squeezed' && dualAligned && flow5m.direction === 'bearish') {
+  if (_isDegraded) {
+    // DEGRADED: 禁止输出"动能可信"，强制降级
+    dualWindowNarrative = `Flow 数据降级（窗口数据不足或缓存复用），方向降级，等确认。`;
+  } else if (behavior === 'put_squeezed' && dualAligned && flow5m.direction === 'bearish') {
     // Put flow heavy but being absorbed — downgrade bearish narrative
     dualWindowNarrative = `Put 很重（${flow5m.label} / ${flow15m.label}），但动能被吸收（${reason || '正 Gamma / 暗池承接'}），空头动能降级，LOCKED。`;
   } else if (dualAligned && flow5m.direction === 'bullish') {
@@ -427,8 +433,9 @@ export function buildFlowBehaviorEngine({
     pc_premium_ratio: pcPremRatio,
     pc_primary_ratio: pcPrimary,
     flow_state: behavior === 'put_squeezed' ? 'PUT_HEAVY_ABSORBED' : behavior.toUpperCase(),
-    flow_quality: (flow5m.is_fallback || flow15m.is_fallback || (flow5m.delta != null && flow5m.delta === flow15m.delta)) ? 'DEGRADED' : 'NORMAL',
-    flow_narrative: behavior === 'put_squeezed' ? 'Put 偏重，但跌不动，空头动能降级，LOCKED。' : dualWindowNarrative,
+    flow_quality: _isDegraded ? 'DEGRADED' : 'NORMAL',
+    homepage_allow_direction: !_isDegraded,  // false when DEGRADED — frontend must not show direction
+    flow_narrative: _isDegraded ? 'Flow 数据降级，方向降级，等确认。' : (behavior === 'put_squeezed' ? 'Put 偏重，但跌不动，空头动能降级，LOCKED。' : dualWindowNarrative),
 
     // ── NEW: 5m + 15m Dual Window ──────────────────────────────────────────
     flow_5m_direction:  flow5m.direction,
