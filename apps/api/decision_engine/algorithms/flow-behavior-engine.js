@@ -62,16 +62,18 @@ function computeWindowDirection(queue, windowMs) {
     const oldestPrem = safeNumber(oldest?.net_premium);
     const latestPrem = safeNumber(latest?.net_premium);
     if (oldestPrem == null || latestPrem == null) {
-      return { direction: 'unknown', delta: null, label: '数据不足' };
+      return { direction: 'unknown', delta: null, label: '数据不足', is_fallback: true };
     }
     const delta = latestPrem - oldestPrem;
     const deltaM = safeMillions(delta);
     const sign = delta >= 0 ? '+' : '';
     const windowLabel = windowMs === 5 * 60 * 1000 ? '5m' : '15m';
+    // Phase 4 fix: mark fallback data explicitly to prevent misleading display
     return {
       direction: delta > 5_000_000 ? 'bullish' : delta < -5_000_000 ? 'bearish' : 'flat',
       delta,
       delta_millions: deltaM,
+      is_fallback: true,  // Phase 4: 窗口内数据不足，使用全量历史推算
       label: `${sign}$${deltaM != null ? Math.abs(deltaM).toFixed(0) : '--'}M/${windowLabel}（历史推算）`
     };
   }
@@ -93,7 +95,7 @@ function computeWindowDirection(queue, windowMs) {
   const threshold = windowMs <= 5 * 60 * 1000 ? 5_000_000 : 15_000_000;
   const direction = delta > threshold ? 'bullish' : delta < -threshold ? 'bearish' : 'flat';
 
-  return { direction, delta, delta_millions: deltaM, label };
+  return { direction, delta, delta_millions: deltaM, label, is_fallback: false };
 }
 
 /**
@@ -418,6 +420,13 @@ export function buildFlowBehaviorEngine({
     dual_window_label:  dualWindowLabel,
     dual_window_narrative: dualWindowNarrative || null,
     queue_size: queueForWindows.length,
+    // Phase 4 fix: detect suspicious same-value windows (cache reuse or fallback bug)
+    suspicious_same_window: (
+      flow5m.delta != null && flow15m.delta != null &&
+      flow5m.delta === flow15m.delta
+    ) || (flow5m.is_fallback === true || flow15m.is_fallback === true),
+    flow_5m_is_fallback:  flow5m.is_fallback  ?? false,
+    flow_15m_is_fallback: flow15m.is_fallback ?? false,
 
     // Acceleration (legacy)
     acceleration,

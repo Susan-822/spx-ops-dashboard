@@ -2187,3 +2187,39 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
   .aux-sidebar { flex-direction: row; flex-wrap: wrap; }
   .aux-card { flex: 1 1 calc(50% - 5px); min-width: 140px; }
 }
+
+/* ── Phase 3: P/C 口径标注 ─────────────────────────────────────────────────── */
+.prem-label-note { font-size: 9px; color: #9ca3af; font-weight: 400; margin-left: 3px; }
+.rfs-label-note { font-size: 9px; color: #9ca3af; font-weight: 400; }
+.rfs-val-note { font-size: 9px; color: #9ca3af; }
+.rfs-note { opacity: 0.7; margin-top: 2px; }
+
+/* ── Phase 4/5: 5m/15m 窗口 fallback 警告 ─────────────────────────────────── */
+.flow-warning-bar {
+  display: flex; align-items: flex-start; gap: 6px;
+  background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 6px; padding: 6px 8px; margin-top: 8px;
+  font-size: 11px; color: #b45309;
+}
+.flow-warn-icon { font-size: 12px; flex-shrink: 0; }
+.flow-warn-text { line-height: 1.4; }
+.flow-fallback-note {
+  display: flex; align-items: flex-start; gap: 6px;
+  background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 6px; padding: 5px 8px; margin-top: 4px;
+  font-size: 10px; color: #3b82f6;
+}
+.flow-note-icon { font-size: 11px; flex-shrink: 0; }
+.flow-note-text { line-height: 1.4; }
+
+/* ── Radar 页面 5m/15m fallback 警告 ──────────────────────────────────────── */
+.radar-flow-warning {
+  font-size: 11px; color: #b45309; background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 5px;
+  padding: 5px 8px; margin-top: 6px;
+}
+.radar-flow-fallback {
+  font-size: 10px; color: #3b82f6; background: rgba(59, 130, 246, 0.05);
+  border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 5px;
+  padding: 4px 8px; margin-top: 3px;
+}

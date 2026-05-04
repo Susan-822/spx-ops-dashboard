@@ -1554,6 +1554,10 @@ function renderHudZoneFlow(signal) {
   const putPremDisplay  = putPrem  == null ? '<span class="data-missing">未接入</span>' : `<span class="negative">${fmtPrem(putPrem)}</span>`;
   const pcDisplay = pcRatio == null ? '<span class="data-missing">数据缺失</span>' : `<span class="pc-ratio-value ${pcClass}">${Number(pcRatio).toFixed(2)}</span>`;
   const aggDisplay = (netPrem == null || pcRatio == null) ? '<span class="data-missing">不可用（数据未接入）</span>' : `${fb.aggression_label || '--'} (${aggScore}/100)`;
+  // Phase 4/5: suspicious_same_window 警告
+  const suspiciousWindow = fb.suspicious_same_window === true;
+  const flow5mFallback   = fb.flow_5m_is_fallback  === true;
+  const flow15mFallback  = fb.flow_15m_is_fallback === true;
 
   return `
     <div class="hud-zone flow-xray">
@@ -1567,19 +1571,19 @@ function renderHudZoneFlow(signal) {
       ${renderSentimentBar(fb)}
       <div class="flow-prem-grid">
         <div class="flow-prem-item">
-          <div class="flow-prem-label">净权利金</div>
+          <div class="flow-prem-label">净权利金<span class="prem-label-note">（当日累计）</span></div>
           <div class="flow-prem-value">${netPremDisplay}</div>
         </div>
         <div class="flow-prem-item">
-          <div class="flow-prem-label">Call 权利金</div>
+          <div class="flow-prem-label">Call 权利金<span class="prem-label-note">（当日累计）</span></div>
           <div class="flow-prem-value">${callPremDisplay}</div>
         </div>
         <div class="flow-prem-item">
-          <div class="flow-prem-label">Put 权利金</div>
+          <div class="flow-prem-label">Put 权利金<span class="prem-label-note">（当日累计）</span></div>
           <div class="flow-prem-value">${putPremDisplay}</div>
         </div>
         <div class="flow-prem-item">
-          <div class="flow-prem-label">P/C 比率</div>
+          <div class="flow-prem-label">P/C 比率<span class="prem-label-note">（Volume 优先）</span></div>
           <div class="flow-prem-value">${pcDisplay}</div>
         </div>
       </div>
@@ -1597,6 +1601,16 @@ function renderHudZoneFlow(signal) {
         </div>
         ${(netPrem != null && pcRatio != null) ? `<div class="aggression-meter-bar"><div class="aggression-meter-fill ${aggClass}" style="width:${aggScore}%"></div></div>` : ''}
       </div>
+      ${suspiciousWindow ? `
+      <div class="flow-warning-bar">
+        <span class="flow-warn-icon">⚠</span>
+        <span class="flow-warn-text">5m/15m 窗口数据异常（可能为冷启动 fallback 或缓存复用），数值仅供参考。</span>
+      </div>` : ''}
+      ${(flow5mFallback || flow15mFallback) ? `
+      <div class="flow-fallback-note">
+        <span class="flow-note-icon">ℹ</span>
+        <span class="flow-note-text">${flow5mFallback ? '5m' : ''} ${flow15mFallback ? '15m' : ''} 窗口使用历史推算，非实时窗口数据。</span>
+      </div>` : ''}
     </div>
   `;
 }
@@ -1904,10 +1918,15 @@ function renderHudPanel(signal) {
 // ── GEX Urgency Chart (distance-driven, SVG) ─────────────────────────────────
 function renderGexUrgencyChart(signal) {
   const diag  = signal.uw_wall_diagnostics || {};
+  const dw    = signal.dealer_wall_map || {};  // Phase 2: 近端墙（±500pt）
   const pc    = signal.primary_card || {};
   const spot  = pc.spot != null ? Number(pc.spot) : null;
-  const callW = diag.call_wall != null ? Number(diag.call_wall) : null;
-  const putW  = diag.put_wall  != null ? Number(diag.put_wall)  : null;
+  // Phase 2 fix: 首页 GEX 图优先读取 dealer_wall_map 近端墙（±500pt），
+  // 避免 uw_wall_diagnostics 可能返回远端 strike（如 6850/8000）
+  const nearCallW = dw.near_call_wall != null ? Number(dw.near_call_wall) : null;
+  const nearPutW  = dw.near_put_wall  != null ? Number(dw.near_put_wall)  : null;
+  const callW = nearCallW ?? (diag.call_wall != null ? Number(diag.call_wall) : null);
+  const putW  = nearPutW  ?? (diag.put_wall  != null ? Number(diag.put_wall)  : null);
 
   // Gamma labels from top_call/put_gamma_strikes[0].value
   const callGamma = diag.top_call_gamma_strikes?.[0]?.value;
@@ -3327,6 +3346,10 @@ function renderRadar(signal) {
   const flow15mLabel = fb.flow_15m_label || null;
   const dualNarr     = fb.dual_window_narrative || null;
   const dualAligned  = fb.dual_window_aligned ?? false;
+  // Phase 4/5: suspicious_same_window 警告
+  const radarSuspicious = fb.suspicious_same_window === true;
+  const radar5mFallback  = fb.flow_5m_is_fallback  === true;
+  const radar15mFallback = fb.flow_15m_is_fallback === true;
   const flowBlock = `
     <article class="radar-module">
       <div class="radar-module-header">
@@ -3342,7 +3365,7 @@ function renderRadar(signal) {
             <div class="radar-flow-stat"><span class="rfs-label">Net</span><span class="rfs-val ${netPremM != null && Number(netPremM) >= 0 ? 'bullish' : 'bearish'}">${netPremM != null ? (Number(netPremM) >= 0 ? '+' : '') + netPremM + 'M' : '--'}</span></div>
             <div class="radar-flow-stat"><span class="rfs-label">Call</span><span class="rfs-val bullish">${callPremM != null ? '+' + callPremM + 'M' : '--'}</span></div>
             <div class="radar-flow-stat"><span class="rfs-label">Put</span><span class="rfs-val bearish">${putPremM != null ? '+' + putPremM + 'M' : '--'}</span></div>
-            <div class="radar-flow-stat"><span class="rfs-label">P/C</span><span class="rfs-val">${pcPrem != null ? pcPrem : '--'}</span></div>
+            <div class="radar-flow-stat"><span class="rfs-label">P/C Prem</span><span class="rfs-val" title="P/C Premium Ratio（权利金比率）">${pcPrem != null ? pcPrem : '--'}</span></div>
           </div>
         </div>
         <div class="radar-flow-window-divider">│</div>
@@ -3361,8 +3384,12 @@ function renderRadar(signal) {
         <span class="dual-text">${escapeHtml(dualNarr)}</span>
       </div>` : ''}
       <div class="radar-flow-extra">
-        <div class="radar-flow-stat"><span class="rfs-label">P/C Volume</span><span class="rfs-val">${pcVol != null ? pcVol : 'unavailable'}</span></div>
+        <div class="radar-flow-stat"><span class="rfs-label">P/C Volume</span><span class="rfs-val" title="P/C Volume Ratio（成交量比率）">${pcVol != null ? pcVol : 'unavailable'}</span></div>
+        <div class="radar-flow-stat"><span class="rfs-label">P/C Primary</span><span class="rfs-val" title="主用 P/C（有成交量时用 Volume，否则用 Premium）">${(() => { const pcPrimary = ff.put_call_ratio != null ? ff.put_call_ratio.toFixed(2) : null; return pcPrimary != null ? pcPrimary : '--'; })()}</span></div>
+        <div class="radar-flow-stat rfs-note"><span class="rfs-label-note">注</span><span class="rfs-val-note">P/C Prem = 权利金比；P/C Volume = 成交量比；Primary = 优先 Volume</span></div>
       </div>
+      ${radarSuspicious ? `<div class="radar-flow-warning">⚠ 5m/15m 窗口数据异常（冷启动 fallback 或缓存复用），数值仅供参考。</div>` : ''}
+      ${(radar5mFallback || radar15mFallback) ? `<div class="radar-flow-fallback">ℹ ${radar5mFallback ? '5m' : ''} ${radar15mFallback ? '15m' : ''} 窗口使用历史推算。</div>` : ''}
       <div class="radar-note">${escapeHtml(fb.reason || '资金流向信号不足。')}</div>
     </article>`;
   // ── 4. Strike 战场 ────────────────────────────────────────────────────────
