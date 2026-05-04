@@ -2185,6 +2185,10 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     call_premium: _callPrem5m,
     put_premium: _putPrem5m,
     put_call_ratio: _pcRatio,
+    pc_volume_ratio: _ff.pc_volume_ratio ?? _pcRatio,
+    pc_premium_ratio: _ff.pc_premium_ratio ?? null,
+    pc_primary_ratio: _ff.pc_primary_ratio ?? _pcRatio,
+    directional_net_premium: _ff.directional_net_premium ?? _netPrem5m,
     prem_ticks: [],
     premium_queue: premiumAccelerationQueue._queue ?? [],  // NEW: 5m+15m dual window
     gamma_regime: gammaRegimeEngine.gamma_regime,

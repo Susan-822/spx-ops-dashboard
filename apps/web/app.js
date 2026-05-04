@@ -2346,7 +2346,7 @@ function renderHome(signal) {
             <div class="primary-card-title">主控卡片 ｜ ${escapeHtml(badge === 'LONG_CALL' ? 'CALL' : badge === 'SHORT_PUT' ? 'PUT' : 'LOCKED')}</div>
           </div>
           <div class="primary-card-body">
-            <div class="primary-card-gex">${renderGexUrgencyChart(signal)}</div>
+            
             <div class="primary-card-signal">
               ${planLines}
               <!-- THREE-TAB PANEL: 盘眼 / 主做 / 备选 -->
@@ -2434,8 +2434,9 @@ function renderHome(signal) {
                 }
                 tab3Html += '</div>';
 
-                const mainTabLabel = (!planA2 || dirA2 === 'WAIT') ? '主做' : (aIsBull2 ? '多单' : '空单');
-                const altTabLabel  = (!planB2 || dirB2 === 'WAIT') ? '备选' : (bIsBull2 ? '备选（多）' : '备选（空）');
+                const isLocked = abStatus2 === 'blocked' || abStatus2 === 'wait';
+                const mainTabLabel = isLocked ? '主做(禁)' : (!planA2 || dirA2 === 'WAIT') ? '主做' : (aIsBull2 ? '多单' : '空单');
+                const altTabLabel  = isLocked ? '备选(禁)' : (!planB2 || dirB2 === 'WAIT') ? '备选' : (bIsBull2 ? '备选（多）' : '备选（空）');
 
                 return '<div class="ptab-container" data-tab-id="primary-tabs">' +
                   '<div class="ptab-nav">' +
@@ -2464,9 +2465,13 @@ function renderHome(signal) {
             <div class="aux-card-body">${escapeHtml(mr.body || '--')}</div>
             ${mr.mm_what_to_do ? `<div class="mm-what-to-do"><span class="mm-icon">🏦</span><span class="mm-text">${escapeHtml(mr.mm_what_to_do)}</span></div>` : ''}
             <div class="aux-card-stats">
-              <span class="stat-item">P/C：<strong>${escapeHtml(pcRatio)}</strong></span>
-              <span class="stat-sep">｜</span>
-              <span class="stat-item">Net Premium：<strong>${escapeHtml(netPremFmt)}</strong></span>
+              <div class="flow-stats-new">
+                <div class="stat-row"><span class="stat-label">P/C Volume:</span><span class="stat-val">${escapeHtml(fb2.pc_volume_ratio ?? pcRatio)}</span></div>
+                <div class="stat-row"><span class="stat-label">P/C Premium:</span><span class="stat-val">${escapeHtml(fb2.pc_premium_ratio ?? '--')}</span></div>
+                <div class="stat-row"><span class="stat-label">P/C Primary:</span><span class="stat-val">${escapeHtml(fb2.pc_primary_ratio ?? pcRatio)}</span></div>
+                <div class="stat-row"><span class="stat-label">Directional Net Premium:</span><span class="stat-val">${escapeHtml(fb2.directional_net_premium != null ? (fb2.directional_net_premium / 1e6).toFixed(1) + 'M' : netPremFmt)}</span></div>
+                <div class="stat-row"><span class="stat-label">Flow 状态:</span><span class="stat-val">${escapeHtml(fb2.flow_narrative ?? '--')}</span></div>
+              </div>
             </div>
           </section>
           <!-- Darkpool Read -->

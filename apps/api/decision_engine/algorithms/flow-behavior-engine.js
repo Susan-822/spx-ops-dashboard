@@ -117,6 +117,10 @@ function classifyFlowBehavior({
   const callPrem = safeNumber(call_premium);
   const putPrem = safeNumber(put_premium);
   const pcRatio = safeNumber(put_call_ratio);
+  const pcVol = safeNumber(pc_volume_ratio);
+  const pcPremRatio = safeNumber(pc_premium_ratio);
+  const pcPrimary = safeNumber(pc_primary_ratio) ?? pcRatio;
+  const dirNetPrem = safeNumber(directional_net_premium) ?? netPrem;
 
   // No data
   if (netPrem == null && pcRatio == null) {
@@ -261,6 +265,10 @@ export function buildFlowBehaviorEngine({
   call_premium = null,
   put_premium = null,
   put_call_ratio = null,
+  pc_volume_ratio = null,
+  pc_premium_ratio = null,
+  pc_primary_ratio = null,
+  directional_net_premium = null,
   prem_ticks = [],
   premium_queue = [],   // NEW: time-series queue for 5m/15m window computation
   gamma_regime = 'unknown',
@@ -274,6 +282,10 @@ export function buildFlowBehaviorEngine({
   const callPrem = safeNumber(call_premium);
   const putPrem = safeNumber(put_premium);
   const pcRatio = safeNumber(put_call_ratio);
+  const pcVol = safeNumber(pc_volume_ratio);
+  const pcPremRatio = safeNumber(pc_premium_ratio);
+  const pcPrimary = safeNumber(pc_primary_ratio) ?? pcRatio;
+  const dirNetPrem = safeNumber(directional_net_premium) ?? netPrem;
   const spot = safeNumber(spot_price);
 
   // ── 5m + 15m Dual Window Flow Direction ────────────────────────────────────
@@ -407,9 +419,16 @@ export function buildFlowBehaviorEngine({
     // Raw values
     net_premium: netPrem,
     net_premium_millions: safeMillions(netPrem),
-    call_premium: callPrem,
-    put_premium: putPrem,
+    directional_net_premium: dirNetPrem,
+    call_premium_abs: callPrem != null ? Math.abs(callPrem) : null,
+    put_premium_abs: putPrem != null ? Math.abs(putPrem) : null,
     put_call_ratio: pcRatio,
+    pc_volume_ratio: pcVol,
+    pc_premium_ratio: pcPremRatio,
+    pc_primary_ratio: pcPrimary,
+    flow_state: behavior === 'put_squeezed' ? 'PUT_HEAVY_ABSORBED' : behavior.toUpperCase(),
+    flow_quality: (flow5m.is_fallback || flow15m.is_fallback || (flow5m.delta != null && flow5m.delta === flow15m.delta)) ? 'DEGRADED' : 'NORMAL',
+    flow_narrative: behavior === 'put_squeezed' ? 'Put 偏重，但跌不动，空头动能降级，LOCKED。' : dualWindowNarrative,
 
     // ── NEW: 5m + 15m Dual Window ──────────────────────────────────────────
     flow_5m_direction:  flow5m.direction,

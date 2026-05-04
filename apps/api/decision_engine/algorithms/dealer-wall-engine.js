@@ -84,7 +84,7 @@ function findGexLocalPutWall(allRows, spot) {
   return candidates[0]?.strike ?? null;
 }
 // P1-2 fix: near call wall = strictly above spot, within [spot+5, spot+500]
-function findNearCallWall(allRows, spot) {
+function findFarCallWall(allRows, spot) {
   if (spot == null || allRows.length === 0) return null;
   const candidates = allRows
     .map((row) => ({ ...row, strike: numberOrNull(row.strike ?? row.price ?? row.level) }))
@@ -98,7 +98,7 @@ function findNearCallWall(allRows, spot) {
 }
 
 // P1-2 fix: near put wall = strictly below spot, within [spot-500, spot-5]
-function findNearPutWall(allRows, spot) {
+function findFarPutWall(allRows, spot) {
   if (spot == null || allRows.length === 0) return null;
   const candidates = allRows
     .map((row) => ({ ...row, strike: numberOrNull(row.strike ?? row.price ?? row.level) }))
@@ -148,8 +148,8 @@ export function buildDealerWallMap({
       .filter((row) => row.strike != null && Math.abs(row.strike - spot) / spot <= 0.15);
 
   // P1-2 fix: near walls based on spot position (±500pt, for far background)
-  const nearCallWall = findNearCallWall(allRows, spot);
-  const nearPutWall  = findNearPutWall(allRows, spot);
+  const farCallWall = findFarCallWall(allRows, spot);
+  const farPutWall  = findFarPutWall(allRows, spot);
   // Layer 2: GEX local reference walls (±30pt, homepage GEX card only)
   const gexLocalCallWall = findGexLocalCallWall(allRows, spot);
   const gexLocalPutWall  = findGexLocalPutWall(allRows, spot);
@@ -158,8 +158,8 @@ export function buildDealerWallMap({
   const globalGexClusters = findGlobalGexClusters(allRows);
 
   // Wall validation
-  const callWallValid = nearCallWall != null && spot != null && nearCallWall > spot;
-  const putWallValid  = nearPutWall  != null && spot != null && nearPutWall  < spot;
+  const callWallValid = farCallWall != null && spot != null && farCallWall > spot;
+  const putWallValid  = farPutWall  != null && spot != null && farPutWall  < spot;
   const wallStatus = spot == null
     ? 'unavailable'
     : (callWallValid && putWallValid)
@@ -169,8 +169,8 @@ export function buildDealerWallMap({
         : 'partial';
   const wallErrors = [
     spot == null ? 'spot_missing' : null,
-    !callWallValid && spot != null ? 'no_near_call_wall_above_spot' : null,
-    !putWallValid  && spot != null ? 'no_near_put_wall_below_spot'  : null
+    !callWallValid && spot != null ? 'no_far_call_wall_above_spot' : null,
+    !putWallValid  && spot != null ? 'no_far_put_wall_below_spot'  : null
   ].filter(Boolean);
 
   const flip = gammaFlip(usableRows);
@@ -185,7 +185,7 @@ export function buildDealerWallMap({
       ? 'negative_gamma_slide'
       : 'unknown';
 
-  const nearest = spot != null ? nearestWall({ spot, callWall: nearCallWall, putWall: nearPutWall }) : { side: 'unknown', level: null };
+  const nearest = spot != null ? nearestWall({ spot, callWall: farCallWall, putWall: farPutWall }) : { side: 'unknown', level: null };
   const rowsUsed = usableRows.length;
 
   // P0 fix: Gamma flip display text — don't say "现价在翻转点上方" when flip is far or unavailable
@@ -204,16 +204,16 @@ export function buildDealerWallMap({
     spot_price: spot,
     rows_used: rowsUsed,
     // Layer 3: far background walls (±500pt, Radar only — NOT homepage execution)
-    call_wall:      nearCallWall,
-    put_wall:       nearPutWall,
-    near_call_wall: nearCallWall,
-    near_put_wall:  nearPutWall,
+    call_wall:      farCallWall,
+    put_wall:       farPutWall,
+    far_call_wall: farCallWall,
+    far_put_wall:  farPutWall,
     // Layer 2: GEX local reference walls (±30pt, homepage GEX card informational only)
     gex_local_call_wall: gexLocalCallWall,
     gex_local_put_wall:  gexLocalPutWall,
     // Legacy aliases
-    upper_barrier: nearCallWall,
-    lower_barrier: nearPutWall,
+    upper_barrier: farCallWall,
+    lower_barrier: farPutWall,
     // Wall validation
     wall_status:     wallStatus,
     wall_errors:     wallErrors,
@@ -233,8 +233,8 @@ export function buildDealerWallMap({
     nearest_wall:      nearest.level,
     nearest_wall_side: nearest.side,
     // Distance metrics
-    distance_to_call_wall_pct: spot != null && nearCallWall != null ? pct((nearCallWall - spot) / spot * 100) : null,
-    distance_to_put_wall_pct:  spot != null && nearPutWall  != null ? pct((spot - nearPutWall)  / spot * 100) : null,
+    distance_to_call_wall_pct: spot != null && farCallWall != null ? pct((farCallWall - spot) / spot * 100) : null,
+    distance_to_put_wall_pct:  spot != null && farPutWall  != null ? pct((spot - farPutWall)  / spot * 100) : null,
     distance_to_flip_pct: spot != null && flip.level != null ? pct((spot - flip.level) / spot * 100) : null,
     regime,
     regime_cn: regime === 'positive_gamma_magnet'
@@ -242,11 +242,11 @@ export function buildDealerWallMap({
       : regime === 'negative_gamma_slide'
         ? '当前在 Flip 下方，偏负 Gamma 放波区，容易单边加速。'
         : 'Gamma Flip 暂不能确认。',
-    confidence: rowsUsed > 0 && nearCallWall != null && nearPutWall != null && flip.level != null
+    confidence: rowsUsed > 0 && farCallWall != null && farPutWall != null && flip.level != null
       ? flip.confidence
       : 'unavailable',
-    summary_cn: rowsUsed > 0 && nearCallWall != null && nearPutWall != null
-      ? `近端 Call Wall ${nearCallWall}（上方），近端 Put Wall ${nearPutWall}（下方），Flip ${flip.level ?? '--'}。`
+    summary_cn: rowsUsed > 0 && farCallWall != null && farPutWall != null
+      ? `近端 Call Wall ${farCallWall}（上方），近端 Put Wall ${farPutWall}（下方），Flip ${flip.level ?? '--'}。`
       : rowsUsed > 0
         ? `GEX 数据 ${rowsUsed} 行，但现价附近未找到有效近端墙位。`
         : 'GEX 数据不足，无法计算墙位。',
