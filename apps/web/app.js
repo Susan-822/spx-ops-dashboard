@@ -2227,8 +2227,46 @@ function renderHome(signal) {
           }
 
           const trigStat2  = ateEng.trigger_status || triggerStatus || 'locked';
-          const planACard  = renderPlanCard(planA, 'A单', trigStat2, abStatus);
-          const planBCard  = planB ? renderPlanCard(planB, 'B单', trigStat2, abStatus) : '';
+
+          // ── 方向显示逻辑：以 plan_a.direction 为主方向 ──────────────────
+          const dirA = planA ? (planA.direction || 'WAIT').toUpperCase() : 'WAIT';
+          const dirB = planB ? (planB.direction || 'WAIT').toUpperCase() : 'WAIT';
+          const aIsBull = dirA === 'BULLISH' || dirA === 'LONG';
+          const aIsBear = dirA === 'BEARISH' || dirA === 'SHORT';
+          const bIsBull = dirB === 'BULLISH' || dirB === 'LONG';
+          const bIsBear = dirB === 'BEARISH' || dirB === 'SHORT';
+          // 多空相反 = 震荡夹击场景
+          const isOpposite = planA && planB && ((aIsBull && bIsBear) || (aIsBear && bIsBull));
+          // 同向备选
+          const isSameDir  = planA && planB && !isOpposite && dirB !== 'WAIT';
+
+          let plansHtml = '';
+          if (!planA || dirA === 'WAIT') {
+            // 观望：不显示任何方向单
+            const waitReason = (planA && planA.rationale)
+              || (abEng.forced_wait_reason === 'flow_gap_too_small' ? 'Call/Put Flow 差距不足 15%，资金尚未分化'
+              : abEng.forced_wait_reason === 'gex_near_zero' ? 'Gamma 中性，做市商处于零轴附近'
+              : '等待 Gamma 环境明确后再评估');
+            plansHtml = '<div class="ab-wait-block">' +
+              '<div class="ab-wait-icon">—</div>' +
+              '<div class="ab-wait-title">当前观望，不开仓</div>' +
+              '<div class="ab-wait-reason">' + escapeHtml(waitReason) + '</div>' +
+            '</div>';
+          } else if (isOpposite) {
+            // 震荡夹击：两张卡片都显示，标注方向
+            plansHtml = '<div class="ab-dual-label">双向等待，等方向确认后执行对应单</div>' +
+              renderPlanCard(planA, aIsBull ? '多单' : '空单', trigStat2, abStatus) +
+              renderPlanCard(planB, bIsBull ? '多单（备选）' : '空单（备选）', trigStat2, abStatus);
+          } else {
+            // 主方向明确：只显示 plan_a，plan_b 折叠为备选
+            plansHtml = renderPlanCard(planA, aIsBull ? '多单' : '空单', trigStat2, abStatus);
+            if (isSameDir) {
+              plansHtml += '<details class="ab-alt-details">' +
+                '<summary class="ab-alt-summary">备选方案：' + escapeHtml(planB.instrument || '--') + '</summary>' +
+                '<div class="ab-alt-body">' + escapeHtml(planB.rationale || planB.direction_cn || '') + '</div>' +
+              '</details>';
+            }
+          }
 
           const confCls2 = abConf2 >= 70 ? 'conf-high' : abConf2 >= 40 ? 'conf-mid' : 'conf-low';
           const confLbl2 = abConf2 >= 70 ? '高可信，可执行' : abConf2 >= 40 ? '中可信，小仓等确认' : '低可信，只观察';
@@ -2246,7 +2284,9 @@ function renderHome(signal) {
           return (
             '<section class="key-levels-card ab-order-card">' +
               '<div class="key-levels-header">' +
-                '<span class="key-levels-title">A/B 单</span>' +
+                '<span class="key-levels-title">' +
+                  (aIsBull ? '多单' : aIsBear ? '空单' : 'A/B 单') +
+                '</span>' +
                 '<span class="key-levels-subtitle">0DTE 执行预案</span>' +
               '</div>' +
               '<div class="kl-atm-center">' +
@@ -2256,10 +2296,7 @@ function renderHome(signal) {
                 (spotInLock ? '<span class="kl-lock-badge">锁仓区</span>' : '') +
                 (sceneLabel ? '<span class="kl-scene-tag">' + escapeHtml(sceneLabel) + '</span>' : '') +
               '</div>' +
-              '<div class="ab-plans-container">' +
-                (planACard || '<div class="ab-plan-empty">A单：等待市场条件满足</div>') +
-                planBCard +
-              '</div>' +
+              '<div class="ab-plans-container">' + plansHtml + '</div>' +
               '<div class="ab-conf-row">' +
                 '<span class="ab-conf-label">可信度</span>' +
                 '<div class="ab-conf-bar-wrap">' +
