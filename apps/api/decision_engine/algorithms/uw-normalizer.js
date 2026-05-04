@@ -501,11 +501,15 @@ function normalizeDealer(raw = {}, context = {}) {
     rows_near_spot: rowsNearSpot,
     dealer_diagnostics: dealerDiagnostics,
     dealer_resolution: dealerResolution,
-    rows_used: 0,
-    wall_algorithm_allowed: false,
+    rows_used: rowsNearSpot,
+    wall_algorithm_allowed: rowsNearSpot > 0,
     parser_status: hasGreek || spotRows.length > 0 ? 'partial' : 'failed',
-    missing_fields: missingFields,
-    current_block_cn: 'Spot GEX 有数据，但 strike 区间和现价不匹配，暂不允许计算 Call Wall / Put Wall / Gamma Flip。'
+    missing_fields: rowsNearSpot > 0
+      ? missingFields.filter((f) => f !== '有效 strike 区间')
+      : missingFields,
+    current_block_cn: rowsNearSpot > 0
+      ? `Spot GEX 有效 strike 区间内 ${rowsNearSpot} 行，允许计算 Call Wall / Put Wall / Gamma Flip。`
+      : 'Spot GEX 有数据，但 strike 区间和现价不匹配，暂不允许计算 Call Wall / Put Wall / Gamma Flip。'
   };
 }
 
