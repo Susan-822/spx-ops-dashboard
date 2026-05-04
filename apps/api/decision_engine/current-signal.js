@@ -2250,7 +2250,11 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     acceleration_15m: null,  // injected below after acceleration queue computes
     // P2: inject dominant_scene from price_validation_engine
     dominant_scene: priceValidationEngine.dominant_scene ?? null,
-    alert_level: priceValidationEngine.alert_level ?? 'normal'
+    alert_level: priceValidationEngine.alert_level ?? 'normal',
+    // Forced-wait rule inputs (务实交易风格)
+    call_premium: _callPrem5m,
+    put_premium: _putPrem5m,
+    net_gex: rawNoteV2.uw_conclusion?.net_gex ?? null
   });
 
   // Re-run health engine with AB context for better blocked summary

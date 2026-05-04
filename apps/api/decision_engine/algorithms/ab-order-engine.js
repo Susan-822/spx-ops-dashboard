@@ -177,7 +177,10 @@ export function buildAbOrderEngine({
   net_premium_millions = null,
   acceleration_15m = null,
   dominant_scene = null,
-  alert_level = 'normal'
+  alert_level = 'normal',
+  call_premium = null,
+  put_premium = null,
+  net_gex = null
 } = {}) {
   const spot = safeN(spot_price);
   const dp   = darkpool_conclusion || {};
@@ -247,6 +250,92 @@ export function buildAbOrderEngine({
       headline: '\u9501\u4ed3\u89c2\u5bdf\uff5c\u53ef\u4fe1\u5ea6 ' + execution_confidence + '/100 \u4f4e',
       blocked_reason: '\u53ef\u4fe1\u5ea6\u4f4e ' + execution_confidence + '/100',
       execution_confidence,
+      atm_triggers: {
+        bull1: T.bull1, bull2: T.bull2, bullTgt1: T.bullTgt1, bullTgt2: T.bullTgt2,
+        bear1: T.bear1, bear2: T.bear2, bearTgt1: T.bearTgt1, bearTgt2: T.bearTgt2,
+        invBull: T.invBull, invBear: T.invBear
+      },
+      far_call_wall: call_wall,
+      far_put_wall: put_wall,
+      scenario: gamma_regime + '_' + flow_behavior,
+      gamma_regime,
+      flow_behavior,
+      dominant_scene,
+      alert_level,
+      scene_overlay_applied: false,
+      darkpool_context: null
+    };
+  }
+
+  // ── Rule 1: Flow 差距 < 15% → 强制观望 ─────────────────────────────────────
+  // 规则：|call_premium - put_premium| / max(call, put) < 0.15
+  // 两者均为正数（USD），差距不足 15% 说明资金尚未分化，不开方向单
+  const _callAbs = call_premium != null ? Math.abs(call_premium) : null;
+  const _putAbs  = put_premium  != null ? Math.abs(put_premium)  : null;
+  const _flowGapRatio = (_callAbs != null && _putAbs != null && Math.max(_callAbs, _putAbs) > 0)
+    ? Math.abs(_callAbs - _putAbs) / Math.max(_callAbs, _putAbs)
+    : null;
+  const _flowTooClose = _flowGapRatio != null && _flowGapRatio < 0.15;
+  if (_flowTooClose) {
+    const _gapPct = (_flowGapRatio * 100).toFixed(1);
+    const _waitPlan = makeWaitPlan({
+      reason: 'Call/Put Flow \u5dee\u8ddd\u4ec5 ' + _gapPct + '%\uff0c\u4e0d\u8db3 15% \u9608\u5024\uff0c\u8d44\u91d1\u65b9\u5411\u4e0d\u660e\u786e\u3002\u7b49\u5f85 Flow \u5206\u5316\u540e\u518d\u8bc4\u4f30\u3002'
+    });
+    return {
+      status: 'waiting',
+      status_cn: '\u89c2\u671b\uff5cFlow \u5dee\u8ddd\u4e0d\u8db3',
+      headline: '\u3010\u89c2\u671b\uff5cCall/Put Flow \u5dee\u8ddd\u4e0d\u8db3 15%\u3011Call ' +
+        (_callAbs != null ? '$' + (_callAbs / 1e6).toFixed(1) + 'M' : '--') + ' vs Put ' +
+        (_putAbs  != null ? '$' + (_putAbs  / 1e6).toFixed(1) + 'M' : '--') +
+        '\uff0c\u5dee\u8ddd ' + _gapPct + '%\uff0c\u65b9\u5411\u4e0d\u660e\u786e\uff0c\u4e0d\u5f00\u4ed3\u3002',
+      judgment: 'Call/Put Flow \u5dee\u8ddd ' + _gapPct + '%\uff0c\u672a\u8fbe 15% \u9608\u5024\uff0c\u8d44\u91d1\u5c1a\u672a\u5206\u5316\u3002',
+      forced_wait: true,
+      forced_wait_reason: 'flow_gap_too_small',
+      flow_gap_pct: Number(_gapPct),
+      pin_warning: null,
+      execution_confidence,
+      plan_a: _waitPlan,
+      plan_b: null,
+      atm_triggers: {
+        bull1: T.bull1, bull2: T.bull2, bullTgt1: T.bullTgt1, bullTgt2: T.bullTgt2,
+        bear1: T.bear1, bear2: T.bear2, bearTgt1: T.bearTgt1, bearTgt2: T.bearTgt2,
+        invBull: T.invBull, invBear: T.invBear
+      },
+      far_call_wall: call_wall,
+      far_put_wall: put_wall,
+      scenario: gamma_regime + '_' + flow_behavior,
+      gamma_regime,
+      flow_behavior,
+      dominant_scene,
+      alert_level,
+      scene_overlay_applied: false,
+      darkpool_context: null
+    };
+  }
+
+  // ── Rule 2: GEX ±5% 零轴 (transitional) → 强制观望 ──────────────────────
+  // 规则：gamma_regime === 'transitional' （net_gex 在 ±100_000 之间）
+  const _gexNeutral = gamma_regime === 'transitional';
+  if (_gexNeutral) {
+    const _netGexFmt = net_gex != null
+      ? (net_gex >= 0 ? '+' : '') + (net_gex / 1e6).toFixed(2) + 'M'
+      : '\u63a5\u8fd1 0';
+    const _waitPlan = makeWaitPlan({
+      reason: 'Gamma \u4e2d\u6027\uff08Net GEX ' + _netGexFmt + '\uff09\uff0c\u505a\u5e02\u5546\u5904\u4e8e\u96f6\u8f74\u9644\u8fd1\uff0c\u65b9\u5411\u4e0d\u660e\u786e\u3002\u7b49\u5f85 GEX \u660e\u786e\u504f\u5411\u540e\u518d\u8bc4\u4f30\u3002'
+    });
+    return {
+      status: 'waiting',
+      status_cn: '\u89c2\u671b\uff5cGamma \u4e2d\u6027',
+      headline: '\u3010\u89c2\u671b\uff5cGamma \u4e2d\u6027\uff0c\u65b9\u5411\u4e0d\u660e\u3011Net GEX ' + _netGexFmt +
+        '\uff0c\u505a\u5e02\u5546\u5904\u4e8e\u96f6\u8f74\u9644\u8fd1\uff0c\u4e0d\u5f00\u65b9\u5411\u5355\u3002',
+      judgment: 'Gamma \u4e2d\u6027\uff08transitional\uff09\uff0cNet GEX ' + _netGexFmt + '\uff0c\u5c0f\u4e8e \u00b1100k \u9608\u5024\u3002',
+      forced_wait: true,
+      forced_wait_reason: 'gex_near_zero',
+      net_gex_value: net_gex,
+      pin_warning: null,
+      execution_confidence,
+      plan_a: _waitPlan,
+      plan_b: null,
       atm_triggers: {
         bull1: T.bull1, bull2: T.bull2, bullTgt1: T.bullTgt1, bullTgt2: T.bullTgt2,
         bear1: T.bear1, bear2: T.bear2, bearTgt1: T.bearTgt1, bearTgt2: T.bearTgt2,
