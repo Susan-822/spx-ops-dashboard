@@ -2605,6 +2605,14 @@ function renderHome(signal) {
               const _dayPut      = _cf.day_put       || _cf.put_premium_fmt  || '--';
               const _pcVol       = _cf.pc_volume_ratio  || '--';
               const _pcPrem      = _cf.pc_premium_ratio || '--';
+              // 微调1：资金比（Put/Call 权利金比）
+              const _pcPremPOC   = _cf.pc_prem_put_over_call || '--';
+              const _pcCompare   = _cf.pc_compare_text || null;
+              // 微调2：盘面综合状态标签
+              const _mktLabel    = _cf.market_summary_label || '';
+              const _mktText     = _cf.market_summary_text  || '';
+              // 微调3：价格防线失效条件
+              const _invalPrice  = _cf.invalidation_price_line || null;
               const _winStatus   = _cf.window_status || '--';
               const _winNote     = _cf.window_note   || '--';
               const _invalNotes  = Array.isArray(_cf.invalidation_notes) ? _cf.invalidation_notes : [];
@@ -2621,10 +2629,12 @@ function renderHome(signal) {
               const _gateLabel = _tradeGate === 'PASS' ? '✓ 资金门控通过' : _tradeGate === 'BLOCKED' ? '✗ 资金门控阻止' : '⚠ 资金降级';
               const _gateBanner = `<div class="capital-gate-banner ${_gateCls}"><span>${_gateLabel}</span><span class="gate-impact">${escapeHtml(_tradeImpact)}</span></div>`;
 
-              // 失效条件
-              const _invalStr = _invalNotes.length > 0
-                ? `<div class="capital-inval-row"><span class="inval-label">失效条件：</span><span class="inval-val">${escapeHtml(_invalNotes.join(' / '))}</span></div>`
-                : '';
+              // 微调3：失效条件 = 价格防线优先，降级到抽象标签
+              const _invalStr = _invalPrice
+                ? `<div class="capital-inval-row capital-inval-price"><span class="inval-label">⊗ 失效条件：</span><span class="inval-val">${escapeHtml(_invalPrice)}</span></div>`
+                : _invalNotes.length > 0
+                  ? `<div class="capital-inval-row"><span class="inval-label">⊗ 失效条件：</span><span class="inval-val">${escapeHtml(_invalNotes.join(' / '))}</span></div>`
+                  : '';
 
               return `
                 ${_divBanner}
@@ -2643,8 +2653,8 @@ function renderHome(signal) {
                       <div class="cf-val ${_cf.flow_15m_fallback ? 'cf-fallback' : (_cf.flow_15m_dir === 'bullish' ? 'cf-bull' : _cf.flow_15m_dir === 'bearish' ? 'cf-bear' : '')}">${escapeHtml(_flow15m)}</div>
                     </div>
                     <div class="cf-cell">
-                      <div class="cf-label">日内净权利金</div>
-                      <div class="cf-val ${_cf.day_direction === 'bullish' ? 'cf-bull' : _cf.day_direction === 'bearish' ? 'cf-bear' : ''}">${escapeHtml(_dayNet)}</div>
+                      <div class="cf-label">窗口状态</div>
+                      <div class="cf-val ${_winStatus === 'ALIGNED' ? 'cf-bull' : _winStatus === 'CONFLICT' || _winStatus === 'FALLBACK' ? 'cf-bear' : 'cf-neutral'}">${escapeHtml(_winStatus)}</div>
                     </div>
                   </div>
                   <div class="cf-row">
@@ -2657,18 +2667,40 @@ function renderHome(signal) {
                       <div class="cf-val cf-bear">${escapeHtml(_dayPut)}</div>
                     </div>
                     <div class="cf-cell">
-                      <div class="cf-label">P/C Volume</div>
-                      <div class="cf-val">${escapeHtml(_pcVol)}</div>
+                      <div class="cf-label">日内净权利金</div>
+                      <div class="cf-val ${_cf.day_direction === 'bullish' ? 'cf-bull' : _cf.day_direction === 'bearish' ? 'cf-bear' : ''}">${escapeHtml(_dayNet)}</div>
+                    </div>
+                  </div>
+                  <div class="cf-row cf-pc-compare-row">
+                    <div class="cf-cell">
+                      <div class="cf-label">量比（P/C Vol）</div>
+                      <div class="cf-val cf-neutral">${escapeHtml(_pcVol)}</div>
+                      <div class="cf-sublabel">散户情绪</div>
+                    </div>
+                    <div class="cf-cell">
+                      <div class="cf-label">资金比（Put/Call）</div>
+                      <div class="cf-val ${Number(_pcPremPOC) > 1.5 ? 'cf-bear' : Number(_pcPremPOC) < 0.7 ? 'cf-bull' : 'cf-neutral'}">${escapeHtml(_pcPremPOC)}x</div>
+                      <div class="cf-sublabel">机构筹码</div>
+                    </div>
+                    <div class="cf-cell">
+                      <div class="cf-label">背离强度</div>
+                      <div class="cf-val ${_divDetected ? 'cf-warn' : 'cf-neutral'}">${_divDetected ? '⚡ 背离' : '— 一致'}</div>
+                      <div class="cf-sublabel">${_divDetected ? _divType.replace('_', ' ') : '无背离'}</div>
                     </div>
                   </div>
                   <div class="cf-row">
-                    <div class="cf-cell cf-wide">
+                    <div class="cf-cell">
                       <div class="cf-label">情绪方向</div>
                       <div class="cf-val ${_sentSide === 'BULLISH' ? 'cf-bull' : _sentSide === 'BEARISH' ? 'cf-bear' : ''}">${escapeHtml(_sentSide)}</div>
                     </div>
-                    <div class="cf-cell cf-wide">
+                    <div class="cf-cell">
                       <div class="cf-label">资金方向</div>
                       <div class="cf-val ${_moneySide === 'BULLISH' ? 'cf-bull' : _moneySide === 'BEARISH' ? 'cf-bear' : ''}">${escapeHtml(_moneySide)}</div>
+                    </div>
+                    <div class="cf-cell cf-wide">
+                      <div class="cf-label">盘面综合</div>
+                      <div class="cf-val cf-summary ${_mktLabel === 'ABSORPTION' || _mktLabel === 'DISTRIBUTION' ? 'cf-warn' : _mktLabel === 'BULL_DIVERGENCE' || _mktLabel === 'QUIET_BULL' || _mktLabel === 'CONSENSUS_BULL' ? 'cf-bull' : _mktLabel === 'BEAR_DIVERGENCE' || _mktLabel === 'QUIET_BEAR' || _mktLabel === 'CONSENSUS_BEAR' ? 'cf-bear' : 'cf-neutral'}">${escapeHtml(_mktLabel || 'NEUTRAL')}</div>
+                      <div class="cf-sublabel">${escapeHtml(_mktText)}</div>
                     </div>
                   </div>
                 </div>

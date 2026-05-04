@@ -256,6 +256,67 @@ export function buildCapitalFlowReading(signal) {
     tradeImpact = `资金动能不足以直接推升价格，等待进一步确认。`;
   }
 
+  // ── 微调1：P/C 对比（资金比 vs 量比）──────────────────────────────────────
+  // 资金比 = Put权利金 / Call权利金（反向，Put越重比值越大）
+  const pcPremPutOverCall = (callPrem != null && putPrem != null && callPrem > 0)
+    ? putPrem / callPrem : null;
+  const pcCompareText = (pcPremPutOverCall != null && pcVol != null)
+    ? `量比 ${Number(pcVol).toFixed(2)} vs 资金比 ${Number(pcPremPutOverCall).toFixed(2)}（Put 资金是 Call 的 ${Number(pcPremPutOverCall).toFixed(1)} 倍）`
+    : null;
+
+  // ── 微调2：盘面综合状态标签 ──────────────────────────────────────────────────
+  // 综合情绪方向 + 资金方向 + 背离类型 → 一个人话标签
+  let marketSummaryLabel = 'NEUTRAL';
+  let marketSummaryText  = '多空均衡，等待方向确认';
+  if (divergence.type === 'PUT_ABSORBED') {
+    marketSummaryLabel = 'ABSORPTION';
+    marketSummaryText  = '被动承接 / 诱空陷阱 — 做市商正在底部吸收空头压力，禁止追空';
+  } else if (divergence.type === 'CALL_CAPPED') {
+    marketSummaryLabel = 'DISTRIBUTION';
+    marketSummaryText  = '高位派发 / 诱多陷阱 — 做市商正在顶部吸收多头压力，禁止追多';
+  } else if (divergence.type === 'BULL_DIVERGENCE') {
+    marketSummaryLabel = 'BULL_DIVERGENCE';
+    marketSummaryText  = '逼空背离 — 散户看空但大资金买涨，跟随权利金方向看多';
+  } else if (divergence.type === 'BEAR_DIVERGENCE') {
+    marketSummaryLabel = 'BEAR_DIVERGENCE';
+    marketSummaryText  = '诱多背离 — 散户看多但大资金买跌，跟随权利金方向看空';
+  } else if (divergence.type === 'QUIET_BULL') {
+    marketSummaryLabel = 'QUIET_BULL';
+    marketSummaryText  = '低调做多 — 大资金悄悄布多，等价格突破确认';
+  } else if (divergence.type === 'QUIET_BEAR') {
+    marketSummaryLabel = 'QUIET_BEAR';
+    marketSummaryText  = '低调做空 — 大资金悄悄布空，等价格跌破确认';
+  } else if (divergence.money_side === 'BULLISH' && divergence.sentiment_side === 'BULLISH') {
+    marketSummaryLabel = 'CONSENSUS_BULL';
+    marketSummaryText  = '多头共识 — 资金与情绪同向看多';
+  } else if (divergence.money_side === 'BEARISH' && divergence.sentiment_side === 'BEARISH') {
+    marketSummaryLabel = 'CONSENSUS_BEAR';
+    marketSummaryText  = '空头共识 — 资金与情绪同向看空';
+  }
+
+  // ── 微调3：价格防线失效条件（替换抽象的 Flow 降级说法）────────────────────
+  // 从 signal 中读取 primary_plan.stop 作为失效线
+  const _hvm   = signal.home_view_model   || {};
+  const _op    = (_hvm.order_plan)        || {};
+  const _pp    = (_op.primary_plan)       || {};
+  const _stopPrice = _pp.stop             || null;
+  const _side      = _pp.side             || null;
+  const _dwm   = signal.dealer_wall_map   || {};
+  const _putWall   = _dwm.gex_local_put_wall  || _dwm.put_wall  || null;
+  const _callWall  = _dwm.gex_local_call_wall || _dwm.call_wall || null;
+
+  let invalidationPriceLine = null;
+  if (divergence.type === 'PUT_ABSORBED' && _putWall) {
+    // 做市商吸收模型：防线被实质击穿 = 实体K线跌破 Put Wall
+    invalidationPriceLine = `实体 K 线跌破并站稳 ${_putWall}（做市商放弃抵抗，吸收转化为真跌）`;
+  } else if (divergence.type === 'CALL_CAPPED' && _callWall) {
+    invalidationPriceLine = `实体 K 线突破并站稳 ${_callWall}（做市商放弃压制，派发转化为真涨）`;
+  } else if (_stopPrice && _side === 'LONG') {
+    invalidationPriceLine = `实体 K 线跌破并站稳 ${_stopPrice}（多头失效线，做市商对冲失效）`;
+  } else if (_stopPrice && _side === 'SHORT') {
+    invalidationPriceLine = `实体 K 线突破并站稳 ${_stopPrice}（空头失效线，做市商对冲失效）`;
+  }
+
   // ── 失效条件摘要 ──────────────────────────────────────────────────────────
   const invalidationNotes = [];
   if (isDegraded)                                          invalidationNotes.push('Flow 数据降级');
@@ -296,11 +357,20 @@ export function buildCapitalFlowReading(signal) {
     window_note:      flowWindows.window_note,
 
     // P/C 比率（修复 pc_premium_ratio=0 问题）
-    pc_volume_ratio:  pcVol  != null ? Number(pcVol).toFixed(2)  : '--',
-    pc_premium_ratio: pcPrem != null ? Number(pcPrem).toFixed(2) : '--',
-    call_premium_fmt: _fmtM(callPrem),
-    put_premium_fmt:  _fmtM(putPrem),
-    net_premium_fmt:  _fmtM(netPrem, true),
+    pc_volume_ratio:    pcVol  != null ? Number(pcVol).toFixed(2)  : '--',
+    pc_premium_ratio:   pcPrem != null ? Number(pcPrem).toFixed(2) : '--',  // Call/Put
+    pc_prem_put_over_call: pcPremPutOverCall != null ? Number(pcPremPutOverCall).toFixed(2) : '--',  // Put/Call（资金比）
+    pc_compare_text:    pcCompareText,  // 微调1：量比 vs 资金比对比文本
+    call_premium_fmt:   _fmtM(callPrem),
+    put_premium_fmt:    _fmtM(putPrem),
+    net_premium_fmt:    _fmtM(netPrem, true),
+
+    // 微调2：盘面综合状态标签
+    market_summary_label: marketSummaryLabel,
+    market_summary_text:  marketSummaryText,
+
+    // 微调3：价格防线失效条件
+    invalidation_price_line: invalidationPriceLine,
 
     // 人话解读
     headline,
