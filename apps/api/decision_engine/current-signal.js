@@ -58,6 +58,7 @@ import {
 import { getPriceHistory } from '../state/price-history-buffer.js';
 import { getLiveRefreshLog } from '../scheduler/live-refresh-scheduler.js';
 import { buildSignalFormatter } from './signal-formatter.js';
+import { buildHomeViewModel } from './home-view-model-builder.js';
 
 export {
   buildProjectionPrices,
@@ -2444,5 +2445,11 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   finalOutput.data_health   = signalFormatter.data_health;
   finalOutput.strike_battle = signalFormatter.strike_battle;
   finalOutput.vanna_charm   = signalFormatter.vanna_charm;
+
+  // ── home_view_model: 首页唯一数据模型 ──────────────────────────────────────
+  // buildHomeViewModel 只做收口/拦截/降级/四行生成，不重算任何指标
+  // renderHome 只能读取 signal.home_view_model，禁止直接读 engine 字段
+  finalOutput.home_view_model = buildHomeViewModel(finalOutput);
+
   return replaceUndefined(scrubLegacyDecisionStrings(sanitizeUwPromotedStrings(finalOutput, uwProvider.status === 'live')));
 }

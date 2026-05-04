@@ -814,3 +814,278 @@ export function buildSignalFormatter(signal) {
     vanna_charm:   buildVannaCharmTable(signal)
   };
 }
+
+// ── Home View Model ────────────────────────────────────────────────────────────
+// SINGLE SOURCE OF TRUTH for renderHome.
+// renderHome MUST only read signal.home_view_model — never raw engine fields.
+// All raw engine reads are consolidated here and nowhere else.
+//
+// Field contract:
+//   status_badge      — LOCKED | LONG_CALL | SHORT_PUT | WAIT
+//   status_label      — 锁仓 | 做多 | 做空 | 等确认
+//   action_label      — 首页动作一句话
+//   allow_trade       — boolean
+//   trade_side        — LONG | SHORT | NONE
+//   is_locked         — boolean
+//
+//   atm_execution     — ATM 执行线（永远存在，LOCKED 下也显示）
+//     .atm_fmt
+//     .bull_trigger_fmt / bull_trigger_2_fmt
+//     .bear_trigger_fmt / bear_trigger_2_fmt
+//     .invalidation_bull_fmt / invalidation_bear_fmt
+//     .spot_in_lock_zone
+//     .hint
+//     .unavailable_reason  — null | SPOT_MISSING | ATM_ROUNDING_FAILED | FORMATTER_FIELD_MISSING
+//
+//   flow_summary      — Flow 摘要（只读 flow_behavior_engine 格式化字段）
+//     .flow_quality   — NORMAL | DEGRADED
+//     .homepage_allow_direction
+//     .flow_narrative
+//     .pc_volume_ratio / pc_premium_ratio / pc_primary_ratio
+//     .directional_net_premium_fmt
+//     .flow_state     — PUT_HEAVY_ABSORBED | CALL_EFFECTIVE | ...
+//
+//   plan / plan_a / plan_b  — 执行预案
+//   ab_status / ab_confidence / ab_conf_label / ab_conf_color
+//   ab_blocked_reason / ab_scenario / ab_blocked
+//
+//   gex_local         — GEX 本地参考（±30pt，首页 GEX 卡片）
+//   far_wall_note     — 远端墙脚注（仅文字，不作主控）
+//
+//   money_read        — 资金人话（from money_read, already formatted）
+//   darkpool_read     — 暗盘人话
+//
+//   four_lines        — 首页四行（可直接渲染）
+//     .status / .action / .entry / .invalidation / .human_note
+//
+export function buildHomeViewModel(signal) {
+  // ── Source engines (read ONCE here, never in renderHome) ──────────────────
+  const pc  = signal.primary_card         || {};
+  const lv  = signal.levels               || {};
+  const mr  = signal.money_read           || {};
+  const dr  = signal.darkpool_read        || {};
+  const fb  = signal.flow_behavior_engine || {};
+  const ab  = signal.ab_order_engine      || {};
+  const ate = signal.atm_trigger_engine   || {};
+  const pc2 = signal.price_contract       || {};
+  const sb  = signal.sentiment_bar        || {};
+  const vd  = signal.vol_dashboard        || {};
+  const vx  = signal.vix_dashboard        || {};
+  const dh  = signal.data_health          || {};
+
+  // ── Status ────────────────────────────────────────────────────────────────
+  const statusBadge  = pc.badge          || 'LOCKED';
+  const statusLabel  = pc.direction_label || '锁仓';
+  const allowTrade   = pc.locked !== true && ab.status === 'active';
+  const tradeSide    = allowTrade
+    ? (pc.direction === 'LONG_CALL' ? 'LONG' : pc.direction === 'SHORT_PUT' ? 'SHORT' : 'NONE')
+    : 'NONE';
+  const isLocked     = !allowTrade;
+  const abStatus     = ab.status || 'blocked';
+  const abConf       = ab.execution_confidence ?? pc.execution_confidence ?? 0;
+  const abScenario   = ab.scenario || null;
+  const abBlockedReason = ab.blocked_reason === 'cold_start_or_off_hours'
+    ? '非交易时段 / 价格历史不足，禁止开仓'
+    : ab.blocked_reason === 'spot_missing' ? '现价缺失，禁止开仓'
+    : (ab.blocked_reason ?? '等待条件满足');
+
+  // ── ATM Execution Lines (永远生成，LOCKED 下也显示) ───────────────────────
+  const _atmMissing  = ate.atm == null;
+  const _spotMissing = pc2.live_price == null || pc2.spot_gate_open === false;
+  const _atm5        = pc2.atm_5 ?? null;
+
+  // Determine unavailable_reason
+  let unavailableReason = null;
+  if (_atmMissing) {
+    if (_spotMissing) unavailableReason = 'SPOT_MISSING';
+    else              unavailableReason = 'ATM_ROUNDING_FAILED';
+  } else if (!lv.bull_trigger_fmt && !lv.bear_trigger_fmt) {
+    unavailableReason = 'FORMATTER_FIELD_MISSING';
+  }
+
+  // Build display values with atm_5 fallback
+  const bull1Disp   = lv.bull_trigger_fmt       || (_atm5 != null ? String(_atm5 + 5)  : null);
+  const bull2Disp   = lv.bull_trigger_2_fmt     || (_atm5 != null ? String(_atm5 + 10) : null);
+  const bear1Disp   = lv.bear_trigger_fmt       || (_atm5 != null ? String(_atm5 - 5)  : null);
+  const bear2Disp   = lv.bear_trigger_2_fmt     || (_atm5 != null ? String(_atm5 - 10) : null);
+  const invBullDisp = (lv.invalidation_bull_fmt && lv.invalidation_bull_fmt !== '--')
+    ? lv.invalidation_bull_fmt : (_atm5 != null ? String(_atm5 - 10) : null);
+  const invBearDisp = (lv.invalidation_bear_fmt && lv.invalidation_bear_fmt !== '--')
+    ? lv.invalidation_bear_fmt : (_atm5 != null ? String(_atm5 + 10) : null);
+
+  const atmExecution = {
+    atm_fmt:               lv.atm_fmt || '--',
+    bull_trigger_fmt:      bull1Disp  || '待接入',
+    bull_trigger_2_fmt:    bull2Disp  || '--',
+    bear_trigger_fmt:      bear1Disp  || '待接入',
+    bear_trigger_2_fmt:    bear2Disp  || '--',
+    bull_target_1_fmt:     lv.bull_target_1_fmt || '--',
+    bull_target_2_fmt:     lv.bull_target_2_fmt || '--',
+    bear_target_1_fmt:     lv.bear_target_1_fmt || '--',
+    bear_target_2_fmt:     lv.bear_target_2_fmt || '--',
+    invalidation_bull_fmt: invBullDisp || '--',
+    invalidation_bear_fmt: invBearDisp || '--',
+    spot_in_lock_zone:     lv.spot_in_lock_zone ?? true,
+    trigger_status:        lv.trigger_status || 'locked',
+    hint:                  lv.hint || null,
+    pin_warning:           lv.pin_warning || null,
+    unavailable_reason:    unavailableReason,
+  };
+
+  // ── Flow Summary (only formatted fields, no raw engine reads) ─────────────
+  const flowQuality  = fb.flow_quality || 'DEGRADED';
+  const flowAllowDir = fb.homepage_allow_direction !== false;
+  const flowNarrative = fb.flow_narrative || 'Flow 数据待接入。';
+  const flowState    = fb.flow_state || 'UNKNOWN';
+  const dnpRaw       = fb.directional_net_premium;
+  const dnpFmt       = dnpRaw != null
+    ? (dnpRaw >= 0 ? '+' : '') + (dnpRaw / 1e6).toFixed(1) + 'M'
+    : '--';
+
+  const flowSummary = {
+    flow_quality:               flowQuality,
+    homepage_allow_direction:   flowAllowDir,
+    flow_narrative:             flowNarrative,
+    flow_state:                 flowState,
+    pc_volume_ratio:            fb.pc_volume_ratio  ?? null,
+    pc_premium_ratio:           fb.pc_premium_ratio ?? null,
+    pc_primary_ratio:           fb.pc_primary_ratio ?? null,
+    directional_net_premium_fmt: dnpFmt,
+    call_premium_fmt:           mr.call_premium_fmt || '--',
+    put_premium_fmt:            mr.put_premium_fmt  || '--',
+    net_premium_fmt:            mr.net_premium_fmt  || '--',
+    dual_window_narrative:      fb.dual_window_narrative || null,
+    flow_5m_label:              fb.flow_5m_label  || null,
+    flow_15m_label:             fb.flow_15m_label || null,
+    dual_window_aligned:        fb.dual_window_aligned ?? false,
+    suspicious_same_window:     fb.suspicious_same_window ?? false,
+  };
+
+  // ── Plan ──────────────────────────────────────────────────────────────────
+  const plan  = pc.plan || ab.plan_a || null;
+  const planA = ab.plan_a || null;
+  const planB = ab.plan_b || null;
+
+  // ── GEX Local (±30pt, homepage only) ─────────────────────────────────────
+  const gexLocal = {
+    call_wall_fmt: lv.gex_local_call_wall_fmt || null,
+    put_wall_fmt:  lv.gex_local_put_wall_fmt  || null,
+    call_wall:     lv.gex_local_call_wall     || null,
+    put_wall:      lv.gex_local_put_wall      || null,
+  };
+
+  // Far walls: text note only, never used as homepage trigger
+  const farWallNote = `远端墙：${lv.global_call_wall_fmt || '--'} / ${lv.global_put_wall_fmt || '--'}（仅 Radar 参考，不作日内触发）`;
+
+  // ── Action label ──────────────────────────────────────────────────────────
+  const b1 = atmExecution.bull_trigger_fmt;
+  const b2 = atmExecution.bull_trigger_2_fmt;
+  const r1 = atmExecution.bear_trigger_fmt;
+  const r2 = atmExecution.bear_trigger_2_fmt;
+  const invB = atmExecution.invalidation_bull_fmt;
+  const invR = atmExecution.invalidation_bear_fmt;
+
+  let actionLabel = '不做 0DTE，等待条件满足';
+  if (tradeSide === 'LONG') {
+    actionLabel = `做多：${b1} 站稳，${b2} 确认`;
+  } else if (tradeSide === 'SHORT') {
+    actionLabel = `做空：${r1} 跌破，${r2} 确认`;
+  } else if (abStatus === 'wait') {
+    actionLabel = '等确认，不追单';
+  }
+
+  // ── Confidence label (LOCKED-safe: no 小仓等确认 in LOCKED state) ──────────
+  const confLabel = isLocked
+    ? (abConf >= 70 ? '高可信，仅观察' : abConf >= 40 ? '中可信，仅观察' : '低可信，只观察')
+    : (abConf >= 70 ? '高可信，可执行' : abConf >= 40 ? '中可信，小仓等确认' : '低可信，只观察');
+  const confColor = abConf >= 70 ? 'conf-high' : abConf >= 40 ? 'conf-mid' : 'conf-low';
+
+  // ── Four Lines (首页四行，可直接渲染) ─────────────────────────────────────
+  const fourLines = {
+    status:      `${statusBadge}｜${statusLabel}`,
+    action:      actionLabel,
+    entry:       (b1 !== '待接入' || r1 !== '待接入')
+      ? `多：${b1} 站稳，${b2} 确认；空：${r1} 跌破，${r2} 确认`
+      : (unavailableReason ? `ATM 触发线缺失（${unavailableReason}）` : '待接入'),
+    invalidation: (invB && invB !== '--') || (invR && invR !== '--')
+      ? `多头失效 ${invB || '--'}；空头失效 ${invR || '--'}`
+      : '--',
+    human_note:  lv.hint || null,
+  };
+
+  // ── Display helpers ───────────────────────────────────────────────────────
+  const spot    = pc.spot;
+  const spotFmt = spot != null ? Number(spot).toFixed(1) : '--';
+  const dirColor = pc.direction === 'LONG_CALL' ? 'bullish'
+    : pc.direction === 'SHORT_PUT' ? 'bearish' : 'locked';
+  const badge    = pc.badge || 'LOCKED';
+  const headline = pc.headline   || '--';
+  const subHead  = pc.sub_headline || '';
+  const uwLive   = pc.uw_live === true;
+  const lastUpd  = (() => {
+    const lu = signal.last_updated || {};
+    const t  = lu.uw || lu.fmp || null;
+    if (!t) return '--';
+    const d = new Date(t);
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  })();
+  const sentScore  = sb.score ?? 50;
+  const sentLabel  = sb.label  || '中性';
+  const sentSub    = sb.sub    || '';
+  const pcRatioFmt = sb.put_call_ratio != null ? sb.put_call_ratio.toFixed(2) : '--';
+
+  return {
+    // ── Core status ──────────────────────────────────────────────────────────
+    status_badge:      statusBadge,
+    status_label:      statusLabel,
+    action_label:      actionLabel,
+    allow_trade:       allowTrade,
+    trade_side:        tradeSide,
+    is_locked:         isLocked,
+    // ── AB engine ────────────────────────────────────────────────────────────
+    ab_status:         abStatus,
+    ab_confidence:     abConf,
+    ab_conf_label:     confLabel,
+    ab_conf_color:     confColor,
+    ab_blocked_reason: abBlockedReason,
+    ab_scenario:       abScenario,
+    ab_blocked:        pc.locked === true,
+    // ── ATM execution lines (永远存在) ────────────────────────────────────────
+    atm_execution:     atmExecution,
+    trigger_status:    atmExecution.trigger_status,
+    // ── Flow ─────────────────────────────────────────────────────────────────
+    flow_summary:      flowSummary,
+    // ── Plans ────────────────────────────────────────────────────────────────
+    plan,
+    plan_a:            planA,
+    plan_b:            planB,
+    // ── GEX local (homepage only) ─────────────────────────────────────────────
+    gex_local:         gexLocal,
+    far_wall_note:     farWallNote,
+    // ── Pre-formatted reads ───────────────────────────────────────────────────
+    money_read:        mr,
+    darkpool_read:     dr,
+    vol_dashboard:     vd,
+    vix_dashboard:     vx,
+    data_health:       dh,
+    // ── Display helpers ───────────────────────────────────────────────────────
+    spot,
+    spot_fmt:          spotFmt,
+    dir_color:         dirColor,
+    badge,
+    headline,
+    sub_head:          subHead,
+    uw_live:           uwLive,
+    last_updated:      lastUpd,
+    sent_score:        sentScore,
+    sent_label:        sentLabel,
+    sent_sub:          sentSub,
+    pc_ratio_fmt:      pcRatioFmt,
+    net_premium_fmt:   mr.net_premium_fmt || '--',
+    // ── Levels passthrough (for Tab panel, GEX card) ──────────────────────────
+    levels:            lv,
+    sentiment_bar:     sb,
+    // ── Four lines (ready to render) ─────────────────────────────────────────
+    four_lines:        fourLines,
+  };
+}

@@ -2151,17 +2151,25 @@ function renderHome(signal) {
   const pcRatio    = sb.put_call_ratio != null ? sb.put_call_ratio.toFixed(2) : '--';
   const netPremFmt = mr.net_premium_fmt || '--';
 
-  // Key levels — v2: ATM trigger lines from atm_trigger_engine
-  const atmFmt     = lv.atm_fmt     || '--';
-  // Near trigger lines (ATM±5/10) — homepage primary
-  // ATM diagnostics: determine why trigger lines may be missing
-  const _ate = signal.atm_trigger_engine || {};
-  const _pc2 = signal.price_contract     || {};
-  const _atmMissing  = _ate.atm == null;
-  const _spotMissing = _pc2.live_price == null || _pc2.spot_gate_open === false;
-  const _atmDiag = _atmMissing && _spotMissing
+  // ── home_view_model: 首页唯一数据源 ─────────────────────────────────────────
+  // renderHome 只读 signal.home_view_model，禁止直接读 engine 字段
+  const hvm = signal.home_view_model || {};
+  const hvmAtm  = hvm.atm_execution          || {};
+  const hvmFlow = hvm.flow                   || {};
+  const hvmFt   = hvm.final_text             || {};
+  const hvmSt   = hvm.status                 || {};
+  const hvmGex  = hvm.gex_local_reference    || {};
+  const hvmFar  = hvm.gex_far_background_note || {};
+  const hvmGuards = hvm.guards               || {};
+
+  // Key levels — v2: ATM trigger lines from home_view_model.atm_execution
+  const atmFmt     = hvmAtm.atm_fmt     || lv.atm_fmt || '--';
+  // Near trigger lines (ATM±5/10) — homepage primary (from home_view_model)
+  // ATM diagnostics: from home_view_model.atm_execution.unavailable_reason
+  const _atmMissing  = !hvmAtm.available;
+  const _atmDiag = hvmAtm.unavailable_reason === 'SPOT_MISSING'
     ? '价格未接入（非交易时段或数据源离线）'
-    : _atmMissing
+    : hvmAtm.unavailable_reason === 'ATM_ROUNDING_FAILED'
     ? 'ATM 计算失败（spot 存在但 ATM 未生成）'
     : '触发线映射失败';
   const bull1Fmt   = lv.bull_trigger_fmt   || pc.bull_trigger_1_fmt || null;
@@ -2196,28 +2204,33 @@ function renderHome(signal) {
   const wallStatus = lv.wall_status || 'unavailable';
   const pinWarn    = lv.pin_warning;
   const hint       = lv.hint || '';
-  // Flow dual window (5m+15m)
-  const ate = signal.atm_trigger_engine || {};
-  const fb2 = signal.flow_behavior_engine || {};
-  const flow5mLabel   = fb2.flow_5m_label  || null;
-  const flow15mLabel  = fb2.flow_15m_label || null;
-  const dualNarrative = fb2.dual_window_narrative || null;
-  const dualAligned   = fb2.dual_window_aligned ?? false;
+  // Flow dual window (5m+15m) — from home_view_model.flow
+  // [HVM] ate/fb2 raw reads replaced by home_view_model.flow
+  const flow5mLabel   = hvmFlow.flow_5m   || null;
+  const flow15mLabel  = hvmFlow.flow_15m  || null;
+  const dualNarrative = hvmFlow.dual_window_narrative || null;
+  const dualAligned   = hvmFlow.dual_window_aligned ?? false;
 
   // Plan lines — v2: Three-state LONG_CALL / SHORT_PUT / LOCKED
   // LOCKED state shows ATM±5/10 trigger lines with three-stage intraday plan
-  const plan = pc.plan;
-  const ab   = signal.ab_order_engine || {};
-  const abConf = ab.execution_confidence ?? pc.execution_confidence ?? 0;
-  const confColor = abConf >= 70 ? 'conf-high' : abConf >= 40 ? 'conf-mid' : 'conf-low';
-  const confLabel = abConf >= 70 ? '高可信，可执行' : abConf >= 40 ? '中可信，小仓等确认' : '低可信，只观察';
-  const abBlocked = pc.locked === true;
-  const blockedReason = ab.blocked_reason === 'cold_start_or_off_hours'
-    ? '非交易时段 / 价格历史不足，禁止开仓'
-    : ab.blocked_reason === 'spot_missing' ? '现价缺失，禁止开仓' : (ab.blocked_reason ?? '等待条件满足');
+  const plan = hvm.plan || pc.plan;
+  // [HVM] ab_order_engine raw reads replaced by home_view_model.status
+  const abConf      = hvmSt.confidence   ?? 0;
+  const confColor   = hvmSt.confidence_color || 'conf-low';
+  const confLabel   = hvmSt.confidence_label || '低可信，只观察';
+  const abBlocked   = !hvm.status?.allow_trade;
+  const blockedReason = hvmSt.blocked_reason || '等待条件满足';
   const planData = plan || (ab.plan_a ?? ab.plan_b ?? null);
 
-  // ── LOCKED state: show full ATM trigger observation plan ─────────────────
+  // [HVM] ATM 执行线从 home_view_model.atm_execution 读取
+  const _b1 = hvmAtm.bull_trigger_fmt !== '待接入' ? hvmAtm.bull_trigger_fmt : '--';
+  const _b2 = hvmAtm.bull_confirm_fmt  || '--';
+  const _r1 = hvmAtm.bear_trigger_fmt !== '待接入' ? hvmAtm.bear_trigger_fmt : '--';
+  const _r2 = hvmAtm.bear_confirm_fmt  || '--';
+  const _invBull = hvmAtm.invalid_long_fmt  || '--';
+  const _invBear = hvmAtm.invalid_short_fmt || '--';
+
+    // ── LOCKED state: show full ATM trigger observation plan ─────────────────
   let planLines = '';
   if (pc.direction === 'LONG_CALL') {
     // LONG_CALL: show bull execution plan
@@ -2380,14 +2393,13 @@ function renderHome(signal) {
               ${planLines}
               <!-- THREE-TAB PANEL: 盘眼 / 主做 / 备选 -->
               ${(() => {
-                const abEng2 = signal.ab_order_engine || {};
-                const ateEng2 = signal.atm_trigger_engine || {};
-                const planA2 = abEng2.plan_a || null;
-                const planB2 = abEng2.plan_b || null;
-                const abStatus2 = abEng2.status || 'blocked';
-                const abConf3 = abEng2.execution_confidence ?? 0;
-                const abScenario2 = abEng2.scenario || null;
-                const trigStat3 = ateEng2.trigger_status || triggerStatus || 'locked';
+                // [HVM] Tab 面板只读 home_view_model，禁止直接读 engine 字段
+                const planA2    = hvm.plan_a || null;
+                const planB2    = hvm.plan_b || null;
+                const abStatus2 = hvmSt.raw_status || 'blocked';
+                const abConf3   = hvmSt.confidence ?? 0;
+                const abScenario2 = hvmSt.scenario || null;
+                const trigStat3 = hvmAtm.trigger_status || 'locked';
                 const dirA2 = planA2 ? (planA2.direction || 'WAIT').toUpperCase() : 'WAIT';
                 const dirB2 = planB2 ? (planB2.direction || 'WAIT').toUpperCase() : 'WAIT';
                 const aIsBull2 = dirA2 === 'BULLISH' || dirA2 === 'LONG';
@@ -2396,7 +2408,11 @@ function renderHome(signal) {
                 const bIsBear2 = dirB2 === 'BEARISH' || dirB2 === 'SHORT';
                 const isOpposite2 = planA2 && planB2 && ((aIsBull2 && bIsBear2) || (aIsBear2 && bIsBull2));
                 const confCls3 = abConf3 >= 70 ? 'conf-high' : abConf3 >= 40 ? 'conf-mid' : 'conf-low';
-                const confLbl3 = abConf3 >= 70 ? '高可信，可执行' : abConf3 >= 40 ? '中可信，小仓等确认' : '低可信，只观察';
+                // [HVM] LOCKED 时禁止"小仓等确认"
+                const _isLocked3 = abStatus2 === 'blocked' || abStatus2 === 'wait';
+                const confLbl3 = _isLocked3
+                  ? (abConf3 >= 70 ? '高可信，仅观察' : abConf3 >= 40 ? '中可信，仅观察' : '低可信，只观察')
+                  : (abConf3 >= 70 ? '高可信，可执行' : abConf3 >= 40 ? '中可信，小仓等确认' : '低可信，只观察');
                 const sceneMap2 = {
                   'positive_put_squeezed':  '底部背离',
                   'negative_put_effective': '空头动能',
@@ -2436,12 +2452,15 @@ function renderHome(signal) {
                     (pinWarn ? '<div class="kl-pin-warn">⚠ ' + escapeHtml(pinWarn) + '</div>' : '') +
                   '</div>';
 
+                const isLocked = abStatus2 === 'blocked' || abStatus2 === 'wait';
                 // Tab 2: 主做
                 let tab2Html = '<div class="ptab-pane" id="ptab-pane-main" style="display:none">';
                 if (!planA2 || dirA2 === 'WAIT') {
+                  // [HVM] forced_wait_reason 从 hvm.status.scenario 读取
+                  const _waitScenario = hvmSt.scenario || abScenario2 || null;
                   const waitReason2 = (planA2 && planA2.rationale)
-                    || (abEng2.forced_wait_reason === 'flow_gap_too_small' ? 'Call/Put Flow 差距不足 15%，资金尚未分化'
-                    : abEng2.forced_wait_reason === 'gex_near_zero' ? 'Gamma 中性，做市商处于零轴附近'
+                    || (_waitScenario === 'flow_gap_too_small' ? 'Call/Put Flow 差距不足 15%，资金尚未分化'
+                    : _waitScenario === 'gex_near_zero' ? 'Gamma 中性，做市商处于零轴附近'
                     : '等待 Gamma 环境明确后再评估');
                   tab2Html += '<div class="ab-wait-block"><div class="ab-wait-icon">—</div><div class="ab-wait-title">当前观望，不开仓</div><div class="ab-wait-reason">' + escapeHtml(waitReason2) + '</div></div>';
                 } else if (isOpposite2) {
@@ -2462,8 +2481,6 @@ function renderHome(signal) {
                   tab3Html += renderPlanCard(planB2, bIsBull2 ? '多单（备选）' : '空单（备选）', trigStat3, abStatus2);
                 }
                 tab3Html += '</div>';
-
-                const isLocked = abStatus2 === 'blocked' || abStatus2 === 'wait';
                 const mainTabLabel = isLocked ? '主做(禁)' : (!planA2 || dirA2 === 'WAIT') ? '主做' : (aIsBull2 ? '多单' : '空单');
                 const altTabLabel  = isLocked ? '备选(禁)' : (!planB2 || dirB2 === 'WAIT') ? '备选' : (bIsBull2 ? '备选（多）' : '备选（空）');
 
@@ -2492,17 +2509,17 @@ function renderHome(signal) {
             </div>
             ${(() => {
               // Final Decision Gate: LOCKED/WAIT 时资金人话只输出降级文案
-              const _mrStatus = signal.ab_order_engine?.status || signal.primary_card?.badge || 'LOCKED';
-              const _mrLocked = _mrStatus === 'blocked' || _mrStatus === 'wait' || _mrStatus === 'LOCKED';
-              const _mrAllowDir = fb2.homepage_allow_direction !== false;
+              // [HVM] 只读 home_view_model，禁止直接读 engine 字段
+              const _mrLocked   = !hvmSt.allow_trade;
+              const _mrAllowDir = hvmFlow.homepage_allow_direction !== false;
               if (_mrLocked || !_mrAllowDir) {
                 return `
                   <div class="aux-card-big-title">方向降级</div>
                   <div class="aux-card-body">当前处于 LOCKED / WAIT 状态，不做 0DTE，等确认。</div>
                   <div class="aux-card-stats">
                     <div class="flow-stats-new">
-                      <div class="stat-row"><span class="stat-label">Flow 状态:</span><span class="stat-val">${escapeHtml(fb2.flow_narrative ?? '方向降级，等确认。')}</span></div>
-                      <div class="stat-row"><span class="stat-label">Flow 质量:</span><span class="stat-val">${escapeHtml(fb2.flow_quality ?? 'DEGRADED')}</span></div>
+                      <div class="stat-row"><span class="stat-label">Flow 状态:</span><span class="stat-val">${escapeHtml(hvmFlow.flow_narrative ?? '方向降级，等确认。')}</span></div>
+                      <div class="stat-row"><span class="stat-label">Flow 质量:</span><span class="stat-val">${escapeHtml(hvmFlow.flow_quality ?? 'DEGRADED')}</span></div>
                     </div>
                   </div>`;
               }
@@ -2512,11 +2529,11 @@ function renderHome(signal) {
                 ${mr.mm_what_to_do ? `<div class="mm-what-to-do"><span class="mm-icon">🏦</span><span class="mm-text">${escapeHtml(mr.mm_what_to_do)}</span></div>` : ''}
                 <div class="aux-card-stats">
                   <div class="flow-stats-new">
-                    <div class="stat-row"><span class="stat-label">P/C Volume:</span><span class="stat-val">${escapeHtml(fb2.pc_volume_ratio ?? pcRatio)}</span></div>
-                    <div class="stat-row"><span class="stat-label">P/C Premium:</span><span class="stat-val">${escapeHtml(fb2.pc_premium_ratio ?? '--')}</span></div>
-                    <div class="stat-row"><span class="stat-label">P/C Primary:</span><span class="stat-val">${escapeHtml(fb2.pc_primary_ratio ?? pcRatio)}</span></div>
-                    <div class="stat-row"><span class="stat-label">Directional Net Premium:</span><span class="stat-val">${escapeHtml(fb2.directional_net_premium != null ? (fb2.directional_net_premium / 1e6).toFixed(1) + 'M' : netPremFmt)}</span></div>
-                    <div class="stat-row"><span class="stat-label">Flow 状态:</span><span class="stat-val">${escapeHtml(fb2.flow_narrative ?? '--')}</span></div>
+                    <div class="stat-row"><span class="stat-label">P/C Volume:</span><span class="stat-val">${escapeHtml(hvmFlow.pc_volume_ratio ?? pcRatio)}</span></div>
+                    <div class="stat-row"><span class="stat-label">P/C Premium:</span><span class="stat-val">${escapeHtml(hvmFlow.pc_premium_ratio ?? '--')}</span></div>
+                    <div class="stat-row"><span class="stat-label">P/C Primary:</span><span class="stat-val">${escapeHtml(hvmFlow.pc_primary_ratio ?? pcRatio)}</span></div>
+                    <div class="stat-row"><span class="stat-label">Directional Net Premium:</span><span class="stat-val">${escapeHtml(hvmFlow.directional_net_premium_fmt ?? netPremFmt)}</span></div>
+                    <div class="stat-row"><span class="stat-label">Flow 状态:</span><span class="stat-val">${escapeHtml(hvmFlow.flow_narrative ?? '--')}</span></div>
                   </div>
                 </div>`;
             })()}
