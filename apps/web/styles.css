@@ -1831,7 +1831,7 @@ a { color: inherit; text-decoration: none; }
 .kl-atm-icon { font-size: 16px; }
 .kl-atm-label { font-size: 12px; color: #6b7280; flex: 1; }
 .kl-atm-val { font-size: 22px; font-weight: 800; color: #111827; }
-.kl-lock-badge { font-size: 10px; font-weight: 600; background: #fef3c7; color: #92400e; border-radius: 4px; padding: 2px 7px; }
+.kl-lock-badge { font-size: 10px; font-weight: 600; background: #78350f; color: #fde68a; border-radius: 4px; padding: 2px 7px; border: 1px solid #f59e0b; }
 .kl-trigger-section { margin-bottom: 10px; padding: 8px 10px; border-radius: 8px; }
 .kl-trigger-section.bull-section { background: #f0fdf4; border: 1px solid #bbf7d0; }
 .kl-trigger-section.bear-section { background: #fef2f2; border: 1px solid #fecaca; }
@@ -3068,16 +3068,19 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
 
 /* 色调变体 */
 .narrative-card.narr-warning {
-  background: linear-gradient(135deg, rgba(245,158,11,0.10) 0%, rgba(30,30,40,0.95) 100%);
-  border-color: rgba(245,158,11,0.25);
+  background: #1c1a10;
+  border-color: #f59e0b;
+  border-width: 1.5px;
 }
 .narrative-card.narr-bearish {
-  background: linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(30,30,40,0.95) 100%);
-  border-color: rgba(239,68,68,0.20);
+  background: #1c1010;
+  border-color: #ef4444;
+  border-width: 1.5px;
 }
 .narrative-card.narr-bullish {
-  background: linear-gradient(135deg, rgba(34,197,94,0.08) 0%, rgba(30,30,40,0.95) 100%);
-  border-color: rgba(34,197,94,0.20);
+  background: #0f1c14;
+  border-color: #22c55e;
+  border-width: 1.5px;
 }
 .narrative-card.narr-neutral {
   background: rgba(30,30,40,0.95);
@@ -3097,7 +3100,7 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: #94a3b8;
+  color: #e2e8f0;
 }
 
 /* 板块A：一句话定调 */
@@ -3118,7 +3121,7 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
 .narr-detail {
   font-size: 12px;
   line-height: 1.7;
-  color: #94a3b8;
+  color: #cbd5e1;
   margin-bottom: 10px;
 }
 
@@ -3144,3 +3147,25 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
   padding: 6px 10px;
   border: 1px solid rgba(239,68,68,0.12);
 }
+
+/* ── 盘眼标签独立行（锁仓区/场景标签）────────────────────────────────────── */
+.ptab-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+  padding: 0 2px;
+}
+.ptab-tag-row .kl-lock-badge,
+.ptab-tag-row .kl-scene-tag {
+  font-size: 11px;
+  padding: 3px 9px;
+}
+/* 减少 aux-card 间距 */
+.aux-card { margin-bottom: 8px !important; }
+.aux-sidebar { gap: 8px; }
+/* 减少 narrative card 顶部间距 */
+.narrative-card { margin-bottom: 8px; }
+/* 减少 capital-flow-card 内部空白 */
+.capital-flow-card .cf-windows-row { margin: 6px 0; }
+.capital-flow-card .cf-ratio-row { margin: 4px 0; }

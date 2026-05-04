@@ -2450,9 +2450,11 @@ function renderHome(signal) {
                       '<span class="ptab-atm-icon">👁</span>' +
                       '<span class="ptab-atm-label">盘眼 ATM</span>' +
                       '<span class="ptab-atm-val">' + escapeHtml(atmFmt) + '</span>' +
+                    '</div>' +
+                    ((spotInLock || sceneLabel2) ? '<div class="ptab-tag-row">' +
                       (spotInLock ? '<span class="kl-lock-badge">锁仓区</span>' : '') +
                       (sceneLabel2 ? '<span class="kl-scene-tag">' + escapeHtml(sceneLabel2) + '</span>' : '') +
-                    '</div>' +
+                    '</div>' : '') +
                     '<div class="ptab-conf-row">' +
                       '<span class="ptab-conf-label">可信度</span>' +
                       '<div class="ab-conf-bar-wrap">' +

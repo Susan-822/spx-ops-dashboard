@@ -164,7 +164,7 @@ function buildFlowWindows({ fb }) {
 // ── 主引擎 ────────────────────────────────────────────────────────────────────
 export function buildCapitalFlowReading(signal) {
   const fb  = signal.flow_behavior_engine || {};
-  const mr  = signal.money_read           || {};
+  // [v3] money_read 已废弃，所有数据从 fb / gexData 直接读取
   const gexData = signal.dealer_wall_map  || {};
 
   const netPrem    = fb.net_premium      ?? null;
@@ -230,7 +230,7 @@ export function buildCapitalFlowReading(signal) {
     }
   }
 
-  // 做市商行动建议（优先 money_read，降级用 gamma 解读）
+  // 做市商行动建议（基于 gamma 状态和资金背离）
   mmAction = mr.mm_what_to_do || gammaState.mm_behavior;
 
   // ── A单 执行门控 ──────────────────────────────────────────────────────────

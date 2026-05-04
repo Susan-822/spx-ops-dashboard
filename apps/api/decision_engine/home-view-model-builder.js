@@ -68,7 +68,7 @@ export function buildHomeViewModel(formattedSignal) {
 
   const pc  = formattedSignal.primary_card         || {};  // signal_formatter 输出
   const lv  = formattedSignal.levels               || {};  // signal_formatter 输出
-  const mr  = formattedSignal.money_read           || {};  // signal_formatter 输出
+  const mr  = formattedSignal.money_read           || {};  // [legacy] 仅供 mm_path_card 使用
   const dr  = formattedSignal.darkpool_read        || {};  // signal_formatter 输出
   const sb  = formattedSignal.sentiment_bar        || {};  // signal_formatter 输出
   const vd  = formattedSignal.vol_dashboard        || {};  // signal_formatter 输出
@@ -224,6 +224,27 @@ export function buildHomeViewModel(formattedSignal) {
     usage:             'radar_only',  // 前端必须检查此字段，禁止在首页主控中使用
   };
 
+  // ── Step 5.5: capital_flow 早期引用（用于 flow 对象中的 premium_fmt）──────────
+  // 注意：完整 capital_flow 在 Step 10 计算，这里只取格式化字段
+  const _cfEarlyForFmt = (() => {
+    try {
+      const _fb = formattedSignal.flow_behavior_engine || {};
+      const _cp = _fb.call_premium_abs != null ? Math.abs(_fb.call_premium_abs) : null;
+      const _pp = _fb.put_premium_abs  != null ? Math.abs(_fb.put_premium_abs)  : null;
+      const _np = _fb.net_premium      != null ? _fb.net_premium : null;
+      const fmt = (v) => {
+        if (v == null) return null;
+        const abs = Math.abs(v);
+        const sign = v < 0 ? '-' : '';
+        if (abs >= 1e6) return sign + (abs / 1e6).toFixed(1) + 'M';
+        if (abs >= 1e3) return sign + (abs / 1e3).toFixed(1) + 'K';
+        return sign + abs.toFixed(0);
+      };
+      return { day_call: fmt(_cp), day_put: fmt(_pp), day_net: fmt(_np) };
+    } catch(e) { return {}; }
+  })();
+  const cf = _cfEarlyForFmt;  // 别名，供 flow 对象使用
+
   // ── Step 6: Flow 收口 ─────────────────────────────────────────────────────
   // 规则：只读 flow-behavior-engine 已计算好的字段，不重新计算
 
@@ -240,9 +261,9 @@ export function buildHomeViewModel(formattedSignal) {
     directional_net_premium_fmt: dnpFmt,
     call_premium_abs:           fb.call_premium_abs  ?? null,
     put_premium_abs:            fb.put_premium_abs   ?? null,
-    call_premium_fmt:           mr.call_premium_fmt  || '--',
-    put_premium_fmt:            mr.put_premium_fmt   || '--',
-    net_premium_fmt:            mr.net_premium_fmt   || '--',
+    call_premium_fmt:           cf.day_call  || mr.call_premium_fmt || '--',
+    put_premium_fmt:            cf.day_put   || mr.put_premium_fmt  || '--',
+    net_premium_fmt:            cf.day_net   || mr.net_premium_fmt  || '--',
     flow_5m:                    fb.flow_5m_label     || null,
     flow_15m:                   fb.flow_15m_label    || null,
     dual_window_narrative:      fb.dual_window_narrative || null,
@@ -574,6 +595,6 @@ export function buildHomeViewModel(formattedSignal) {
     sent_label:             sentLabel,
     sent_sub:               sentSub,
     pc_ratio_fmt:           pcRatioFmt,
-    net_premium_fmt:        mr.net_premium_fmt || '--',
+    net_premium_fmt:        cf.day_net || mr.net_premium_fmt || '--',
   };
 }
