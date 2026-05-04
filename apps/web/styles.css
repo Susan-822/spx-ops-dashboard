@@ -2957,3 +2957,59 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
   border-color: rgba(245,166,35,0.5) !important;
   color: #f5a623 !important;
 }
+
+/* ── 资金实况卡（capital-flow-card）v2 ──────────────────────────────────── */
+
+.capital-flow-card { border-top: 2px solid rgba(245,166,35,0.3); }
+.gamma-state-tag {
+  display: inline-block; font-size: 10px; font-weight: 700;
+  padding: 2px 8px; border-radius: 10px; margin-left: 8px;
+  vertical-align: middle; letter-spacing: 0.5px;
+}
+.gamma-tag-amber { background: rgba(245,166,35,0.15); color: #f5a623; border: 1px solid rgba(245,166,35,0.3); }
+.gamma-tag-green { background: rgba(0,200,100,0.12);  color: #00c864; border: 1px solid rgba(0,200,100,0.25); }
+.gamma-tag-gray  { background: rgba(136,136,136,0.1); color: #999;    border: 1px solid rgba(136,136,136,0.2); }
+
+.capital-divergence-banner {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 12px; border-radius: 6px; margin-bottom: 10px; border: 1px solid;
+}
+.capital-divergence-banner.div-bull { background: rgba(0,200,100,0.08); border-color: rgba(0,200,100,0.25); color: #00c864; }
+.capital-divergence-banner.div-bear { background: rgba(239,68,68,0.08);  border-color: rgba(239,68,68,0.25);  color: #ef4444; }
+.div-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+.div-text { font-size: 12px; line-height: 1.5; font-weight: 500; }
+
+.capital-gate-banner {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 7px 12px; border-radius: 6px; margin: 8px 0; font-size: 12px; border: 1px solid;
+}
+.capital-gate-banner.gate-pass     { background: rgba(0,200,100,0.08);  border-color: rgba(0,200,100,0.25);  color: #00c864; }
+.capital-gate-banner.gate-degraded { background: rgba(245,166,35,0.08); border-color: rgba(245,166,35,0.25); color: #f5a623; }
+.capital-gate-banner.gate-blocked  { background: rgba(239,68,68,0.08);  border-color: rgba(239,68,68,0.25);  color: #ef4444; }
+.gate-impact { font-size: 11px; opacity: 0.85; font-weight: 400; }
+
+.capital-headline { font-size: 13px; font-weight: 700; color: #e2e8f0; margin-bottom: 4px; line-height: 1.4; }
+.capital-detail   { font-size: 12px; color: #94a3b8; line-height: 1.5; margin-bottom: 8px; }
+
+.capital-flow-grid {
+  display: flex; flex-direction: column; gap: 6px;
+  margin: 10px 0; padding: 10px;
+  background: rgba(255,255,255,0.03); border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);
+}
+.cf-row { display: flex; gap: 6px; }
+.cf-cell { flex: 1; min-width: 0; }
+.cf-cell.cf-wide { flex: 1.5; }
+.cf-label { font-size: 10px; color: #64748b; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.3px; }
+.cf-val   { font-size: 13px; font-weight: 700; color: #94a3b8; }
+.cf-val.cf-bull     { color: #00c864; }
+.cf-val.cf-bear     { color: #ef4444; }
+.cf-val.cf-fallback { color: #f5a623; }
+
+.cf-window-note {
+  font-size: 11px; color: #64748b; margin-top: 6px;
+  padding: 4px 8px; background: rgba(255,255,255,0.02);
+  border-radius: 4px; border-left: 2px solid rgba(100,116,139,0.3);
+}
+.capital-inval-row { display: flex; gap: 6px; margin-top: 6px; font-size: 11px; }
+.inval-label { color: #64748b; flex-shrink: 0; }
+.inval-val   { color: #f5a623; font-weight: 500; }

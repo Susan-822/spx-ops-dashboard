@@ -2573,40 +2573,108 @@ function renderHome(signal) {
         <!-- RIGHT: Vertical aux cards (资金/暗盘/波动率/VIX) -->
         <aside class="aux-sidebar">
           <!-- Money Read -->
-          <section class="aux-card money-read-card">
+          <section class="aux-card money-read-card capital-flow-card">
             <div class="aux-card-header">
-              <span class="aux-card-icon">👥</span>
-              <span class="aux-card-title">资金人话</span>
+              <span class="aux-card-icon">💰</span>
+              <span class="aux-card-title">资金实况</span>
+              ${(() => {
+                const _cf = (hvm.order_plan || {}).capital_flow || {};
+                const _gs = _cf.gamma_state || '';
+                const _gc = _gs === 'POSITIVE' ? 'gamma-tag-amber' : _gs === 'NEGATIVE' ? 'gamma-tag-green' : 'gamma-tag-gray';
+                const _gl = _cf.gamma_label || '';
+                return _gl ? `<span class="gamma-state-tag ${_gc}">${escapeHtml(_gl)}</span>` : '';
+              })()}
             </div>
             ${(() => {
-              // Final Decision Gate: LOCKED/WAIT 时资金人话只输出降级文案
-              // [HVM] 只读 home_view_model，禁止直接读 engine 字段
-              const _mrLocked   = !hvmSt.allow_trade;
-              const _mrAllowDir = hvmFlow.homepage_allow_direction !== false;
-              if (_mrLocked || !_mrAllowDir) {
-                return `
-                  <div class="aux-card-big-title">方向降级</div>
-                  <div class="aux-card-body">当前处于 LOCKED / WAIT 状态，不做 0DTE，等确认。</div>
-                  <div class="aux-card-stats">
-                    <div class="flow-stats-new">
-                      <div class="stat-row"><span class="stat-label">Flow 状态:</span><span class="stat-val">${escapeHtml(hvmFlow.flow_narrative ?? '方向降级，等确认。')}</span></div>
-                      <div class="stat-row"><span class="stat-label">Flow 质量:</span><span class="stat-val">${escapeHtml(hvmFlow.flow_quality ?? 'DEGRADED')}</span></div>
-                    </div>
-                  </div>`;
-              }
+              // [HVM v2] 无论 LOCKED/WAIT/READY，都显示 capital_flow 完整分析
+              // 只读 hvm.order_plan.capital_flow，禁止直接读 flow_behavior_engine
+              const _cf = (hvm.order_plan || {}).capital_flow || {};
+              const _headline    = _cf.headline    || mr.title || '--';
+              const _detail      = _cf.detail      || mr.body  || '--';
+              const _mmAction    = _cf.mm_action   || mr.mm_what_to_do || '--';
+              const _tradeImpact = _cf.trade_impact || '--';
+              const _tradeGate   = _cf.trade_gate  || 'DEGRADED';
+              const _divDetected = _cf.divergence_detected === true;
+              const _divType     = _cf.divergence_type || '';
+              const _divDesc     = _cf.divergence_desc || '';
+              const _sentSide    = _cf.sentiment_side || '--';
+              const _moneySide   = _cf.money_side    || '--';
+              const _flow5m      = _cf.flow_5m       || hvmFlow.flow_5m  || '--';
+              const _flow15m     = _cf.flow_15m      || hvmFlow.flow_15m || '--';
+              const _dayNet      = _cf.day_net       || _cf.net_premium_fmt || '--';
+              const _dayCall     = _cf.day_call      || _cf.call_premium_fmt || '--';
+              const _dayPut      = _cf.day_put       || _cf.put_premium_fmt  || '--';
+              const _pcVol       = _cf.pc_volume_ratio  || '--';
+              const _pcPrem      = _cf.pc_premium_ratio || '--';
+              const _winStatus   = _cf.window_status || '--';
+              const _winNote     = _cf.window_note   || '--';
+              const _invalNotes  = Array.isArray(_cf.invalidation_notes) ? _cf.invalidation_notes : [];
+
+              // 背离警告横幅
+              const _divBanner = _divDetected ? `
+                <div class="capital-divergence-banner ${_divType === 'BULL_DIVERGENCE' || _divType === 'PUT_ABSORBED' || _divType === 'QUIET_BULL' ? 'div-bull' : 'div-bear'}">
+                  <span class="div-icon">⚡</span>
+                  <span class="div-text">${escapeHtml(_divDesc)}</span>
+                </div>` : '';
+
+              // A单门控标签
+              const _gateCls = _tradeGate === 'PASS' ? 'gate-pass' : _tradeGate === 'BLOCKED' ? 'gate-blocked' : 'gate-degraded';
+              const _gateLabel = _tradeGate === 'PASS' ? '✓ 资金门控通过' : _tradeGate === 'BLOCKED' ? '✗ 资金门控阻止' : '⚠ 资金降级';
+              const _gateBanner = `<div class="capital-gate-banner ${_gateCls}"><span>${_gateLabel}</span><span class="gate-impact">${escapeHtml(_tradeImpact)}</span></div>`;
+
+              // 失效条件
+              const _invalStr = _invalNotes.length > 0
+                ? `<div class="capital-inval-row"><span class="inval-label">失效条件：</span><span class="inval-val">${escapeHtml(_invalNotes.join(' / '))}</span></div>`
+                : '';
+
               return `
-                <div class="aux-card-big-title">${escapeHtml(mr.title || '--')}</div>
-                <div class="aux-card-body">${escapeHtml(mr.body || '--')}</div>
-                ${mr.mm_what_to_do ? `<div class="mm-what-to-do"><span class="mm-icon">🏦</span><span class="mm-text">${escapeHtml(mr.mm_what_to_do)}</span></div>` : ''}
-                <div class="aux-card-stats">
-                  <div class="flow-stats-new">
-                    <div class="stat-row"><span class="stat-label">P/C Volume:</span><span class="stat-val">${escapeHtml(hvmFlow.pc_volume_ratio ?? pcRatio)}</span></div>
-                    <div class="stat-row"><span class="stat-label">P/C Premium:</span><span class="stat-val">${escapeHtml(hvmFlow.pc_premium_ratio ?? '--')}</span></div>
-                    <div class="stat-row"><span class="stat-label">P/C Primary:</span><span class="stat-val">${escapeHtml(hvmFlow.pc_primary_ratio ?? pcRatio)}</span></div>
-                    <div class="stat-row"><span class="stat-label">Directional Net Premium:</span><span class="stat-val">${escapeHtml(hvmFlow.directional_net_premium_fmt ?? netPremFmt)}</span></div>
-                    <div class="stat-row"><span class="stat-label">Flow 状态:</span><span class="stat-val">${escapeHtml(hvmFlow.flow_narrative ?? '--')}</span></div>
+                ${_divBanner}
+                <div class="capital-headline">${escapeHtml(_headline)}</div>
+                <div class="capital-detail">${escapeHtml(_detail)}</div>
+                ${_mmAction && _mmAction !== '--' ? `<div class="mm-what-to-do"><span class="mm-icon">🏦</span><span class="mm-text">${escapeHtml(_mmAction)}</span></div>` : ''}
+                ${_gateBanner}
+                <div class="capital-flow-grid">
+                  <div class="cf-row">
+                    <div class="cf-cell">
+                      <div class="cf-label">5m 资金</div>
+                      <div class="cf-val ${_cf.flow_5m_fallback ? 'cf-fallback' : (_cf.flow_5m_dir === 'bullish' ? 'cf-bull' : _cf.flow_5m_dir === 'bearish' ? 'cf-bear' : '')}">${escapeHtml(_flow5m)}</div>
+                    </div>
+                    <div class="cf-cell">
+                      <div class="cf-label">15m 资金</div>
+                      <div class="cf-val ${_cf.flow_15m_fallback ? 'cf-fallback' : (_cf.flow_15m_dir === 'bullish' ? 'cf-bull' : _cf.flow_15m_dir === 'bearish' ? 'cf-bear' : '')}">${escapeHtml(_flow15m)}</div>
+                    </div>
+                    <div class="cf-cell">
+                      <div class="cf-label">日内净权利金</div>
+                      <div class="cf-val ${_cf.day_direction === 'bullish' ? 'cf-bull' : _cf.day_direction === 'bearish' ? 'cf-bear' : ''}">${escapeHtml(_dayNet)}</div>
+                    </div>
                   </div>
-                </div>`;
+                  <div class="cf-row">
+                    <div class="cf-cell">
+                      <div class="cf-label">Call 权利金</div>
+                      <div class="cf-val cf-bull">${escapeHtml(_dayCall)}</div>
+                    </div>
+                    <div class="cf-cell">
+                      <div class="cf-label">Put 权利金</div>
+                      <div class="cf-val cf-bear">${escapeHtml(_dayPut)}</div>
+                    </div>
+                    <div class="cf-cell">
+                      <div class="cf-label">P/C Volume</div>
+                      <div class="cf-val">${escapeHtml(_pcVol)}</div>
+                    </div>
+                  </div>
+                  <div class="cf-row">
+                    <div class="cf-cell cf-wide">
+                      <div class="cf-label">情绪方向</div>
+                      <div class="cf-val ${_sentSide === 'BULLISH' ? 'cf-bull' : _sentSide === 'BEARISH' ? 'cf-bear' : ''}">${escapeHtml(_sentSide)}</div>
+                    </div>
+                    <div class="cf-cell cf-wide">
+                      <div class="cf-label">资金方向</div>
+                      <div class="cf-val ${_moneySide === 'BULLISH' ? 'cf-bull' : _moneySide === 'BEARISH' ? 'cf-bear' : ''}">${escapeHtml(_moneySide)}</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="cf-window-note">${escapeHtml(_winNote)}</div>
+                ${_invalStr}`;
             })()}
           </section>
           <!-- Darkpool Read -->

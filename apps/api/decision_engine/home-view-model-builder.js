@@ -390,6 +390,11 @@ export function buildHomeViewModel(formattedSignal) {
     const _priceOk2        = (pc2 && pc2.spot_gate_open !== false);
     const _notInLockZone2  = !(atmExecution && atmExecution.in_lock_zone);
     const _execAllowed2    = _isReady2 && _flowNormal2 && _allowDir2 && _priceOk2 && _notInLockZone2;
+    // capital_flow 预计算（用于 executable 判断和 blocked_reason）
+    const _capitalFlowEarly = buildCapitalFlowReading(formattedSignal);
+    const _capitalTradeGate = _capitalFlowEarly ? _capitalFlowEarly.trade_gate : 'DEGRADED';
+    // 最终执行权：还需要 capital_flow.trade_gate === 'PASS'
+    const _execAllowedFinal = _execAllowed2 && _capitalTradeGate === 'PASS';
 
     function _buildPlanEntry2(rawPlan, isBackup) {
       if (!rawPlan) return null;
@@ -403,8 +408,8 @@ export function buildHomeViewModel(formattedSignal) {
       let planState;
       if (isWait) {
         planState = 'VOID';  // 真正无方向 → 空白
-      } else if (_execAllowed2) {
-        planState = 'READY'; // 条件全满 → 绿色可执行
+      } else if (_execAllowedFinal) {
+        planState = 'READY'; // 条件全满（含资金门控）→ 绿色可执行
       } else {
         planState = 'PENDING'; // 有方向但被锁 → 黄色等待
       }
@@ -419,6 +424,12 @@ export function buildHomeViewModel(formattedSignal) {
       if (!_allowDir2)       blockedReasons.push('方向降级');
       if (!_priceOk2)        blockedReasons.push('价格未接入');
       if (!_notInLockZone2)  blockedReasons.push('ATM 锁仓区内');
+      // 加入 capital_flow 的资金门控原因
+      if (_capitalTradeGate !== 'PASS' && _capitalFlowEarly && _capitalFlowEarly.invalidation_notes) {
+        for (const n of _capitalFlowEarly.invalidation_notes) {
+          if (!blockedReasons.includes(n)) blockedReasons.push(n);
+        }
+      }
       const blocked_reason = blockedReasons.length > 0 ? blockedReasons.join(' / ') : null;
       
       const side    = dir === 'BULLISH' ? 'LONG' : dir === 'BEARISH' ? 'SHORT' : 'WAIT';
@@ -480,8 +491,7 @@ export function buildHomeViewModel(formattedSignal) {
       _planNote2 = `${_p2.side_cn}预案：${_p2.entry}（${_p2.confirm} 确认）｜失效 ${_p2.stop}｜禁做：${_p2.blocked_reason || '等确认'}`;
     }
     // ── capital_flow_reading：资金实况卡（接入 A单 executable 判断）──────────
-    const _capitalFlow = buildCapitalFlowReading(formattedSignal);
-    // 挂载到外层变量供 return 使用
+    // capital_flow 已在 _capitalFlowEarly 中计算，直接复用
     var _orderPlan2 = {
       primary_plan:      _primaryEntry2,
       backup_plan:       _backupEntry2,
@@ -489,7 +499,7 @@ export function buildHomeViewModel(formattedSignal) {
       show_backup_plan:  _showBackup2,
       plan_mode:         _planMode2,
       plan_note:         _planNote2,
-      capital_flow:      _capitalFlow,
+      capital_flow:      _capitalFlowEarly,
     };
   }
 
