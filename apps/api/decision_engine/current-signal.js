@@ -1924,7 +1924,8 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     institutionalAlert,
     darkpoolSummary,
     marketSentiment,
-    technicalEngine
+    technicalEngine,
+    spot: priceSourcesV2.spx?.price ?? null
   });
   const spotConclusion = buildSpotConclusion({
     fmpConclusion: buildFmpConclusionV2(output),

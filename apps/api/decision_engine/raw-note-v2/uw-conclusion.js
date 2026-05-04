@@ -145,14 +145,14 @@ function statusFromProvider(provider = {}, greeksAvailable, flowAvailable) {
   return provider.status || 'unavailable';
 }
 
-export function buildUwConclusionV2({ provider = {}, factors = {}, raw = {}, institutionalAlert = {}, darkpoolSummary = {}, marketSentiment = {}, technicalEngine = {} } = {}) {
+export function buildUwConclusionV2({ provider = {}, factors = {}, raw = {}, institutionalAlert = {}, darkpoolSummary = {}, marketSentiment = {}, technicalEngine = {}, spot = null } = {}) {
   const dealer = factors.dealer_factors || {};
   const flow = factors.flow_factors || {};
   const volumeOi = factors.volume_oi_factors || {};
   const technical = factors.technical_factors || {};
   const volatility = factors.volatility_factors || {};
   const diagnostics = buildUwWallDiagnostics(raw, {
-    spot: raw.spot ?? raw.spx_price ?? null,
+    spot: spot ?? raw.spot ?? raw.spx_price ?? null,
     maxPain: volumeOi.max_pain ?? null
   });
   const diagnosticsUsable = diagnostics.confidence !== 'low' && diagnostics.rows_used > 0;

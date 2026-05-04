@@ -23,7 +23,7 @@
 import { getFmpSnapshot } from '../adapters/fmp/index.js';
 import { refreshUwProvider } from '../state/uwProvider.js';
 import { writeThetaSnapshot } from '../storage/theta-snapshot.js';
-import { pushSpotPrice } from '../state/price-history-buffer.js';
+import { pushSpotPrice, getPriceHistory } from '../state/price-history-buffer.js';
 import {
   createAdaptiveScheduler,
   getAdaptiveScheduler,
@@ -156,10 +156,16 @@ async function runUwEndpointRefresh(endpointName) {
   if (mode !== 'api') return;
   if (!process.env.UW_API_KEY) return;
 
+  // Pass current spot price so spot_gex requests use min/max_strike filtering
+  // (±15% band around current SPX price for precise GEX wall calculation)
+  const priceHistory = getPriceHistory();
+  const currentSpot = priceHistory.spot_now ?? null;
+
   // Override the TTL for this specific endpoint to force a refresh
   // by passing a hint via options (uw-api-provider will check ttlSeconds)
   const snapshot = await refreshUwProvider({
     forceEndpoint: endpointName,  // hint — provider may ignore if not supported
+    currentSpot,
   });
 
   if (!snapshot) return;
