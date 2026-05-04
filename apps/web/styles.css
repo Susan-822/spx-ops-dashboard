@@ -2114,3 +2114,43 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
 .ab-conf-val.conf-high, .ab-conf-desc.conf-high { color: #15803d; }
 .ab-conf-val.conf-mid,  .ab-conf-desc.conf-mid  { color: #92400e; }
 .ab-conf-val.conf-low,  .ab-conf-desc.conf-low  { color: #991b1b; }
+
+/* ── Primary card two-column body (GEX chart + signal content) ─────────────── */
+.primary-card-body { display: grid; grid-template-columns: 196px 1fr; gap: 16px; align-items: start; }
+.primary-card-gex  { min-width: 0; }
+.primary-card-signal { min-width: 0; }
+
+/* ── GEX Urgency Chart ─────────────────────────────────────────────────────── */
+.gex-chart-wrap { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 8px; }
+.gex-chart-title { font-size: 10px; font-weight: 700; color: #6b7280; letter-spacing: 0.08em; text-align: center; margin-bottom: 8px; text-transform: uppercase; }
+.gex-bars-area { display: flex; align-items: flex-end; justify-content: center; gap: 8px; height: 100px; }
+.gex-bar-col { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.gex-bar-label-top { font-size: 11px; font-weight: 700; min-height: 16px; text-align: center; line-height: 1.2; }
+.gex-bar-label-top.gex-critical { color: #dc2626; }
+.gex-bar-label-top.gex-high     { color: #ea580c; }
+.gex-bar-label-top.gex-mid      { color: #ca8a04; }
+.gex-bar-label-top.gex-low      { color: #6b7280; }
+.gex-bar-outer { display: flex; align-items: flex-end; height: 80px; width: 44px; background: #f3f4f6; border-radius: 4px 4px 0 0; overflow: hidden; }
+.gex-bar-fill { width: 100%; border-radius: 4px 4px 0 0; transition: height 0.4s ease; min-height: 4px; }
+.gex-bar-label-bottom { font-size: 9px; color: #9ca3af; font-weight: 600; letter-spacing: 0.05em; text-align: center; }
+.gex-spot-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; padding-bottom: 2px; }
+.gex-spot-badge { background: #f59e0b; color: #fff; font-size: 11px; font-weight: 800; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
+.gex-spot-label { font-size: 9px; color: #9ca3af; font-weight: 600; }
+.gex-stats-row { display: flex; align-items: center; margin-top: 8px; gap: 4px; }
+.gex-stat { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.gex-stat.put-stat  { align-items: flex-start; }
+.gex-stat.call-stat { align-items: flex-end; }
+.gex-stat-sep { width: 1px; height: 28px; background: #e5e7eb; flex-shrink: 0; }
+.gex-stat-dist { font-size: 12px; font-weight: 700; }
+.gex-stat-dist.gex-critical { color: #dc2626; }
+.gex-stat-dist.gex-high     { color: #ea580c; }
+.gex-stat-dist.gex-mid      { color: #ca8a04; }
+.gex-stat-dist.gex-low      { color: #6b7280; }
+.gex-stat-pct   { font-size: 10px; color: #6b7280; }
+.gex-stat-gamma { font-size: 10px; color: #9ca3af; }
+.gex-alert { font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 6px; margin-top: 6px; text-align: center; }
+.gex-alert.call-alert { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+.gex-alert.put-alert  { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+
+/* Responsive: stack on narrow screens */
+@media (max-width: 900px) { .primary-card-body { grid-template-columns: 1fr; } }

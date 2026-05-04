@@ -1900,6 +1900,114 @@ function renderHudPanel(signal) {
     </div>
   `;
 }
+
+// ── GEX Urgency Chart (distance-driven, SVG) ─────────────────────────────────
+function renderGexUrgencyChart(signal) {
+  const diag  = signal.uw_wall_diagnostics || {};
+  const pc    = signal.primary_card || {};
+  const spot  = pc.spot != null ? Number(pc.spot) : null;
+  const callW = diag.call_wall != null ? Number(diag.call_wall) : null;
+  const putW  = diag.put_wall  != null ? Number(diag.put_wall)  : null;
+
+  // Gamma labels from top_call/put_gamma_strikes[0].value
+  const callGamma = diag.top_call_gamma_strikes?.[0]?.value;
+  const putGamma  = diag.top_put_gamma_strikes?.[0]?.value;
+  function fmtGamma(v) {
+    if (v == null) return 'N/A';
+    const m = v / 1e6;
+    return (m >= 0 ? '+' : '') + m.toFixed(1) + 'M';
+  }
+
+  const THRESHOLD = 20; // points
+  function urgency(wall) {
+    if (spot == null || wall == null) return 0;
+    const d = Math.abs(spot - wall);
+    return Math.max(0, Math.min(1, 1 - d / THRESHOLD));
+  }
+  function urgencyClass(u) {
+    if (u >= 0.75) return 'gex-critical';
+    if (u >= 0.5)  return 'gex-high';
+    if (u >= 0.25) return 'gex-mid';
+    return 'gex-low';
+  }
+  function distLabel(wall) {
+    if (spot == null || wall == null) return '--';
+    const d = wall - spot;
+    return (d >= 0 ? '+' : '') + d.toFixed(1);
+  }
+  function urgencyPct(u) { return Math.round(u * 100); }
+
+  const callU = urgency(callW);
+  const putU  = urgency(putW);
+  const callCls = urgencyClass(callU);
+  const putCls  = urgencyClass(putU);
+
+  // SVG bar chart: two bars side by side
+  // Bar height proportional to urgency (max 80px)
+  const BAR_H = 80;
+  const callBarH = Math.round(callU * BAR_H);
+  const putBarH  = Math.round(putU  * BAR_H);
+  const callBarY = BAR_H - callBarH;
+  const putBarY  = BAR_H - putBarH;
+
+  // Color by urgency
+  function barColor(u, side) {
+    const alpha = 0.4 + u * 0.6;
+    if (side === 'call') return `rgba(220,38,38,${alpha.toFixed(2)})`;
+    return `rgba(22,163,74,${alpha.toFixed(2)})`;
+  }
+
+  const callColor = barColor(callU, 'call');
+  const putColor  = barColor(putU,  'put');
+
+  // Spot line Y position (always at bottom of chart area)
+  const spotLineY = BAR_H;
+
+  return `
+<div class="gex-chart-wrap">
+  <div class="gex-chart-title">GEX PROFILE</div>
+  <div class="gex-bars-area">
+    <!-- PUT WALL bar (left) -->
+    <div class="gex-bar-col">
+      <div class="gex-bar-label-top ${putCls}">${putW != null ? putW : '--'}</div>
+      <div class="gex-bar-outer">
+        <div class="gex-bar-fill put-bar ${putCls}" style="height:${putBarH}px;background:${putColor}"></div>
+      </div>
+      <div class="gex-bar-label-bottom">Put Wall</div>
+    </div>
+    <!-- SPOT indicator (center) -->
+    <div class="gex-spot-col">
+      <div class="gex-spot-badge">${spot != null ? spot.toFixed(0) : '--'}</div>
+      <div class="gex-spot-label">SPX</div>
+    </div>
+    <!-- CALL WALL bar (right) -->
+    <div class="gex-bar-col">
+      <div class="gex-bar-label-top ${callCls}">${callW != null ? callW : '--'}</div>
+      <div class="gex-bar-outer">
+        <div class="gex-bar-fill call-bar ${callCls}" style="height:${callBarH}px;background:${callColor}"></div>
+      </div>
+      <div class="gex-bar-label-bottom">Call Wall</div>
+    </div>
+  </div>
+  <!-- Stats row -->
+  <div class="gex-stats-row">
+    <div class="gex-stat put-stat">
+      <span class="gex-stat-dist ${putCls}">${distLabel(putW)}</span>
+      <span class="gex-stat-pct">${urgencyPct(putU)}% 紧迫</span>
+      <span class="gex-stat-gamma">γ ${fmtGamma(putGamma)}</span>
+    </div>
+    <div class="gex-stat-sep"></div>
+    <div class="gex-stat call-stat">
+      <span class="gex-stat-dist ${callCls}">${distLabel(callW)}</span>
+      <span class="gex-stat-pct">${urgencyPct(callU)}% 紧迫</span>
+      <span class="gex-stat-gamma">γ ${fmtGamma(callGamma)}</span>
+    </div>
+  </div>
+  ${callU >= 0.75 ? '<div class="gex-alert call-alert">⚠ 贴 Call Wall，追多风险高</div>' : ''}
+  ${putU  >= 0.75 ? '<div class="gex-alert put-alert">⚠ 贴 Put Wall，追空容易被托</div>' : ''}
+</div>`;
+}
+
 function renderHome(signal) {
   const pc  = signal.primary_card  || {};
   const sb  = signal.sentiment_bar || {};
@@ -2120,13 +2228,16 @@ function renderHome(signal) {
 
       <!-- MAIN CONTENT GRID -->
       <div class="home-grid">
-        <!-- LEFT: Primary Card -->
+        <!-- LEFT: Primary Card (two-column: GEX chart + signal content) -->
         <section class="primary-card ${dirColor}">
           <div class="primary-card-header">
             <div class="primary-card-icon ${dirColor}">🎯</div>
             <div class="primary-card-title">主控卡片 ｜ ${escapeHtml(badge === 'LONG_CALL' ? 'CALL' : badge === 'SHORT_PUT' ? 'PUT' : 'LOCKED')}</div>
           </div>
-          ${planLines}
+          <div class="primary-card-body">
+            <div class="primary-card-gex">${renderGexUrgencyChart(signal)}</div>
+            <div class="primary-card-signal">${planLines}</div>
+          </div>
         </section>
 
         <!-- RIGHT: Key Levels — v3: Dynamic A/B Order Status Card -->

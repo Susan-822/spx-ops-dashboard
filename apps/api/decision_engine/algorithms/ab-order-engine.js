@@ -90,8 +90,8 @@ function makeBullPutSpreadPlan({ atm, atm_trigger, put_wall, gamma_flip, expiry,
     wait_short:   '\u4e0d\u9002\u7528',
     forbidden:    '\u7981\u6b62\u5728 Put Flow \u6301\u7eed\u589e\u5f3a\u65f6\u5356 Put Spread\uff1b\u7981\u6b62\u5728 ' + fmt(T.bear1) + ' \u7834\u4f4d\u540e\u5165\u573a',
     invalidation: '\u73b0\u4ef7\u6709\u6548\u8dcc\u7834 ' + fmt(T.bear2) + '\uff0cPut Flow \u7ee7\u7eed\u589e\u5f3a',
-    tp1:          '\u6743\u5229\u91d1\u6536\u56de 50%',
-    tp2:          '\u6743\u5229\u91d1\u6536\u56de 80% \u6216\u5230\u671f',
+    tp1:          T.bullTgt1 != null ? fmt(T.bullTgt1) : '\u6743\u5229\u91d1\u6536\u56de 50%',
+    tp2:          T.bullTgt2 != null ? fmt(T.bullTgt2) + '\uff08\u6216\u5230\u671f\uff09' : '\u6743\u5229\u91d1\u6536\u56de 80% \u6216\u5230\u671f',
     rationale:    fmt(T.bear1) + ' \u9644\u8fd1 Put Flow \u88ab\u5438\u6536\uff0c\u6b63 Gamma \u963b\u5c3c\uff0c\u505a\u5e02\u5546\u4e0d\u8ddf\u7a7a'
   };
 }
@@ -110,8 +110,8 @@ function makeBearCallSpreadPlan({ atm, atm_trigger, call_wall, expiry, dp }) {
     wait_short:   '\u73b0\u4ef7\u63a5\u8fd1 ' + fmt(T.bull1) + ' \u4e14 Call Flow \u51cf\u5f31' + dpCtx,
     forbidden:    '\u7981\u6b62\u5728 Call Flow \u6301\u7eed\u589e\u5f3a\u65f6\u5356 Call Spread\uff1b\u7981\u6b62\u5728 ' + fmt(T.bull1) + ' \u7a81\u7834\u540e\u5165\u573a',
     invalidation: '\u73b0\u4ef7\u6709\u6548\u7a81\u7834 ' + fmt(T.bull2) + '\uff0cCall Flow \u6301\u7eed\u589e\u5f3a',
-    tp1:          '\u6743\u5229\u91d1\u6536\u56de 50%',
-    tp2:          '\u6743\u5229\u91d1\u6536\u56de 80% \u6216\u5230\u671f',
+    tp1:          T.bearTgt1 != null ? fmt(T.bearTgt1) : '\u6743\u5229\u91d1\u6536\u56de 50%',
+    tp2:          T.bearTgt2 != null ? fmt(T.bearTgt2) + '\uff08\u6216\u5230\u671f\uff09' : '\u6743\u5229\u91d1\u6536\u56de 80% \u6216\u5230\u671f',
     rationale:    fmt(T.bull1) + ' \u9644\u8fd1 Call \u538b\u5236\uff0c\u6b63 Gamma \u963b\u5c3c\uff0c\u505a\u5e02\u5546\u4e0d\u8ddf\u591a'
   };
 }
