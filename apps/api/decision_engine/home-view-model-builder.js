@@ -51,6 +51,7 @@
  */
 
 import { buildCapitalFlowReading } from './algorithms/capital-flow-reading-engine.js';
+import { buildNarrative }          from './algorithms/narrative-engine.js';
 
 // ── 辅助函数 ──────────────────────────────────────────────────────────────────
 
@@ -492,6 +493,21 @@ export function buildHomeViewModel(formattedSignal) {
     }
     // ── capital_flow_reading：资金实况卡（接入 A单 executable 判断）──────────
     // capital_flow 已在 _capitalFlowEarly 中计算，直接复用
+    // ── narrative：叙事层（优先级决策树 + 模板渲染，零 Token 成本）──────────────
+    // 注意：narrative 需要 capital_flow 已挂载到 signal.home_view_model.order_plan
+    // 为了让 narrative-engine 能读到 capital_flow，临时挂载后再调用
+    const _tempSignalForNarrative = {
+      ...formattedSignal,
+      home_view_model: {
+        ...(formattedSignal.home_view_model || {}),
+        order_plan: {
+          capital_flow: _capitalFlowEarly,
+          primary_plan: _primaryEntry2,
+        }
+      }
+    };
+    const _narrative2 = buildNarrative(_tempSignalForNarrative);
+
     var _orderPlan2 = {
       primary_plan:      _primaryEntry2,
       backup_plan:       _backupEntry2,
@@ -500,6 +516,7 @@ export function buildHomeViewModel(formattedSignal) {
       plan_mode:         _planMode2,
       plan_note:         _planNote2,
       capital_flow:      _capitalFlowEarly,
+      narrative:         _narrative2,  // 叙事层输出
     };
   }
 

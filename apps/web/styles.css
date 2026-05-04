@@ -3057,3 +3057,90 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
   font-weight: 500;
   line-height: 1.4;
 }
+
+/* ── 叙事卡片（narrative-card）────────────────────────────────────────────── */
+.narrative-card {
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* 色调变体 */
+.narrative-card.narr-warning {
+  background: linear-gradient(135deg, rgba(245,158,11,0.10) 0%, rgba(30,30,40,0.95) 100%);
+  border-color: rgba(245,158,11,0.25);
+}
+.narrative-card.narr-bearish {
+  background: linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(30,30,40,0.95) 100%);
+  border-color: rgba(239,68,68,0.20);
+}
+.narrative-card.narr-bullish {
+  background: linear-gradient(135deg, rgba(34,197,94,0.08) 0%, rgba(30,30,40,0.95) 100%);
+  border-color: rgba(34,197,94,0.20);
+}
+.narrative-card.narr-neutral {
+  background: rgba(30,30,40,0.95);
+  border-color: rgba(255,255,255,0.06);
+}
+
+/* 标题行 */
+.narr-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.narr-icon { font-size: 16px; }
+.narr-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #94a3b8;
+}
+
+/* 板块A：一句话定调 */
+.narr-headline {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: #f1f5f9;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.narr-warning  .narr-headline { color: #fbbf24; }
+.narr-bearish  .narr-headline { color: #f87171; }
+.narr-bullish  .narr-headline { color: #4ade80; }
+
+/* 板块B：底层数据揭秘 */
+.narr-detail {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #94a3b8;
+  margin-bottom: 10px;
+}
+
+/* 板块C：执行预案 */
+.narr-action {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #cbd5e1;
+  background: rgba(255,255,255,0.03);
+  border-radius: 5px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border-left: 3px solid rgba(99,102,241,0.5);
+}
+
+/* 失效条件 */
+.narr-invalidation {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #f87171;
+  background: rgba(239,68,68,0.05);
+  border-radius: 4px;
+  padding: 6px 10px;
+  border: 1px solid rgba(239,68,68,0.12);
+}

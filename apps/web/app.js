@@ -2572,10 +2572,39 @@ function renderHome(signal) {
 
         <!-- RIGHT: Vertical aux cards (资金/暗盘/波动率/VIX) -->
         <aside class="aux-sidebar">
+          <!-- Narrative Card: 叙事层（优先级决策树输出，三板块结构）-->
+          ${(() => {
+            const _narr = (hvm.order_plan || {}).narrative || {};
+            const _nHeadline   = _narr.headline    || '';
+            const _nDetail     = _narr.detail      || '';
+            const _nAction     = _narr.action_plan || '';
+            const _nInvalid    = _narr.invalidation || '';
+            const _nTone       = _narr.tone        || 'neutral';
+            const _nPrimary    = _narr.primary_narrative || 'NEUTRAL';
+            if (!_nHeadline) return '';
+            const _nCardCls = _nTone === 'warning' ? 'narr-warning'
+              : _nTone === 'bearish' ? 'narr-bearish'
+              : _nTone === 'bullish' ? 'narr-bullish'
+              : 'narr-neutral';
+            return `
+          <section class="aux-card narrative-card ${_nCardCls}">
+            <div class="narr-header">
+              <span class="narr-icon">${_nTone === 'warning' ? '⚠️' : _nTone === 'bearish' ? '📉' : _nTone === 'bullish' ? '📈' : '📊'}</span>
+              <span class="narr-title">盘面解读</span>
+            </div>
+            <!-- 板块A：一句话定调 -->
+            <div class="narr-headline">${escapeHtml(_nHeadline)}</div>
+            <!-- 板块B：底层数据揭秘 -->
+            <div class="narr-detail">${escapeHtml(_nDetail)}</div>
+            <!-- 板块C：执行预案 + 失效条件 -->
+            ${_nAction ? `<div class="narr-action">${escapeHtml(_nAction)}</div>` : ''}
+            ${_nInvalid ? `<div class="narr-invalidation">${escapeHtml(_nInvalid)}</div>` : ''}
+          </section>`;
+          })()}
           <section class="aux-card capital-flow-card">
             <div class="aux-card-header">
               <span class="aux-card-icon">💰</span>
-              <span class="aux-card-title">资金实况</span>
+              <span class="aux-card-title">资金实况 <small style="font-size:10px;color:#64748b;font-weight:400;">（详细数据）</small></span>
               ${(() => {
                 const _cf = (hvm.order_plan || {}).capital_flow || {};
                 const _gs = _cf.gamma_state || '';
