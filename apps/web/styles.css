@@ -1554,7 +1554,7 @@ a { color: inherit; text-decoration: none; }
    HOME V2 — Main Trading Panel
    ═══════════════════════════════════════════════════════════════════════════ */
 .home-v2 { max-width: 1280px; margin: 0 auto; padding: 0 16px 32px; display: block; }
-.home-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 0 12px; border-bottom: 1px solid #e5e7eb; }
+.home-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 0 14px; border-bottom: 1px solid #e5e7eb; }
 .home-header-left { display: flex; align-items: center; gap: 12px; }
 .home-bear-icon { font-size: 36px; background: #f0fdf4; border-radius: 50%; width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; }
 .home-bear-icon.bearish { background: #fef2f2; }
@@ -1575,7 +1575,7 @@ a { color: inherit; text-decoration: none; }
 .uw-status-dot.stale { background: #f59e0b; }
 .uw-status-label { font-weight: 600; color: #374151; }
 .home-update-time { color: #9ca3af; font-size: 11px; }
-.sentiment-section { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid #e5e7eb; }
+.sentiment-section { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid #e5e7eb; }
 .sentiment-bar-wrap { flex: 1; display: flex; align-items: center; gap: 10px; }
 .sentiment-label-left, .sentiment-label-right { font-size: 11px; color: #6b7280; white-space: nowrap; }
 .sentiment-track { flex: 1; height: 12px; background: linear-gradient(to right, #22c55e 0%, #e5e7eb 50%, #ef4444 100%); border-radius: 6px; position: relative; }
@@ -1587,8 +1587,8 @@ a { color: inherit; text-decoration: none; }
 .sentiment-score-big.bearish { color: #dc2626; }
 .sentiment-score-big.neutral { color: #374151; }
 .sentiment-sub { font-size: 12px; color: #6b7280; }
-.home-grid { display: grid; grid-template-columns: 1fr 300px; gap: 14px; margin-top: 14px; }
-.primary-card { background: #fff; border: 2px solid #e5e7eb; border-radius: 12px; padding: 18px; }
+.home-grid { display: grid; grid-template-columns: 1fr 260px; gap: 16px; margin-top: 16px; }
+.primary-card { background: #fff; border: 2px solid #e5e7eb; border-radius: 14px; padding: 20px 22px; }
 .primary-card.bullish { border-color: #bbf7d0; background: #f0fdf4; }
 .primary-card.bearish { border-color: #fecaca; background: #fef2f2; }
 .primary-card.locked  { border-color: #e5e7eb; background: #f9fafb; }
@@ -1596,13 +1596,13 @@ a { color: inherit; text-decoration: none; }
 .primary-card-icon { font-size: 22px; }
 .primary-card-title { font-size: 17px; font-weight: 700; color: #111827; }
 .plan-grid { display: flex; flex-direction: column; gap: 9px; }
-.plan-row { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; }
-.plan-row.full-row { margin-top: 4px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.06); }
-.plan-icon { color: #9ca3af; width: 16px; flex-shrink: 0; margin-top: 1px; }
-.plan-key { color: #6b7280; min-width: 50px; flex-shrink: 0; }
-.plan-val { color: #111827; font-weight: 500; }
+.plan-row { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.5; }
+.plan-row.full-row { margin-top: 6px; padding-top: 10px; border-top: 1px solid rgba(0,0,0,0.07); }
+.plan-icon { color: #9ca3af; width: 18px; flex-shrink: 0; margin-top: 2px; text-align: center; font-size: 12px; }
+.plan-key { color: #6b7280; min-width: 80px; max-width: 80px; flex-shrink: 0; font-size: 13px; }
+.plan-val { color: #111827; font-weight: 500; flex: 1; word-break: break-word; overflow-wrap: break-word; line-height: 1.5; }
 .plan-val.entry-val { color: #16a34a; font-weight: 600; }
-.plan-val.action-val { color: #111827; font-weight: 700; font-size: 15px; }
+.plan-val.action-val { color: #111827; font-weight: 700; font-size: 14px; }
 .plan-val.stop-val { color: #dc2626; font-weight: 600; }
 .plan-val.target-val { color: #2563eb; font-weight: 600; }
 .plan-val.forbidden-val { color: #92400e; }
@@ -1857,15 +1857,15 @@ a { color: inherit; text-decoration: none; }
 .kl-pin-warn { font-size: 11px; color: #b45309; background: #fef3c7; border-radius: 6px; padding: 6px 10px; margin-top: 6px; }
 
 /* ── Three-state Plan Grid v2 ─────────────────────────────────────────────── */
-.plan-grid.plan-locked { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; }
-.plan-grid.plan-bull   { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px; }
-.plan-grid.plan-bear   { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px; }
+.plan-grid.plan-locked { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; gap: 10px; }
+.plan-grid.plan-bull   { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px 14px; gap: 10px; }
+.plan-grid.plan-bear   { background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 12px 14px; gap: 10px; }
 .plan-val.locked-val { color: #92400e; font-weight: 700; }
 .plan-val.bull-cond  { color: #15803d; font-weight: 600; }
 .plan-val.bear-cond  { color: #dc2626; font-weight: 600; }
 .plan-icon.bull { color: #16a34a; }
 .plan-icon.bear { color: #dc2626; }
-.atm-trigger-row { background: rgba(0,0,0,0.02); border-radius: 6px; padding: 4px 6px; }
+.atm-trigger-row { background: rgba(0,0,0,0.02); border-radius: 6px; padding: 6px 8px; margin-top: 2px; }
 
 /* ── Flow Dual Window (Radar) ─────────────────────────────────────────────── */
 .radar-flow-dual-window { display: flex; gap: 8px; margin: 10px 0; align-items: flex-start; }
@@ -2116,9 +2116,9 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
 .ab-conf-val.conf-low,  .ab-conf-desc.conf-low  { color: #991b1b; }
 
 /* ── Primary card two-column body (GEX chart + signal content) ─────────────── */
-.primary-card-body { display: grid; grid-template-columns: 196px 1fr; gap: 16px; align-items: start; }
-.primary-card-gex  { min-width: 0; }
-.primary-card-signal { min-width: 0; }
+.primary-card-body { display: block; }
+.primary-card-gex  { display: none; }
+.primary-card-signal { min-width: 0; width: 100%; }
 
 /* ── GEX Urgency Chart ─────────────────────────────────────────────────────── */
 .gex-chart-wrap { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 8px; }
@@ -2159,22 +2159,22 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
 /* ══════════════════════════════════════════════════════════════════════
    LAYOUT v2: aux-sidebar + primary three-tab panel
    ══════════════════════════════════════════════════════════════════════ */
-.home-grid { grid-template-columns: 1fr 280px !important; }
-.aux-sidebar { display: flex; flex-direction: column; gap: 10px; }
-.aux-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px 14px; }
+.home-grid { grid-template-columns: 1fr 260px !important; }
+.aux-sidebar { display: flex; flex-direction: column; gap: 12px; }
+.aux-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px 16px; }
 .aux-card-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .aux-card-icon { font-size: 13px; }
 .aux-card-title { font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
 .aux-card-big-title { font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 4px; line-height: 1.3; }
 .aux-card-body { font-size: 12px; color: #374151; line-height: 1.5; margin-bottom: 6px; }
 .aux-card-stats { font-size: 11px; color: #6b7280; margin-top: 4px; }
-.ptab-container { margin-top: 12px; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; background: #f9fafb; }
+.ptab-container { margin-top: 14px; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; background: #f9fafb; }
 .ptab-nav { display: flex; background: #f3f4f6; border-bottom: 1px solid #e5e7eb; }
 .ptab-btn { flex: 1; padding: 8px 4px; font-size: 12px; font-weight: 600; color: #6b7280; background: transparent; border: none; cursor: pointer; transition: background 0.15s, color 0.15s; border-right: 1px solid #e5e7eb; }
 .ptab-btn:last-child { border-right: none; }
 .ptab-btn:hover { background: #e5e7eb; color: #111827; }
 .ptab-btn.active { background: #fff; color: #111827; font-weight: 700; border-bottom: 2px solid #3b82f6; }
-.ptab-body { padding: 12px; }
+.ptab-body { padding: 14px 16px; }
 .ptab-atm-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
 .ptab-atm-icon { font-size: 14px; }
 .ptab-atm-label { font-size: 12px; color: #6b7280; }
@@ -2395,40 +2395,43 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
 .flow-stats-new {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   padding: 8px 0;
-  border-top: 1px solid rgba(255,255,255,0.08);
+  border-top: 1px solid #e5e7eb;
   margin-top: 8px;
 }
 .stat-row {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
   font-size: 12px;
 }
 .stat-label {
-  color: rgba(255,255,255,0.5);
-  min-width: 160px;
+  color: #6b7280;
+  min-width: 140px;
   flex-shrink: 0;
+  font-size: 11px;
 }
 .stat-val {
-  color: rgba(255,255,255,0.9);
-  font-weight: 500;
+  color: #111827;
+  font-weight: 600;
+  flex: 1;
+  word-break: break-word;
 }
 
 /* ── LOCKED Tab Notice ──────────────────────────────────────────────────────── */
 .ptab-locked-notice {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  padding: 4px 12px;
-  background: rgba(239,68,68,0.15);
-  border: 1px solid rgba(239,68,68,0.4);
-  border-radius: 4px;
-  color: #ef4444;
+  justify-content: center;
+  flex: 1;
+  padding: 7px 12px;
+  background: #fef2f2;
+  border-left: 1px solid #e5e7eb;
+  color: #dc2626;
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  margin-left: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 /* ATM trigger line diagnostic note */
@@ -2440,4 +2443,289 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
   font-size: 12px;
   padding: 6px 10px;
   margin-bottom: 8px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LAYOUT REFACTOR v3 — 2026-05 全链路重构排版修复
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Plan Grid 全局修正 ──────────────────────────────────────────────────── */
+.plan-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Plan Row 修正：确保 key 和 val 对齐，val 自动换行 ─────────────────────── */
+.plan-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.plan-icon {
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.plan-key {
+  flex-shrink: 0;
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
+  color: #6b7280;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding-top: 1px;
+}
+
+.plan-val {
+  flex: 1;
+  color: #111827;
+  font-weight: 500;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.55;
+}
+
+/* ── 主控卡片全宽布局 ────────────────────────────────────────────────────── */
+.primary-card-body {
+  display: block !important;
+  width: 100%;
+}
+
+.primary-card-gex {
+  display: none !important;
+}
+
+.primary-card-signal {
+  width: 100%;
+  min-width: 0;
+}
+
+/* ── ptab-locked-notice 独占一行 ─────────────────────────────────────────── */
+.ptab-nav {
+  display: flex;
+  align-items: stretch;
+  background: #f3f4f6;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.ptab-btn {
+  flex: 1;
+  padding: 9px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  border-right: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.ptab-btn:last-child {
+  border-right: none;
+}
+
+.ptab-btn:hover {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.ptab-btn.active {
+  background: #fff;
+  color: #111827;
+  font-weight: 700;
+  border-bottom: 2px solid #3b82f6;
+}
+
+.ptab-locked-notice {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  flex: 2;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border-left: 1px solid #e5e7eb;
+  color: #dc2626;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* ── Flow Stats 修正（白色背景上的文字颜色） ─────────────────────────────── */
+.flow-stats-new {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 0;
+  border-top: 1px solid #e5e7eb;
+  margin-top: 8px;
+}
+
+.stat-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.stat-label {
+  color: #6b7280 !important;
+  min-width: 130px;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.stat-val {
+  color: #111827 !important;
+  font-weight: 600;
+  flex: 1;
+  word-break: break-word;
+}
+
+/* ── aux-sidebar 卡片统一宽度 ────────────────────────────────────────────── */
+.aux-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.aux-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 14px 16px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── home-grid 两列布局稳定 ──────────────────────────────────────────────── */
+.home-grid {
+  display: grid !important;
+  grid-template-columns: 1fr 260px !important;
+  gap: 16px !important;
+  margin-top: 16px;
+  align-items: start;
+}
+
+/* ── 响应式：屏幕 < 900px 时单列 ─────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .home-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .aux-sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .aux-card {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 160px;
+  }
+  .plan-key {
+    width: 70px;
+    min-width: 70px;
+    max-width: 70px;
+  }
+}
+
+/* ── 响应式：屏幕 < 600px 时 ─────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .home-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .aux-sidebar {
+    flex-direction: column;
+  }
+  .aux-card {
+    flex: 1 1 100%;
+  }
+  .plan-key {
+    width: 64px;
+    min-width: 64px;
+    max-width: 64px;
+    font-size: 11.5px;
+  }
+  .plan-val {
+    font-size: 12.5px;
+  }
+  .home-headline {
+    font-size: 20px !important;
+  }
+}
+
+/* ── 主控卡片 plan-val 颜色修正 ──────────────────────────────────────────── */
+.plan-val.entry-val    { color: #16a34a !important; font-weight: 600; }
+.plan-val.action-val   { color: #111827 !important; font-weight: 700; font-size: 14px; }
+.plan-val.stop-val     { color: #dc2626 !important; font-weight: 600; }
+.plan-val.target-val   { color: #2563eb !important; font-weight: 600; }
+.plan-val.forbidden-val{ color: #92400e !important; }
+.plan-val.locked-val   { color: #92400e !important; font-weight: 700; }
+.plan-val.bull-cond    { color: #15803d !important; font-weight: 600; }
+.plan-val.bear-cond    { color: #dc2626 !important; font-weight: 600; }
+
+/* ── plan-grid 背景色块最终版 ────────────────────────────────────────────── */
+.plan-grid.plan-locked {
+  background: #f9fafb !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 10px !important;
+  padding: 14px 16px !important;
+  gap: 10px !important;
+}
+.plan-grid.plan-bull {
+  background: #f0fdf4 !important;
+  border: 1px solid #bbf7d0 !important;
+  border-radius: 10px !important;
+  padding: 14px 16px !important;
+  gap: 10px !important;
+}
+.plan-grid.plan-bear {
+  background: #fef2f2 !important;
+  border: 1px solid #fecaca !important;
+  border-radius: 10px !important;
+  padding: 14px 16px !important;
+  gap: 10px !important;
+}
+
+/* ── atm-trigger-row 修正 ────────────────────────────────────────────────── */
+.atm-trigger-row {
+  background: rgba(0,0,0,0.025) !important;
+  border-radius: 6px !important;
+  padding: 6px 8px !important;
+  margin-top: 2px !important;
+}
+
+/* ── primary-card 整体 ───────────────────────────────────────────────────── */
+.primary-card {
+  background: #fff;
+  border: 2px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 20px 22px;
+}
+.primary-card.bullish { border-color: #bbf7d0; background: #f0fdf4; }
+.primary-card.bearish { border-color: #fecaca; background: #fef2f2; }
+.primary-card.locked  { border-color: #e5e7eb; background: #f9fafb; }
+
+/* ── ptab-body padding ───────────────────────────────────────────────────── */
+.ptab-body {
+  padding: 14px 16px !important;
+}
+
+/* ── 确保 home-v2 不溢出 ──────────────────────────────────────────────────── */
+.home-v2 {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 16px 32px;
+  display: block;
+  overflow-x: hidden;
 }

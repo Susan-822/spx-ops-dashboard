@@ -2389,7 +2389,6 @@ function renderHome(signal) {
             <div class="primary-card-title">主控卡片 ｜ ${escapeHtml(badge === 'LONG_CALL' ? 'CALL' : badge === 'SHORT_PUT' ? 'PUT' : 'LOCKED')}</div>
           </div>
           <div class="primary-card-body">
-            
             <div class="primary-card-signal">
               ${planLines}
               <!-- THREE-TAB PANEL: 盘眼 / 主做 / 备选 -->
