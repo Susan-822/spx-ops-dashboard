@@ -3169,3 +3169,19 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
 /* 减少 capital-flow-card 内部空白 */
 .capital-flow-card .cf-windows-row { margin: 6px 0; }
 .capital-flow-card .cf-ratio-row { margin: 4px 0; }
+
+.capital-flow-card-fullwidth { background: #111827; border: 1px solid rgba(245,166,35,0.25); border-top: 2px solid rgba(245,166,35,0.5); border-radius: 12px; padding: 16px 20px; margin-top: 12px; width: 100%; box-sizing: border-box; }
+.capital-flow-card-fullwidth .aux-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.capital-flow-card-fullwidth .aux-card-title { font-size: 13px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+.capital-flow-card-fullwidth .capital-headline { font-size: 14px; font-weight: 700; color: #e2e8f0; margin-bottom: 4px; line-height: 1.4; }
+.capital-flow-card-fullwidth .capital-detail { font-size: 12.5px; color: #94a3b8; line-height: 1.5; margin-bottom: 8px; }
+.capital-flow-card-fullwidth .capital-flow-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); }
+.capital-flow-card-fullwidth .cf-row { display: contents; }
+.capital-flow-card-fullwidth .cf-cell { background: rgba(255,255,255,0.02); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+.capital-flow-card-fullwidth .cf-cell.cf-wide { grid-column: span 1; }
+.capital-flow-card-fullwidth .cf-pc-compare-row { background: transparent; border: none; padding: 0; display: contents; }
+.capital-flow-card-fullwidth .cf-label { font-size: 10px; color: #64748b; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.3px; }
+.capital-flow-card-fullwidth .cf-val { font-size: 15px; font-weight: 700; color: #94a3b8; }
+.capital-flow-card-fullwidth .cf-sublabel { font-size: 9px; color: #475569; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.3px; }
+@media (max-width: 900px) { .capital-flow-card-fullwidth .capital-flow-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .capital-flow-card-fullwidth .capital-flow-grid { grid-template-columns: 1fr 1fr; } }
