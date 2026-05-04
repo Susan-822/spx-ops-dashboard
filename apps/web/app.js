@@ -2451,10 +2451,6 @@ function renderHome(signal) {
                       '<span class="ptab-atm-label">盘眼 ATM</span>' +
                       '<span class="ptab-atm-val">' + escapeHtml(atmFmt) + '</span>' +
                     '</div>' +
-                    ((spotInLock || sceneLabel2) ? '<div class="ptab-tag-row">' +
-                      (spotInLock ? '<span class="kl-lock-badge">锁仓区</span>' : '') +
-                      (sceneLabel2 ? '<span class="kl-scene-tag">' + escapeHtml(sceneLabel2) + '</span>' : '') +
-                    '</div>' : '') +
                     '<div class="ptab-conf-row">' +
                       '<span class="ptab-conf-label">可信度</span>' +
                       '<div class="ab-conf-bar-wrap">' +
@@ -2465,6 +2461,10 @@ function renderHome(signal) {
                       '<span class="ab-conf-val ' + confCls3 + '">' + abConf3 + '/100</span>' +
                       '<span class="ab-conf-desc ' + confCls3 + '">' + confLbl3 + '</span>' +
                     '</div>' +
+                    ((spotInLock || sceneLabel2) ? '<div class="ptab-tag-row">' +
+                      (spotInLock ? '<span class="kl-lock-badge">锁仓区</span>' : '') +
+                      (sceneLabel2 ? '<span class="kl-scene-tag">' + escapeHtml(sceneLabel2) + '</span>' : '') +
+                    '</div>' : '') +
                     '<div class="ptab-far-walls">' +
                       '<span class="kl-far-label">远端墙（背景）：</span>' +
                       '<span class="kl-far-val">' + escapeHtml(farCallFmt) + ' / ' + escapeHtml(farPutFmt) + '</span>' +
@@ -2671,7 +2671,6 @@ function renderHome(signal) {
                 ${_divBanner}
                 <div class="capital-headline">${escapeHtml(_headline)}</div>
                 <div class="capital-detail">${escapeHtml(_detail)}</div>
-                ${_mmAction && _mmAction !== '--' ? `<div class="mm-what-to-do"><span class="mm-icon">🏦</span><span class="mm-text">${escapeHtml(_mmAction)}</span></div>` : ''}
                 ${_gateBanner}
                 <div class="capital-flow-grid">
                   <div class="cf-row">
@@ -2735,7 +2734,6 @@ function renderHome(signal) {
                     </div>
                   </div>
                 </div>
-                <div class="cf-window-note">${escapeHtml(_winNote)}</div>
                 ${_invalStr}`;
             })()}
           </section>
