@@ -377,6 +377,88 @@ export function buildHomeViewModel(formattedSignal) {
   const planA = ab.plan_a || null;
   const planB = ab.plan_b || null;
 
+  // ── Step 11b: Order Plan — 拆分"显示权"和"执行权" ────────────────────────
+  // 原则：A单预案可以显示（displayable），但只有 READY 状态才能执行（executable）
+  // 不允许因为 LOCKED/WAIT 直接丢弃 A单预案
+  {
+    // 判断执行权（五个条件全满足）
+    const _isReady2        = rawStatus === 'LONG_READY' || rawStatus === 'SHORT_READY';
+    const _flowNormal2     = (flow && flow.flow_quality === 'NORMAL');
+    const _allowDir2       = (flow && flow.homepage_allow_direction !== false);
+    const _priceOk2        = (priceContract && priceContract.spot_gate_open !== false);
+    const _notInLockZone2  = !(atmExecution && atmExecution.in_lock_zone);
+    const _execAllowed2    = _isReady2 && _flowNormal2 && _allowDir2 && _priceOk2 && _notInLockZone2;
+
+    function _buildPlanEntry2(rawPlan, isBackup) {
+      if (!rawPlan) return null;
+      const dir = (rawPlan.direction || 'WAIT').toUpperCase();
+      const isWait = dir === 'WAIT';
+      const executable = _execAllowed2 && !isWait;
+      let blockedReasons = [];
+      if (!_isReady2)        blockedReasons.push(rawStatus === 'blocked' ? 'ATM 锁仓区 / 正 Gamma 磁吸' : '状态未就绪');
+      if (!_flowNormal2)     blockedReasons.push('Flow 数据降级');
+      if (!_allowDir2)       blockedReasons.push('方向降级');
+      if (!_priceOk2)        blockedReasons.push('价格未接入');
+      if (!_notInLockZone2)  blockedReasons.push('ATM 锁仓区内');
+      if (isWait)            blockedReasons.push(rawPlan.rationale || '等待方向确认');
+      const blocked_reason = blockedReasons.length > 0 ? blockedReasons.join(' / ') : null;
+      const side    = dir === 'BULLISH' ? 'LONG' : dir === 'BEARISH' ? 'SHORT' : 'WAIT';
+      const side_cn = dir === 'BULLISH' ? '多头' : dir === 'BEARISH' ? '空头' : '等待';
+      const atmE = atmExecution || {};
+      const entry   = side === 'LONG'  ? (atmE.bull_trigger_fmt  || rawPlan.wait_long   || '--')
+                    : side === 'SHORT' ? (atmE.bear_trigger_fmt  || rawPlan.wait_short  || '--') : '--';
+      const confirm = side === 'LONG'  ? (atmE.bull_confirm_fmt  || '--')
+                    : side === 'SHORT' ? (atmE.bear_confirm_fmt  || '--') : '--';
+      const stop    = side === 'LONG'  ? (atmE.invalid_long_fmt  || rawPlan.invalidation || '--')
+                    : side === 'SHORT' ? (atmE.invalid_short_fmt || rawPlan.invalidation || '--') : '--';
+      const target_1 = rawPlan.tp1 || '--';
+      const target_2 = rawPlan.tp2 || '--';
+      let display_mode;
+      if (executable)                          display_mode = isBackup ? 'B单可执行' : 'A单可执行';
+      else if (rawStatus === 'blocked')         display_mode = isBackup ? 'B单观察预案' : 'A单观察预案';
+      else if (rawStatus === 'waiting')         display_mode = isBackup ? 'B单预备' : 'A单预备';
+      else if (!_flowNormal2 || !_allowDir2)    display_mode = isBackup ? 'B单｜数据降级' : 'A单｜数据降级';
+      else                                      display_mode = isBackup ? 'B单预案' : 'A单预案';
+      return {
+        name: isBackup ? 'B单' : 'A单', side, side_cn,
+        grade: rawPlan.direction_cn || side_cn,
+        instrument: rawPlan.instrument || '--',
+        entry, confirm, stop, target_1, target_2, target_3: '--',
+        reason: rawPlan.rationale || '--',
+        forbidden: rawPlan.forbidden || null,
+        action_now: rawPlan.action_now || '--',
+        executable, displayable: true, display_mode, blocked_reason,
+        raw: rawPlan,
+      };
+    }
+
+    const _primaryEntry2 = _buildPlanEntry2(planA, false);
+    const _backupEntry2  = _buildPlanEntry2(planB, true);
+    const _showPrimary2  = _primaryEntry2 !== null && _primaryEntry2.side !== 'WAIT';
+    const _showBackup2   = _backupEntry2  !== null && _backupEntry2.side  !== 'WAIT';
+    let _planMode2;
+    if (_execAllowed2 && _showPrimary2)       _planMode2 = 'EXECUTABLE';
+    else if (rawStatus === 'blocked')          _planMode2 = 'OBSERVE';
+    else if (rawStatus === 'waiting')          _planMode2 = 'STANDBY';
+    else if (!_flowNormal2)                    _planMode2 = 'DEGRADED';
+    else                                       _planMode2 = 'WAIT';
+    let _planNote2 = null;
+    if (!_execAllowed2 && _primaryEntry2 && _primaryEntry2.side !== 'WAIT') {
+      const _p2 = _primaryEntry2;
+      _planNote2 = `${_p2.side_cn}预案：${_p2.entry}（${_p2.confirm} 确认）｜失效 ${_p2.stop}｜禁做：${_p2.blocked_reason || '等确认'}`;
+    }
+    // 挂载到外层变量供 return 使用
+    var _orderPlan2 = {
+      primary_plan:      _primaryEntry2,
+      backup_plan:       _backupEntry2,
+      show_primary_plan: _showPrimary2,
+      show_backup_plan:  _showBackup2,
+      plan_mode:         _planMode2,
+      plan_note:         _planNote2,
+    };
+  }
+
+
   // ── Step 12: Display helpers ─────────────────────────────────────────────
 
   const dirColor = pc.direction === 'LONG_CALL' ? 'bullish'
@@ -404,10 +486,11 @@ export function buildHomeViewModel(formattedSignal) {
     final_text:             finalText,
     guards,
 
-    // 预案（透传）
+    // 预案（透传 + order_plan 收口层）
     plan,
     plan_a:                 planA,
     plan_b:                 planB,
+    order_plan:             (typeof _orderPlan2 !== "undefined" ? _orderPlan2 : null),
 
     // 预格式化读物（透传）
     money_read:             mr,

@@ -2453,10 +2453,23 @@ function renderHome(signal) {
                   '</div>';
 
                 const isLocked = abStatus2 === 'blocked' || abStatus2 === 'wait';
-                // Tab 2: 主做
+                // [ORDER_PLAN] 读取 order_plan 的显示权和执行权
+                const _op2          = hvm.order_plan || {};
+                const _opPrimary    = _op2.primary_plan || null;
+                const _opBackup     = _op2.backup_plan  || null;
+                const _showPrimary  = _op2.show_primary_plan === true;
+                const _showBackup   = _op2.show_backup_plan  === true;
+                const _planNote     = _op2.plan_note || null;
+                // Tab 2: 主做（A单）— LOCKED 下显示预案，但标注"未触发"
                 let tab2Html = '<div class="ptab-pane" id="ptab-pane-main" style="display:none">';
-                if (!planA2 || dirA2 === 'WAIT') {
-                  // [HVM] forced_wait_reason 从 hvm.status.scenario 读取
+                if (isLocked && _showPrimary && _opPrimary) {
+                  // LOCKED 下：显示 A单预案，但加"禁做"标注
+                  const _lockedBanner = '<div class="ab-locked-plan-banner">' +
+                    '<span class="ab-locked-icon">🔒</span>' +
+                    '<span class="ab-locked-text">预案观察｜禁止执行 — ' + escapeHtml(_opPrimary.blocked_reason || '等确认') + '</span>' +
+                    '</div>';
+                  tab2Html += _lockedBanner + renderPlanCard(_opPrimary.raw || planA2, aIsBull2 ? 'A单预案（多）' : 'A单预案（空）', trigStat3, abStatus2);
+                } else if (!planA2 || dirA2 === 'WAIT') {
                   const _waitScenario = hvmSt.scenario || abScenario2 || null;
                   const waitReason2 = (planA2 && planA2.rationale)
                     || (_waitScenario === 'flow_gap_too_small' ? 'Call/Put Flow 差距不足 15%，资金尚未分化'
@@ -2470,10 +2483,15 @@ function renderHome(signal) {
                   tab2Html += renderPlanCard(planA2, aIsBull2 ? '多单' : '空单', trigStat3, abStatus2);
                 }
                 tab2Html += '</div>';
-
-                // Tab 3: 备选
+                // Tab 3: 备选（B单）— LOCKED 下同样显示预案
                 let tab3Html = '<div class="ptab-pane" id="ptab-pane-alt" style="display:none">';
-                if (!planB2 || dirB2 === 'WAIT') {
+                if (isLocked && _showBackup && _opBackup) {
+                  const _lockedBannerB = '<div class="ab-locked-plan-banner">' +
+                    '<span class="ab-locked-icon">🔒</span>' +
+                    '<span class="ab-locked-text">备选观察｜禁止执行 — ' + escapeHtml(_opBackup.blocked_reason || '等确认') + '</span>' +
+                    '</div>';
+                  tab3Html += _lockedBannerB + renderPlanCard(_opBackup.raw || planB2, bIsBull2 ? 'B单预案（多）' : 'B单预案（空）', trigStat3, abStatus2);
+                } else if (!planB2 || dirB2 === 'WAIT') {
                   tab3Html += '<div class="ab-wait-block"><div class="ab-wait-icon">—</div><div class="ab-wait-title">暂无备选方案</div><div class="ab-wait-reason">当前场景只有单一方向预案</div></div>';
                 } else if (isOpposite2) {
                   tab3Html += renderPlanCard(planB2, bIsBull2 ? '多单（备选）' : '空单（备选）', trigStat3, abStatus2);
@@ -2481,17 +2499,29 @@ function renderHome(signal) {
                   tab3Html += renderPlanCard(planB2, bIsBull2 ? '多单（备选）' : '空单（备选）', trigStat3, abStatus2);
                 }
                 tab3Html += '</div>';
-                const mainTabLabel = isLocked ? '主做(禁)' : (!planA2 || dirA2 === 'WAIT') ? '主做' : (aIsBull2 ? '多单' : '空单');
-                const altTabLabel  = isLocked ? '备选(禁)' : (!planB2 || dirB2 === 'WAIT') ? '备选' : (bIsBull2 ? '备选（多）' : '备选（空）');
-
+                // Tab 标题：根据 order_plan.display_mode 和 isLocked 决定
+                let mainTabLabel, altTabLabel;
+                if (isLocked) {
+                  mainTabLabel = (_showPrimary && _opPrimary) ? (_opPrimary.display_mode || 'A单预案') : '主做';
+                  altTabLabel  = (_showBackup  && _opBackup)  ? (_opBackup.display_mode  || 'B单预案') : '备选';
+                } else {
+                  mainTabLabel = (!planA2 || dirA2 === 'WAIT') ? '主做' : (aIsBull2 ? '多单' : '空单');
+                  altTabLabel  = (!planB2 || dirB2 === 'WAIT') ? '备选' : (bIsBull2 ? '备选（多）' : '备选（空）');
+                }
+                // LOCKED 时在 Tab 导航下方显示 plan_note 摘要
+                const _planNoteHtml = (isLocked && _planNote)
+                  ? '<div class="ab-plan-note-bar">' + escapeHtml(_planNote) + '</div>'
+                  : '';
                 return '<div class="ptab-container" data-tab-id="primary-tabs">' +
                   '<div class="ptab-nav">' +
                     '<button class="ptab-btn active" data-tab="eye">盘眼</button>' +
-                    (isLocked ? '<span class="ptab-locked-notice">LOCKED — 禁止开仓，仅观察</span>' : ('<button class="ptab-btn" data-tab="main">' + escapeHtml(mainTabLabel) + '</button>' +
-                    '<button class="ptab-btn" data-tab="alt">' + escapeHtml(altTabLabel) + '</button>')) +
+                    '<button class="ptab-btn' + (isLocked ? ' ptab-btn-locked' : '') + '" data-tab="main">' + escapeHtml(mainTabLabel) + '</button>' +
+                    '<button class="ptab-btn' + (isLocked ? ' ptab-btn-locked' : '') + '" data-tab="alt">' + escapeHtml(altTabLabel) + '</button>' +
                   '</div>' +
+                  (isLocked ? '<div class="ptab-locked-bar">🔒 LOCKED — 禁止开仓，以下为观察预案</div>' : '') +
+                  _planNoteHtml +
                   '<div class="ptab-body">' +
-                    tab1Html + (isLocked ? '' : tab2Html + tab3Html) +
+                    tab1Html + tab2Html + tab3Html +
                   '</div>' +
                 '</div>';
               })()}

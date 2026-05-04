@@ -2729,3 +2729,54 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
   display: block;
   overflow-x: hidden;
 }
+
+/* ── Order Plan: LOCKED 预案显示样式 ─────────────────────────────────────── */
+.ptab-locked-bar {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 14px;
+  margin: 6px 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ab-locked-plan-banner {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ab-locked-icon { font-size: 14px; }
+.ab-locked-text {
+  color: #c2410c;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.ab-plan-note-bar {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 6px;
+  color: #166534;
+  font-size: 12px;
+  padding: 8px 14px;
+  margin: 4px 0 6px;
+  line-height: 1.5;
+}
+.ptab-btn-locked {
+  opacity: 0.7;
+  border-color: #fca5a5 !important;
+  color: #dc2626 !important;
+  background: #fff5f5 !important;
+}
+.ptab-btn-locked:hover {
+  background: #fee2e2 !important;
+}
