@@ -392,29 +392,39 @@ export function buildHomeViewModel(formattedSignal) {
     function _buildPlanEntry2(rawPlan, isBackup) {
       if (!rawPlan) return null;
       const dir = (rawPlan.direction || 'WAIT').toUpperCase();
-      const isWait = dir === 'WAIT';
-      const executable = _execAllowed2 && !isWait;
+      // LOCKED 场景下 plan_a 是 _lockedPlan（无 direction），但有 wait_long/wait_short
+      // 视为 DUAL_WATCH（双向观察预案），side = 'DUAL'
+      const hasDualWatch = dir === 'WAIT' && rawPlan.wait_long && rawPlan.wait_short
+        && rawStatus === 'blocked';
+      const isDual = hasDualWatch;
+      const isWait = dir === 'WAIT' && !isDual;
+      const executable = _execAllowed2 && !isWait && !isDual;
       let blockedReasons = [];
       if (!_isReady2)        blockedReasons.push(rawStatus === 'blocked' ? 'ATM 锁仓区 / 正 Gamma 磁吸' : '状态未就绪');
       if (!_flowNormal2)     blockedReasons.push('Flow 数据降级');
       if (!_allowDir2)       blockedReasons.push('方向降级');
       if (!_priceOk2)        blockedReasons.push('价格未接入');
       if (!_notInLockZone2)  blockedReasons.push('ATM 锁仓区内');
-      if (isWait)            blockedReasons.push(rawPlan.rationale || '等待方向确认');
+      if (isWait && !isDual) blockedReasons.push(rawPlan.rationale || '等待方向确认');
       const blocked_reason = blockedReasons.length > 0 ? blockedReasons.join(' / ') : null;
-      const side    = dir === 'BULLISH' ? 'LONG' : dir === 'BEARISH' ? 'SHORT' : 'WAIT';
-      const side_cn = dir === 'BULLISH' ? '多头' : dir === 'BEARISH' ? '空头' : '等待';
+      const side    = dir === 'BULLISH' ? 'LONG' : dir === 'BEARISH' ? 'SHORT' : (isDual ? 'DUAL' : 'WAIT');
+      const side_cn = dir === 'BULLISH' ? '多头' : dir === 'BEARISH' ? '空头' : (isDual ? '双向观察' : '等待');
       const atmE = atmExecution || {};
-      const entry   = side === 'LONG'  ? (atmE.bull_trigger_fmt  || rawPlan.wait_long   || '--')
+      // DUAL 模式：entry=多头触发条件，confirm=空头触发条件，stop=失效线
+      const entry   = isDual ? (rawPlan.wait_long || '--')
+                    : side === 'LONG'  ? (atmE.bull_trigger_fmt  || rawPlan.wait_long   || '--')
                     : side === 'SHORT' ? (atmE.bear_trigger_fmt  || rawPlan.wait_short  || '--') : '--';
-      const confirm = side === 'LONG'  ? (atmE.bull_confirm_fmt  || '--')
+      const confirm = isDual ? (rawPlan.wait_short || '--')
+                    : side === 'LONG'  ? (atmE.bull_confirm_fmt  || '--')
                     : side === 'SHORT' ? (atmE.bear_confirm_fmt  || '--') : '--';
-      const stop    = side === 'LONG'  ? (atmE.invalid_long_fmt  || rawPlan.invalidation || '--')
+      const stop    = isDual ? (rawPlan.invalidation || '--')
+                    : side === 'LONG'  ? (atmE.invalid_long_fmt  || rawPlan.invalidation || '--')
                     : side === 'SHORT' ? (atmE.invalid_short_fmt || rawPlan.invalidation || '--') : '--';
       const target_1 = rawPlan.tp1 || '--';
       const target_2 = rawPlan.tp2 || '--';
       let display_mode;
       if (executable)                          display_mode = isBackup ? 'B单可执行' : 'A单可执行';
+      else if (isDual)                         display_mode = '双向观察预案';
       else if (rawStatus === 'blocked')         display_mode = isBackup ? 'B单观察预案' : 'A单观察预案';
       else if (rawStatus === 'waiting')         display_mode = isBackup ? 'B单预备' : 'A单预备';
       else if (!_flowNormal2 || !_allowDir2)    display_mode = isBackup ? 'B单｜数据降级' : 'A单｜数据降级';
@@ -424,18 +434,21 @@ export function buildHomeViewModel(formattedSignal) {
         grade: rawPlan.direction_cn || side_cn,
         instrument: rawPlan.instrument || '--',
         entry, confirm, stop, target_1, target_2, target_3: '--',
-        reason: rawPlan.rationale || '--',
+        watch: rawPlan.watch || null,
+        wait_long: rawPlan.wait_long || null,
+        wait_short: rawPlan.wait_short || null,
         forbidden: rawPlan.forbidden || null,
-        action_now: rawPlan.action_now || '--',
+        reason: rawPlan.rationale || rawPlan.why || '--',
+        action_now: rawPlan.action_now || rawPlan.state || '--',
         executable, displayable: true, display_mode, blocked_reason,
         raw: rawPlan,
       };
     }
-
     const _primaryEntry2 = _buildPlanEntry2(planA, false);
     const _backupEntry2  = _buildPlanEntry2(planB, true);
-    const _showPrimary2  = _primaryEntry2 !== null && _primaryEntry2.side !== 'WAIT';
-    const _showBackup2   = _backupEntry2  !== null && _backupEntry2.side  !== 'WAIT';
+    // DUAL 模式也显示（双向观察预案）
+    const _showPrimary2  = _primaryEntry2 !== null && (_primaryEntry2.side !== 'WAIT');
+    const _showBackup2   = _backupEntry2  !== null && (_backupEntry2.side  !== 'WAIT');
     let _planMode2;
     if (_execAllowed2 && _showPrimary2)       _planMode2 = 'EXECUTABLE';
     else if (rawStatus === 'blocked')          _planMode2 = 'OBSERVE';

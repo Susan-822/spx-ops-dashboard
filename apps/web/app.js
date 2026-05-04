@@ -2468,7 +2468,26 @@ function renderHome(signal) {
                     '<span class="ab-locked-icon">🔒</span>' +
                     '<span class="ab-locked-text">预案观察｜禁止执行 — ' + escapeHtml(_opPrimary.blocked_reason || '等确认') + '</span>' +
                     '</div>';
-                  tab2Html += _lockedBanner + renderPlanCard(_opPrimary.raw || planA2, aIsBull2 ? 'A单预案（多）' : 'A单预案（空）', trigStat3, abStatus2);
+                  // DUAL 模式：双向观察预案（LOCKED 时 plan_a 有 wait_long/wait_short 但无方向）
+                  if (_opPrimary.side === 'DUAL') {
+                    const _dualCard = '<div class="ab-dual-observe-block">' +
+                      '<div class="ab-dual-observe-title">📋 双向观察预案（LOCKED）</div>' +
+                      (_opPrimary.watch ? '<div class="ab-dual-observe-watch">👁 ' + escapeHtml(_opPrimary.watch) + '</div>' : '') +
+                      '<div class="ab-dual-observe-row">' +
+                        '<span class="ab-dual-dir bull">↗ 转多</span>' +
+                        '<span class="ab-dual-cond">' + escapeHtml(_opPrimary.wait_long || _opPrimary.entry || '--') + '</span>' +
+                      '</div>' +
+                      '<div class="ab-dual-observe-row">' +
+                        '<span class="ab-dual-dir bear">↘ 转空</span>' +
+                        '<span class="ab-dual-cond">' + escapeHtml(_opPrimary.wait_short || _opPrimary.confirm || '--') + '</span>' +
+                      '</div>' +
+                      (_opPrimary.forbidden ? '<div class="ab-dual-forbidden">⊘ 禁做：' + escapeHtml(_opPrimary.forbidden) + '</div>' : '') +
+                      (_opPrimary.stop && _opPrimary.stop !== '--' ? '<div class="ab-dual-stop">⊗ 失效线：' + escapeHtml(_opPrimary.stop) + '</div>' : '') +
+                    '</div>';
+                    tab2Html += _lockedBanner + _dualCard;
+                  } else {
+                    tab2Html += _lockedBanner + renderPlanCard(_opPrimary.raw || planA2, aIsBull2 ? 'A单预案（多）' : 'A单预案（空）', trigStat3, abStatus2);
+                  }
                 } else if (!planA2 || dirA2 === 'WAIT') {
                   const _waitScenario = hvmSt.scenario || abScenario2 || null;
                   const waitReason2 = (planA2 && planA2.rationale)
