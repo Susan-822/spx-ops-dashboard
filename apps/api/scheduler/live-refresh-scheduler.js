@@ -31,6 +31,7 @@ import {
 import { detectAbStateChange } from '../state/ab-state-watcher.js';
 import { sendAbTelegramAlerts } from '../alerts/telegram-ab-alert.js';
 import { getCurrentSignal } from '../decision_engine/current-signal.js';
+import { maybeSendPreMarketSnapshot } from '../alerts/pre-market-snapshot.js';
 
 // ─── Fixed intervals for non-UW jobs (milliseconds) ──────────────────────────
 const FIXED_INTERVALS = {
@@ -325,12 +326,20 @@ export function startLiveRefreshScheduler() {
 
   adaptiveScheduler.start();
 
-  // ── 2. Fixed jobs (FMP, Theta) ─────────────────────────────────────────────
+  // ── 2. Fixed jobs (FMP, Theta) ──────────────────────────────────────────────────────────────────────────────────────
   const fixedJobs = [
     { name: 'fmp_price', fn: runFmpPriceJob,       interval: FIXED_INTERVALS.fmp_price },
     { name: 'fmp_event', fn: runFmpEventJob,        interval: FIXED_INTERVALS.fmp_event },
     { name: 'theta',     fn: runThetaStaleGuardJob, interval: FIXED_INTERVALS.theta },
   ];
+
+  // ── 3. Pre-market snapshot (09:25 ET, once per day) ──────────────────────────────────────────────
+  // Checks every 60 s; maybeSendPreMarketSnapshot() self-gates on time + date.
+  setInterval(() => {
+    maybeSendPreMarketSnapshot(getCurrentSignal).catch((err) => {
+      console.error('[scheduler] pre-market-snapshot error:', err.message);
+    });
+  }, 60_000).unref?.();
 
   for (const job of fixedJobs) {
     job.fn().catch((error) => markError(job.name, error));

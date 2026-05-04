@@ -33,75 +33,12 @@
  *   scheduler.stop();
  */
 
-// ─── US market hours gate ────────────────────────────────────────────────────
+// ─── Shared DST helper ───────────────────────────────────────────────────────
 /**
- * Returns true if current UTC time falls within the active trading window:
- *   Monday–Friday, 09:00–14:00 US Eastern Time.
- *
- * 09:00 ET start: captures pre-open flow + first 30 min before regular open.
- * 14:00 ET end:   covers the most active trading hours; user typically
- *                 stops trading by 14:00 ET.
- *
- * EDT (summer, UTC-4): 13:00–18:00 UTC
- * EST (winter, UTC-5): 14:00–19:00 UTC
- *
- * We use a simple UTC-offset approach:
- *   - 2nd Sunday in March → 1st Sunday in November: EDT (UTC-4)
- *   - Otherwise: EST (UTC-5)
+ * Returns ET offset in hours (4 for EDT, 5 for EST) for the given Date.
+ * DST: 2nd Sunday in March 07:00 UTC → 1st Sunday in November 06:00 UTC.
  */
-function isUsMarketHours() {
-  const now   = new Date();
-  const dow   = now.getUTCDay();          // 0=Sun … 6=Sat
-  if (dow === 0 || dow === 6) return false; // weekend
-
-  // Determine whether we are in EDT or EST
-  const year  = now.getUTCFullYear();
-  const month = now.getUTCMonth() + 1;    // 1-12
-
-  // DST start: 2nd Sunday in March at 02:00 EST = 07:00 UTC
-  const dstStart = (() => {
-    const d = new Date(Date.UTC(year, 2, 1));          // March 1
-    const firstSun = (7 - d.getUTCDay()) % 7;         // days to first Sunday
-    return new Date(Date.UTC(year, 2, 1 + firstSun + 7, 7)); // +7 days = 2nd Sunday 07:00 UTC
-  })();
-
-  // DST end: 1st Sunday in November at 02:00 EDT = 06:00 UTC
-  const dstEnd = (() => {
-    const d = new Date(Date.UTC(year, 10, 1));         // November 1
-    const firstSun = (7 - d.getUTCDay()) % 7;
-    return new Date(Date.UTC(year, 10, 1 + firstSun, 6)); // 1st Sunday 06:00 UTC
-  })();
-
-  const isEDT = now >= dstStart && now < dstEnd;
-  const offsetHours = isEDT ? 4 : 5;    // UTC-4 (EDT) or UTC-5 (EST)
-
-  // Convert UTC to ET minutes-of-day
-  const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-  const etMinutes  = ((utcMinutes - offsetHours * 60) + 1440) % 1440;
-
-  // Active window: 09:00–14:00 ET
-  return etMinutes >= 9 * 60 && etMinutes < 14 * 60;
-}
-
-// ─── Market phase detection ───────────────────────────────────────────────────
-/**
- * Returns the current market phase based on ET time:
- *   'sprint'  — 09:00–09:45 ET: opening sprint, highest frequency
- *   'main'    — 09:45–13:30 ET: main session, balanced frequency
- *   'closing' — 13:30–14:00 ET: closing sprint, elevated frequency
- *   'closed'  — outside window: no fetching
- *
- * Quota budget (09:00–14:00 ET, 5h total):
- *   Sprint  (45 min):  ~490 req
- *   Main   (225 min): ~1185 req
- *   Closing (30 min):  ~227 req
- *   TOTAL: ~1,902 req/day — 87.3% buffer vs 15,000 daily limit
- */
-function getMarketPhase() {
-  const now  = new Date();
-  const dow  = now.getUTCDay();
-  if (dow === 0 || dow === 6) return 'closed';
-
+function _etOffset(now) {
   const year = now.getUTCFullYear();
   const dstStart = (() => {
     const d = new Date(Date.UTC(year, 2, 1));
@@ -113,83 +50,169 @@ function getMarketPhase() {
     const firstSun = (7 - d.getUTCDay()) % 7;
     return new Date(Date.UTC(year, 10, 1 + firstSun, 6));
   })();
-  const isEDT = now >= dstStart && now < dstEnd;
-  const offsetHours = isEDT ? 4 : 5;
+  return (now >= dstStart && now < dstEnd) ? 4 : 5;
+}
 
-  const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-  const etMinutes  = ((utcMinutes - offsetHours * 60) + 1440) % 1440;
+/**
+ * Returns ET minutes-of-day (0–1439) for the given Date.
+ */
+function _etMinutes(now) {
+  const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+  return ((utcMin - _etOffset(now) * 60) + 1440) % 1440;
+}
 
-  if (etMinutes >= 9 * 60      && etMinutes < 9 * 60 + 45)  return 'sprint';   // 09:00–09:45
-  if (etMinutes >= 9 * 60 + 45 && etMinutes < 13 * 60 + 30) return 'main';     // 09:45–13:30
-  if (etMinutes >= 13 * 60 + 30 && etMinutes < 14 * 60)     return 'closing';  // 13:30–14:00
+// ─── US market hours gate ────────────────────────────────────────────────────
+/**
+ * Returns true if current time falls within ANY active fetch window:
+ *   Mon–Fri, 06:40–16:00 ET (covers all 6 phases).
+ * Used as a fast outer gate before getMarketPhase() is called.
+ */
+function isUsMarketHours() {
+  const now = new Date();
+  const dow = now.getUTCDay();
+  if (dow === 0 || dow === 6) return false;
+  const etMin = _etMinutes(now);
+  // 06:40 = 400 min, 16:00 = 960 min
+  return etMin >= 6 * 60 + 40 && etMin < 16 * 60;
+}
+
+// ─── Market phase detection (6-phase) ────────────────────────────────────────────
+/**
+ * Returns the current market phase based on ET time (6-phase model):
+ *
+ *   Phase          ET window         Beijing (EDT)   Purpose
+ *   oi_burst       06:40–07:00       18:40–19:00     OCC OI update, GEX baseline
+ *   trf_burst      07:55–08:35       19:55–20:35     FINRA TRF dark pool flood
+ *   open_sprint    09:30–10:30       21:30–22:30     Opening hour, max frequency
+ *   midday         10:30–14:30       22:30–02:30+    Lunch lull, conserve quota
+ *   closing        14:30–16:00       02:30–04:00+    0DTE Gamma squeeze window
+ *   closed         all other times   —               Zero API calls
+ *
+ * Quota budget (all active phases, per day):
+ *   oi_burst   (20 min):   ~14 req  (GEX/IV only)
+ *   trf_burst  (40 min):  ~120 req  (flow + darkpool only)
+ *   open_sprint(60 min):  ~714 req  (all endpoints, high freq)
+ *   midday    (240 min):  ~344 req  (all endpoints, low freq)
+ *   closing    (90 min):  ~606 req  (flow + darkpool + GEX elevated)
+ *   snapshot   (1 shot):    ~8 req  (09:25 pre-market snapshot)
+ *   TOTAL: ~1,806 req/day — 88% buffer vs 15,000 daily limit
+ *
+ * Note: 09:25 snapshot is fired by live-refresh-scheduler, not this function.
+ */
+export function getMarketPhase() {
+  const now = new Date();
+  const dow = now.getUTCDay();
+  if (dow === 0 || dow === 6) return 'closed';
+  const etMin = _etMinutes(now);
+
+  if (etMin >= 6 * 60 + 40  && etMin < 7 * 60)           return 'oi_burst';    // 06:40–07:00
+  if (etMin >= 7 * 60 + 55  && etMin < 8 * 60 + 35)      return 'trf_burst';   // 07:55–08:35
+  if (etMin >= 9 * 60 + 30  && etMin < 10 * 60 + 30)     return 'open_sprint'; // 09:30–10:30
+  if (etMin >= 10 * 60 + 30 && etMin < 14 * 60 + 30)     return 'midday';      // 10:30–14:30
+  if (etMin >= 14 * 60 + 30 && etMin < 16 * 60)          return 'closing';     // 14:30–16:00
   return 'closed';
 }
 
 // ─── Interval tables (milliseconds) ──────────────────────────────────────────
 /**
- * SPRINT intervals — 09:00–09:45 ET (45 min = 2,700s)
- * Highest frequency: capture opening flow, GEX shifts, first-candle direction.
- * Budget: ~490 req
+ * OI_BURST intervals — 06:40–07:00 ET (20 min = 1,200s)
+ * Only GEX/IV endpoints: capture OCC overnight OI update for GEX baseline.
+ * All other endpoints: null (skip).
+ * Budget: ~14 req
+ */
+export const OI_BURST_INTERVALS = Object.freeze({
+  flow_recent:            null,      // skip — no flow data pre-market
+  net_prem_ticks:         null,      // skip
+  market_tide:            null,      // skip
+  options_volume:         null,      // skip
+  darkpool_spy:           null,      // skip
+  greek_exposure_strike: 120_000,   // 120 s — 10 req  ← GEX baseline
+  interpolated_iv:       600_000,   // 600 s —  2 req  ← IV baseline
+  iv_rank:               600_000,   // 600 s —  2 req
+  // OI_BURST TOTAL: ~14 req
+});
+
+/**
+ * TRF_BURST intervals — 07:55–08:35 ET (40 min = 2,400s)
+ * Only flow + darkpool: capture FINRA TRF institutional dark pool prints.
+ * Budget: ~120 req
+ */
+export const TRF_BURST_INTERVALS = Object.freeze({
+  flow_recent:            30_000,   //  30 s —  80 req  ← early flow direction
+  net_prem_ticks:         null,      // skip
+  market_tide:            null,      // skip
+  options_volume:         null,      // skip
+  darkpool_spy:           60_000,   //  60 s —  40 req  ← TRF dark pool
+  greek_exposure_strike:  null,      // skip
+  interpolated_iv:        null,      // skip
+  iv_rank:                null,      // skip
+  // TRF_BURST TOTAL: ~120 req
+});
+
+/**
+ * OPEN_SPRINT intervals — 09:30–10:30 ET (60 min = 3,600s)
+ * All endpoints, highest frequency: capture opening flow and GEX shifts.
+ * Budget: ~714 req
  */
 export const SPRINT_INTERVALS = Object.freeze({
-  flow_recent:            15_000,   //  15 s — 180 req
-  net_prem_ticks:         20_000,   //  20 s — 135 req
-  market_tide:            30_000,   //  30 s —  90 req
-  options_volume:         60_000,   //  60 s —  45 req
-  darkpool_spy:          120_000,   // 120 s —  22 req
-  greek_exposure_strike: 300_000,   // 300 s —   9 req
-  interpolated_iv:       600_000,   // 600 s —   4 req
-  iv_rank:               600_000,   // 600 s —   4 req
-  // SPRINT TOTAL: ~490 req
+  flow_recent:            15_000,   //  15 s — 240 req
+  net_prem_ticks:         20_000,   //  20 s — 180 req
+  market_tide:            30_000,   //  30 s — 120 req
+  options_volume:         60_000,   //  60 s —  60 req
+  darkpool_spy:           60_000,   //  60 s —  60 req
+  greek_exposure_strike: 120_000,   // 120 s —  30 req
+  interpolated_iv:       300_000,   // 300 s —  12 req
+  iv_rank:               300_000,   // 300 s —  12 req
+  // OPEN_SPRINT TOTAL: ~714 req
 });
 
 /**
- * MAIN intervals — 09:45–13:30 ET (225 min = 13,500s)
- * Balanced frequency: sustain data freshness through core trading hours.
- * Budget: ~1,185 req
+ * MIDDAY intervals — 10:30–14:30 ET (240 min = 14,400s)
+ * All endpoints, low frequency: conserve quota during lunch lull.
+ * Budget: ~344 req
  */
 export const NORMAL_INTERVALS = Object.freeze({
-  flow_recent:            30_000,   //  30 s — 450 req
-  net_prem_ticks:         45_000,   //  45 s — 300 req
-  market_tide:            60_000,   //  60 s — 225 req
-  options_volume:        120_000,   // 120 s — 112 req
-  darkpool_spy:          300_000,   // 300 s —  45 req
-  greek_exposure_strike: 600_000,   // 600 s —  22 req
-  interpolated_iv:       900_000,   // 900 s —  15 req
-  iv_rank:               900_000,   // 900 s —  15 req
-  // MAIN TOTAL: ~1,185 req
+  flow_recent:           120_000,   // 120 s — 120 req
+  net_prem_ticks:        180_000,   // 180 s —  80 req
+  market_tide:           300_000,   // 300 s —  48 req
+  options_volume:        600_000,   // 600 s —  24 req
+  darkpool_spy:          600_000,   // 600 s —  24 req
+  greek_exposure_strike: 900_000,   // 900 s —  16 req
+  interpolated_iv:       900_000,   // 900 s —  16 req
+  iv_rank:               900_000,   // 900 s —  16 req
+  // MIDDAY TOTAL: ~344 req
 });
 
 /**
- * CLOSING intervals — 13:30–14:00 ET (30 min = 1,800s)
- * Elevated frequency: capture end-of-session flow and final positioning.
- * Budget: ~227 req
+ * CLOSING intervals — 14:30–16:00 ET (90 min = 5,400s)
+ * Flow + darkpool + GEX elevated: capture 0DTE Gamma squeeze window.
+ * Budget: ~606 req
  */
 export const CLOSING_INTERVALS = Object.freeze({
-  flow_recent:            20_000,   //  20 s —  90 req
-  net_prem_ticks:         30_000,   //  30 s —  60 req
-  market_tide:            45_000,   //  45 s —  40 req
-  options_volume:         90_000,   //  90 s —  20 req
-  darkpool_spy:          180_000,   // 180 s —  10 req
-  greek_exposure_strike: 600_000,   // 600 s —   3 req
-  interpolated_iv:       900_000,   // 900 s —   2 req
-  iv_rank:               900_000,   // 900 s —   2 req
-  // CLOSING TOTAL: ~227 req
+  flow_recent:            30_000,   //  30 s — 180 req
+  net_prem_ticks:         45_000,   //  45 s — 120 req
+  market_tide:            60_000,   //  60 s —  90 req
+  options_volume:        120_000,   // 120 s —  45 req
+  darkpool_spy:           60_000,   //  60 s —  90 req
+  greek_exposure_strike: 120_000,   // 120 s —  45 req
+  interpolated_iv:       300_000,   // 300 s —  18 req
+  iv_rank:               300_000,   // 300 s —  18 req
+  // CLOSING TOTAL: ~606 req
 });
 
 /**
- * Turbo mode intervals — activated when near key levels
+ * Turbo mode intervals — activated when near key levels (any phase)
  */
 export const TURBO_INTERVALS = Object.freeze({
-  flow_recent:            20_000,   //  20 s — near key level (was 5s)
-  net_prem_ticks:         30_000,   //  30 s (was 10s)
-  market_tide:            45_000,   //  45 s (was 15s)
-  options_volume:        120_000,   // 120 s (was 30s)
-  darkpool_spy:          300_000,   // 300 s (was 60s)
-  greek_exposure_strike: 600_000,   // 600 s (was 120s)
-  interpolated_iv:       600_000,   // 600 s (was 120s)
-  iv_rank:               900_000,   // 900 s (unchanged)
-  // TURBO total ~6048 req/day — still within 15,000 limit
+  flow_recent:            15_000,   //  15 s — max speed near key level
+  net_prem_ticks:         20_000,   //  20 s
+  market_tide:            30_000,   //  30 s
+  options_volume:         60_000,   //  60 s
+  darkpool_spy:           30_000,   //  30 s — darkpool elevated near key
+  greek_exposure_strike:  60_000,   //  60 s
+  interpolated_iv:       300_000,   // 300 s
+  iv_rank:               300_000,   // 300 s
+  // TURBO: used as minimum floor, not absolute override
 });
 
 /**
@@ -434,14 +457,20 @@ export class AdaptiveRefreshScheduler {
   // ─── Internal ────────────────────────────────────────────────────────────────
 
   _currentInterval(name) {
-    // Phase-aware base interval
+    // Phase-aware base interval (6-phase model)
     const phase = getMarketPhase();
     let baseInterval;
     switch (phase) {
-      case 'sprint':  baseInterval = SPRINT_INTERVALS[name]  ?? NORMAL_INTERVALS[name]; break;
-      case 'closing': baseInterval = CLOSING_INTERVALS[name] ?? NORMAL_INTERVALS[name]; break;
-      default:        baseInterval = NORMAL_INTERVALS[name]; break;  // 'main' or 'closed'
+      case 'oi_burst':    baseInterval = OI_BURST_INTERVALS[name];    break; // null = skip
+      case 'trf_burst':   baseInterval = TRF_BURST_INTERVALS[name];   break; // null = skip
+      case 'open_sprint': baseInterval = SPRINT_INTERVALS[name]  ?? NORMAL_INTERVALS[name]; break;
+      case 'closing':     baseInterval = CLOSING_INTERVALS[name] ?? NORMAL_INTERVALS[name]; break;
+      case 'midday':      baseInterval = NORMAL_INTERVALS[name];      break;
+      default:            return null;  // 'closed' — zero API calls
     }
+
+    // null means this endpoint is intentionally skipped in this phase
+    if (baseInterval == null) return null;
 
     // Apply speed-mode multiplier on top of phase base
     switch (this._mode) {
@@ -478,20 +507,20 @@ export class AdaptiveRefreshScheduler {
     if (!this._started) return;
     const state = this._endpointState[name];
     if (!state) return;
-    // ── Market-hours gate ───────────────────────────────────────────────────────
-    // Skip UW API calls outside active trading window (09:00–14:00 ET, Mon–Fri).
-    // Phase-aware intervals:
-    //   sprint  09:00–09:45: flow_recent=15s, ~490 req
-    //   main    09:45–13:30: flow_recent=30s, ~1185 req
-    //   closing 13:30–14:00: flow_recent=20s, ~227 req
-    //   TOTAL: ~1,902 req/day (87.3% buffer vs 15,000 limit)
+    // ── Market-hours gate (6-phase) ────────────────────────────────────────────────────────
+    // 6-phase intervals (all phases, ~1,806 req/day, 88% buffer vs 15,000 limit):
+    //   oi_burst    06:40–07:00: GEX/IV only,          ~14 req
+    //   trf_burst   07:55–08:35: flow+darkpool only,  ~120 req
+    //   open_sprint 09:30–10:30: all endpoints 15s,   ~714 req
+    //   midday      10:30–14:30: all endpoints 120s,  ~344 req
+    //   closing     14:30–16:00: flow+dark+GEX 30s,   ~606 req
+    //   closed      all other:   zero API calls
     // Allow override via env var UW_IGNORE_MARKET_HOURS=true for testing.
     const phase = getMarketPhase();
     if (phase === 'closed' && process.env.UW_IGNORE_MARKET_HOURS !== 'true') {
       // Silently skip — no log spam, no backoff penalty
       return;
     }
-
     // Respect backoff
     if (state.backoff_until && Date.now() < state.backoff_until) {
       const waitSec = Math.round((state.backoff_until - Date.now()) / 1000);
