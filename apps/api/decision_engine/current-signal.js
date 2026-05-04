@@ -2202,8 +2202,8 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   const atmTriggerEngine = buildAtmTriggerEngine({
     spot: priceContract.live_price,
     atm: atmEngine.atm,
-    near_call_wall: dealerWallMap.near_call_wall ?? null,
-    near_put_wall:  dealerWallMap.near_put_wall  ?? null,
+    far_call_wall: dealerWallMap.far_call_wall ?? dealerWallMap.near_call_wall ?? null,
+    far_put_wall:  dealerWallMap.far_put_wall  ?? dealerWallMap.near_put_wall  ?? null,
     gamma_regime:   gammaRegimeEngine.gamma_regime,
     pin_risk:       atmEngine.pin_risk ?? 0,
     flow_behavior:  flowBehaviorEngine.behavior,
@@ -2231,8 +2231,8 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   // P1-2: Wall gate — use dealerWallMap.wall_status (near wall validation) + spot gate
   const _spotAvailable = priceContract.spot_gate_open === true;
   const _nearWallValid = dealerWallMap.wall_status === 'valid';
-  const _callWallGated = (_spotAvailable && _nearWallValid) ? dealerWallMap.near_call_wall ?? null : null;
-  const _putWallGated  = (_spotAvailable && _nearWallValid) ? dealerWallMap.near_put_wall  ?? null : null;
+  const _callWallGated = (_spotAvailable && _nearWallValid) ? (dealerWallMap.far_call_wall ?? dealerWallMap.near_call_wall ?? null) : null;
+  const _putWallGated  = (_spotAvailable && _nearWallValid) ? (dealerWallMap.far_put_wall  ?? dealerWallMap.near_put_wall  ?? null) : null;
   const _wallStatus    = _spotAvailable === false ? 'unavailable' : dealerWallMap.wall_status ?? 'unavailable';
   const _wallErrors    = _spotAvailable === false ? ['spot_missing'] : (dealerWallMap.wall_errors ?? []);
 

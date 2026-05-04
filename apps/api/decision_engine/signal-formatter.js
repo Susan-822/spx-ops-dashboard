@@ -275,8 +275,8 @@ function buildLevels(signal) {
   const globalPutWall  = ate.global_put_wall  ?? dw.global_put_gex_cluster  ?? null;
 
   // ── Near walls (ATM±50, homepage background only) ─────────────────────────
-  const nearCallWall = ate.near_call_wall ?? (wallStatus !== 'unavailable' ? (dw.near_call_wall ?? null) : null);
-  const nearPutWall  = ate.near_put_wall  ?? (wallStatus !== 'unavailable' ? (dw.near_put_wall  ?? null) : null);
+  const nearCallWall = ate.near_call_wall ?? (wallStatus !== 'unavailable' ? (dw.gex_local_call_wall ?? null) : null);  // homepage: ATM±50 from ate, or ±30pt local
+  const nearPutWall  = ate.near_put_wall  ?? (wallStatus !== 'unavailable' ? (dw.gex_local_put_wall  ?? null) : null);  // homepage: ATM±50 from ate, or ±30pt local
 
   // Gamma flip display
   const gammaFlip  = dw.gamma_flip ?? null;
@@ -414,8 +414,8 @@ function buildMoneyRead(signal) {
   }
   // ── 做市商路径 ──────────────────────────────────────────────────────────────
   const atmVal  = signal.atm_engine?.atm ?? null;
-  const cwVal   = dw.near_call_wall ?? null;
-  const pwVal   = dw.near_put_wall  ?? null;
+  const cwVal   = dw.gex_local_call_wall ?? dw.far_call_wall ?? null;  // homepage: ±30pt local, fallback to far
+  const pwVal   = dw.gex_local_put_wall  ?? dw.far_put_wall  ?? null;  // homepage: ±30pt local, fallback to far
   const atmFmt  = atmVal != null ? String(Math.round(atmVal))  : '--';
   const cwFmt   = cwVal  != null ? String(Math.round(cwVal))   : '--';
   const pwFmt   = pwVal  != null ? String(Math.round(pwVal))   : '--';

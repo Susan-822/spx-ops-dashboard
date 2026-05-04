@@ -24,8 +24,8 @@
  *   invalidation_bull ATM-10  (多头失效线)
  *   invalidation_bear ATM+10  (空头失效线)
  *   lock_zone         [ATM-5, ATM+5]  (锁仓区)
- *   near_call_wall    近端 Call Wall（首页用，≤ATM+50）
- *   near_put_wall     近端 Put Wall（首页用，≥ATM-50）
+ *   far_call_wall     远端 Call Wall（Radar only，>ATM+50）
+ *   far_put_wall      远端 Put Wall（Radar only，>ATM-50）
  *   global_call_wall  远端 Call Wall（仅 Radar 页）
  *   global_put_wall   远端 Put Wall（仅 Radar 页）
  *   spot_in_lock_zone boolean
@@ -73,8 +73,8 @@ function classifyWall(wallLevel, atm, side) {
  * @param {object} params
  * @param {number} params.spot           - Current SPX spot price
  * @param {number} params.atm            - ATM strike (nearest 5-pt)
- * @param {number} params.near_call_wall - Near call wall from dealer-wall-engine
- * @param {number} params.near_put_wall  - Near put wall from dealer-wall-engine
+ * @param {number} params.far_call_wall  - Far call wall from dealer-wall-engine (±500pt)
+ * @param {number} params.far_put_wall   - Far put wall from dealer-wall-engine (±500pt)
  * @param {string} params.gamma_regime   - 'positive' | 'negative' | 'neutral' | 'unknown'
  * @param {number} params.pin_risk       - Pin risk score 0-100
  * @param {string} params.flow_behavior  - Flow behavior from flow-behavior-engine
@@ -83,8 +83,10 @@ function classifyWall(wallLevel, atm, side) {
 export function buildAtmTriggerEngine({
   spot = null,
   atm = null,
-  near_call_wall = null,
-  near_put_wall = null,
+  far_call_wall = null,
+  far_put_wall = null,
+  near_call_wall = null,  // legacy alias
+  near_put_wall = null,   // legacy alias
   gamma_regime = 'unknown',
   pin_risk = 0,
   flow_behavior = 'neutral',
@@ -107,7 +109,7 @@ export function buildAtmTriggerEngine({
       bear_target_1: null,  bear_target_2: null,
       invalidation_bull: null, invalidation_bear: null,
       lock_zone: null,
-      near_call_wall: null, near_put_wall: null,
+      far_call_wall: null, far_put_wall: null,
       global_call_wall: null, global_put_wall: null,
       spot_in_lock_zone: null,
       trigger_status: 'unknown',
@@ -148,13 +150,13 @@ export function buildAtmTriggerEngine({
   const spotBelowBear1 = spotVal != null && spotVal < bear_trigger_1;
 
   // ── Wall classification: near (homepage) vs far (Radar only) ──────────────
-  const callWallClass = classifyWall(near_call_wall, effectiveAtm, 'call');
-  const putWallClass  = classifyWall(near_put_wall,  effectiveAtm, 'put');
+  const callWallClass = classifyWall(far_call_wall ?? near_call_wall, effectiveAtm, 'call');
+  const putWallClass  = classifyWall(far_put_wall  ?? near_put_wall, effectiveAtm, 'put');
 
   const homepageCallWall = callWallClass.near;  // ≤ATM+50 → homepage
   const homepagePutWall  = putWallClass.near;   // ≥ATM-50 → homepage
-  const globalCallWall   = callWallClass.far ?? near_call_wall;   // >ATM+50 → Radar only
-  const globalPutWall    = putWallClass.far  ?? near_put_wall;    // >ATM-50 → Radar only
+  const globalCallWall   = callWallClass.far ?? far_call_wall ?? near_call_wall;   // >ATM+50 → Radar only
+  const globalPutWall    = putWallClass.far  ?? far_put_wall  ?? near_put_wall;    // >ATM-50 → Radar only
 
   // ── Trigger status ─────────────────────────────────────────────────────────
   let trigger_status = 'locked';

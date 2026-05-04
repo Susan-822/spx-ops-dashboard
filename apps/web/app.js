@@ -1365,8 +1365,8 @@ function renderHudZoneGamma(signal) {
   const hasLocalGex  = gexLocalCall != null || gexLocalPut != null;
 
   // ── Layer 3: Far Background Walls (>30pt — Radar only, shown as footnote) ──
-  const farCallWall = dw.near_call_wall != null ? Number(dw.near_call_wall) : null;
-  const farPutWall  = dw.near_put_wall  != null ? Number(dw.near_put_wall)  : null;
+  const farCallWall = dw.far_call_wall != null ? Number(dw.far_call_wall) : (dw.near_call_wall != null ? Number(dw.near_call_wall) : null);
+  const farPutWall  = dw.far_put_wall  != null ? Number(dw.far_put_wall)  : (dw.near_put_wall  != null ? Number(dw.near_put_wall)  : null);
   const farCallDist = spot != null && farCallWall != null ? Math.round(farCallWall - spot) : null;
   const farPutDist  = spot != null && farPutWall  != null ? Math.round(spot - farPutWall)  : null;
   // Only show far walls if they are genuinely far (>30pt) — otherwise they are already in Layer 2
@@ -1986,8 +1986,8 @@ function renderGexUrgencyChart(signal) {
   const spot  = pc.spot != null ? Number(pc.spot) : null;
   // Phase 2 fix: 首页 GEX 图优先读取 dealer_wall_map 近端墙（±500pt），
   // 避免 uw_wall_diagnostics 可能返回远端 strike（如 6850/8000）
-  const nearCallW = dw.near_call_wall != null ? Number(dw.near_call_wall) : null;
-  const nearPutW  = dw.near_put_wall  != null ? Number(dw.near_put_wall)  : null;
+  const nearCallW = dw.gex_local_call_wall != null ? Number(dw.gex_local_call_wall) : null;  // ±30pt local only
+  const nearPutW  = dw.gex_local_put_wall  != null ? Number(dw.gex_local_put_wall)  : null;  // ±30pt local only
   const callW = nearCallW ?? (diag.call_wall != null ? Number(diag.call_wall) : null);
   const putW  = nearPutW  ?? (diag.put_wall  != null ? Number(diag.put_wall)  : null);
 
@@ -2441,11 +2441,11 @@ function renderHome(signal) {
                 return '<div class="ptab-container" data-tab-id="primary-tabs">' +
                   '<div class="ptab-nav">' +
                     '<button class="ptab-btn active" data-tab="eye">盘眼</button>' +
-                    '<button class="ptab-btn" data-tab="main">' + escapeHtml(mainTabLabel) + '</button>' +
-                    '<button class="ptab-btn" data-tab="alt">' + escapeHtml(altTabLabel) + '</button>' +
+                    (isLocked ? '<span class="ptab-locked-notice">LOCKED — 禁止开仓，仅观察</span>' : ('<button class="ptab-btn" data-tab="main">' + escapeHtml(mainTabLabel) + '</button>' +
+                    '<button class="ptab-btn" data-tab="alt">' + escapeHtml(altTabLabel) + '</button>')) +
                   '</div>' +
                   '<div class="ptab-body">' +
-                    tab1Html + tab2Html + tab3Html +
+                    tab1Html + (isLocked ? '' : tab2Html + tab3Html) +
                   '</div>' +
                 '</div>';
               })()}
