@@ -385,7 +385,7 @@ export function buildHomeViewModel(formattedSignal) {
     const _isReady2        = rawStatus === 'LONG_READY' || rawStatus === 'SHORT_READY';
     const _flowNormal2     = (flow && flow.flow_quality === 'NORMAL');
     const _allowDir2       = (flow && flow.homepage_allow_direction !== false);
-    const _priceOk2        = (priceContract && priceContract.spot_gate_open !== false);
+    const _priceOk2        = (pc2 && pc2.spot_gate_open !== false);
     const _notInLockZone2  = !(atmExecution && atmExecution.in_lock_zone);
     const _execAllowed2    = _isReady2 && _flowNormal2 && _allowDir2 && _priceOk2 && _notInLockZone2;
 
