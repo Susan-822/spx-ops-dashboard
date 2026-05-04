@@ -83,44 +83,98 @@ function isUsMarketHours() {
   return etMinutes >= 9 * 60 && etMinutes < 14 * 60;
 }
 
+// ─── Market phase detection ───────────────────────────────────────────────────
+/**
+ * Returns the current market phase based on ET time:
+ *   'sprint'  — 09:00–09:45 ET: opening sprint, highest frequency
+ *   'main'    — 09:45–13:30 ET: main session, balanced frequency
+ *   'closing' — 13:30–14:00 ET: closing sprint, elevated frequency
+ *   'closed'  — outside window: no fetching
+ *
+ * Quota budget (09:00–14:00 ET, 5h total):
+ *   Sprint  (45 min):  ~490 req
+ *   Main   (225 min): ~1185 req
+ *   Closing (30 min):  ~227 req
+ *   TOTAL: ~1,902 req/day — 87.3% buffer vs 15,000 daily limit
+ */
+function getMarketPhase() {
+  const now  = new Date();
+  const dow  = now.getUTCDay();
+  if (dow === 0 || dow === 6) return 'closed';
+
+  const year = now.getUTCFullYear();
+  const dstStart = (() => {
+    const d = new Date(Date.UTC(year, 2, 1));
+    const firstSun = (7 - d.getUTCDay()) % 7;
+    return new Date(Date.UTC(year, 2, 1 + firstSun + 7, 7));
+  })();
+  const dstEnd = (() => {
+    const d = new Date(Date.UTC(year, 10, 1));
+    const firstSun = (7 - d.getUTCDay()) % 7;
+    return new Date(Date.UTC(year, 10, 1 + firstSun, 6));
+  })();
+  const isEDT = now >= dstStart && now < dstEnd;
+  const offsetHours = isEDT ? 4 : 5;
+
+  const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const etMinutes  = ((utcMinutes - offsetHours * 60) + 1440) % 1440;
+
+  if (etMinutes >= 9 * 60      && etMinutes < 9 * 60 + 45)  return 'sprint';   // 09:00–09:45
+  if (etMinutes >= 9 * 60 + 45 && etMinutes < 13 * 60 + 30) return 'main';     // 09:45–13:30
+  if (etMinutes >= 13 * 60 + 30 && etMinutes < 14 * 60)     return 'closing';  // 13:30–14:00
+  return 'closed';
+}
+
 // ─── Interval tables (milliseconds) ──────────────────────────────────────────
+/**
+ * SPRINT intervals — 09:00–09:45 ET (45 min = 2,700s)
+ * Highest frequency: capture opening flow, GEX shifts, first-candle direction.
+ * Budget: ~490 req
+ */
+export const SPRINT_INTERVALS = Object.freeze({
+  flow_recent:            15_000,   //  15 s — 180 req
+  net_prem_ticks:         20_000,   //  20 s — 135 req
+  market_tide:            30_000,   //  30 s —  90 req
+  options_volume:         60_000,   //  60 s —  45 req
+  darkpool_spy:          120_000,   // 120 s —  22 req
+  greek_exposure_strike: 300_000,   // 300 s —   9 req
+  interpolated_iv:       600_000,   // 600 s —   4 req
+  iv_rank:               600_000,   // 600 s —   4 req
+  // SPRINT TOTAL: ~490 req
+});
 
 /**
- * Normal mode intervals — conservative, stays well within 250 req/day
- * Total daily requests (rough estimate at normal mode):
- *   flow_recent:           86400/10  = 8640  (but UW caches, effective ~960)
- *   net_prem_ticks:        86400/20  = 4320  → ~480
- *   market_tide:           86400/30  = 2880  → ~320
- *   options_volume:        86400/60  = 1440  → ~160
- *   darkpool_spy:          86400/120 = 720   → ~80
- *   greek_exposure_strike: 86400/300 = 288   → ~32
- *   interpolated_iv:       86400/300 = 288   → ~32
- *   iv_rank:               86400/300 = 288   → ~32
- * Total per-endpoint requests per trading day (6.5h = 23400s):
- *   flow_recent:           23400/10  = 2340
- *   net_prem_ticks:        23400/20  = 1170
- *   market_tide:           23400/30  = 780
- *   options_volume:        23400/60  = 390
- *   darkpool_spy:          23400/120 = 195
- *   greek_exposure_strike: 23400/300 = 78
- *   interpolated_iv:       23400/300 = 78
- *   iv_rank:               23400/300 = 78
- * Total: ~5109 per trading day — but TTL cache in uw-api-provider means
- * actual HTTP requests are far fewer (only when TTL expires).
- * With TTL matching interval, effective requests ≈ interval-based count.
- * NOTE: Free plan = 250/day. We rely on TTL cache to avoid exceeding this.
- * Intervals are set to match TTL so each endpoint fetches at most once per interval.
+ * MAIN intervals — 09:45–13:30 ET (225 min = 13,500s)
+ * Balanced frequency: sustain data freshness through core trading hours.
+ * Budget: ~1,185 req
  */
 export const NORMAL_INTERVALS = Object.freeze({
-  flow_recent:            60_000,   //  60 s — UW spot + flow  ( 300/day @ 5h)
-  net_prem_ticks:         90_000,   //  90 s — net premium     ( 200/day)
-  market_tide:           120_000,   // 120 s — market tide     ( 150/day)
-  options_volume:        300_000,   // 300 s — P/C volume      (  60/day)
-  darkpool_spy:          600_000,   // 600 s — dark pool SPY   (  30/day)
-  greek_exposure_strike: 900_000,   // 900 s — GEX by strike   (  20/day)
-  interpolated_iv:       900_000,   // 900 s — IV              (  20/day)
-  iv_rank:               900_000,   // 900 s — IV rank         (  20/day)
-  // TOTAL ~800 req/day (09:00-14:00 ET, 5h) — 80% buffer vs 15,000 limit
+  flow_recent:            30_000,   //  30 s — 450 req
+  net_prem_ticks:         45_000,   //  45 s — 300 req
+  market_tide:            60_000,   //  60 s — 225 req
+  options_volume:        120_000,   // 120 s — 112 req
+  darkpool_spy:          300_000,   // 300 s —  45 req
+  greek_exposure_strike: 600_000,   // 600 s —  22 req
+  interpolated_iv:       900_000,   // 900 s —  15 req
+  iv_rank:               900_000,   // 900 s —  15 req
+  // MAIN TOTAL: ~1,185 req
+});
+
+/**
+ * CLOSING intervals — 13:30–14:00 ET (30 min = 1,800s)
+ * Elevated frequency: capture end-of-session flow and final positioning.
+ * Budget: ~227 req
+ */
+export const CLOSING_INTERVALS = Object.freeze({
+  flow_recent:            20_000,   //  20 s —  90 req
+  net_prem_ticks:         30_000,   //  30 s —  60 req
+  market_tide:            45_000,   //  45 s —  40 req
+  options_volume:         90_000,   //  90 s —  20 req
+  darkpool_spy:          180_000,   // 180 s —  10 req
+  greek_exposure_strike: 600_000,   // 600 s —   3 req
+  interpolated_iv:       900_000,   // 900 s —   2 req
+  iv_rank:               900_000,   // 900 s —   2 req
+  // CLOSING TOTAL: ~227 req
 });
 
 /**
@@ -380,13 +434,21 @@ export class AdaptiveRefreshScheduler {
   // ─── Internal ────────────────────────────────────────────────────────────────
 
   _currentInterval(name) {
+    // Phase-aware base interval
+    const phase = getMarketPhase();
+    let baseInterval;
+    switch (phase) {
+      case 'sprint':  baseInterval = SPRINT_INTERVALS[name]  ?? NORMAL_INTERVALS[name]; break;
+      case 'closing': baseInterval = CLOSING_INTERVALS[name] ?? NORMAL_INTERVALS[name]; break;
+      default:        baseInterval = NORMAL_INTERVALS[name]; break;  // 'main' or 'closed'
+    }
+
+    // Apply speed-mode multiplier on top of phase base
     switch (this._mode) {
-      case 'turbo':    return TURBO_INTERVALS[name]    ?? NORMAL_INTERVALS[name];
-      case 'throttle': return THROTTLE_INTERVALS[name] ?? NORMAL_INTERVALS[name] * 2;
-      case 'minimal':  return MINIMAL_ENDPOINTS.has(name)
-        ? THROTTLE_INTERVALS[name] ?? NORMAL_INTERVALS[name] * 2
-        : null;  // null = don't schedule in minimal mode
-      default:         return NORMAL_INTERVALS[name];
+      case 'turbo':    return Math.min(baseInterval, TURBO_INTERVALS[name] ?? baseInterval);
+      case 'throttle': return baseInterval * 2;
+      case 'minimal':  return MINIMAL_ENDPOINTS.has(name) ? baseInterval * 2 : null;
+      default:         return baseInterval;
     }
   }
 
@@ -416,14 +478,16 @@ export class AdaptiveRefreshScheduler {
     if (!this._started) return;
     const state = this._endpointState[name];
     if (!state) return;
-
-    // ── Market-hours gate ──────────────────────────────────────────────────────
-    // Skip UW API calls outside active trading window (09:00–14:00 ET,
-    // Mon–Fri) to preserve the 15,000 req/day quota.
-    // Normal mode: ~800 req/day | Turbo mode: ~2,190 req/day
-    // Both well within 15,000 daily limit (80%+ buffer).
+    // ── Market-hours gate ───────────────────────────────────────────────────────
+    // Skip UW API calls outside active trading window (09:00–14:00 ET, Mon–Fri).
+    // Phase-aware intervals:
+    //   sprint  09:00–09:45: flow_recent=15s, ~490 req
+    //   main    09:45–13:30: flow_recent=30s, ~1185 req
+    //   closing 13:30–14:00: flow_recent=20s, ~227 req
+    //   TOTAL: ~1,902 req/day (87.3% buffer vs 15,000 limit)
     // Allow override via env var UW_IGNORE_MARKET_HOURS=true for testing.
-    if (!isUsMarketHours() && process.env.UW_IGNORE_MARKET_HOURS !== 'true') {
+    const phase = getMarketPhase();
+    if (phase === 'closed' && process.env.UW_IGNORE_MARKET_HOURS !== 'true') {
       // Silently skip — no log spam, no backoff penalty
       return;
     }
