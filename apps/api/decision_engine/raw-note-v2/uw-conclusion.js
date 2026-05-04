@@ -67,6 +67,9 @@ function boundsFor(rows, spot, maxPain) {
 
 export function buildUwWallDiagnostics(raw = {}, { spot = null, maxPain = null } = {}) {
   const rows = asArray(raw.spot_gex_strike ?? raw.spot_gex);
+  // Fallback: read spot price from UW API row's 'price' field when no external spot provided
+  const resolvedSpot = numberOrNull(spot)
+    ?? (rows.length > 0 ? numberOrNull(rows[0]?.price) : null);
   const mapped = rows.map((row) => {
     const strike = firstNumber(row, ['strike', 'price', 'level']);
     const call = firstNumber(row, ['call_gamma_oi', 'call_gex', 'call_gamma', 'call_gamma_exposure']);
@@ -87,7 +90,7 @@ export function buildUwWallDiagnostics(raw = {}, { spot = null, maxPain = null }
     };
   }).filter((row) => row.strike != null);
   const rawStrikeValues = mapped.map((row) => row.strike).filter((value) => Number.isFinite(value));
-  const bounds = boundsFor(mapped, spot, maxPain);
+  const bounds = boundsFor(mapped, resolvedSpot, maxPain);
   const normalized = mapped.filter((row) => (
     row.strike > 0
     && (bounds.min == null || row.strike >= bounds.min)
@@ -125,6 +128,7 @@ export function buildUwWallDiagnostics(raw = {}, { spot = null, maxPain = null }
     strike_max: rawStrikeValues.length ? Math.max(...rawStrikeValues) : null,
     filtered_strike_min: normalized.length ? Math.min(...normalized.map((row) => row.strike)) : null,
     filtered_strike_max: normalized.length ? Math.max(...normalized.map((row) => row.strike)) : null,
+    spot: resolvedSpot,
     strike_filter_method: bounds.method,
     call_wall: callWall,
     put_wall: putWall,
