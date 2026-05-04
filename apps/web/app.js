@@ -1326,9 +1326,11 @@ function isSniperZone(spot, wall, threshold = 2) {
 
 // Zone 1: Gamma Battlefield
 function renderHudZoneGamma(signal) {
-  const gr = signal.gamma_regime_engine || {};
+  const gr  = signal.gamma_regime_engine || {};
   const atm = signal.atm_engine || {};
-  const dw = signal.dealer_wall_map || {};
+  const dw  = signal.dealer_wall_map || {};
+  const lv  = signal.levels || {};
+  const ate = signal.atm_trigger_engine || {};
   const spot = (signal.price_contract && signal.price_contract.live_price != null)
     ? signal.price_contract.live_price
     : (signal.observation_price && signal.observation_price.value != null ? signal.observation_price.value : null);
@@ -1338,18 +1340,39 @@ function renderHudZoneGamma(signal) {
   const regimeSubMap = { positive: '做市商阻尼 · 均值回归 · 卖权策略占优', negative: '做市商放波 · 趋势加速 · 买权策略占优', transitional: '环境切换中，谨慎双向', unknown: '等待 UW 数据' };
   const regimeSub = regimeSubMap[regime] || '';
   const score = (gr.scores && gr.scores.execution_confidence != null) ? gr.scores.execution_confidence : 0;
-  // Phase 2 fix: ONLY read near walls from dealer_wall_map (±500pt GEX-based)
-  // NEVER fallback to gamma_regime_engine.call_wall (which may be far/global wall)
-  const callWall = dw.near_call_wall != null ? Number(dw.near_call_wall) : null;
-  const putWall  = dw.near_put_wall  != null ? Number(dw.near_put_wall)  : null;
-  const nearWallMissing = callWall == null && putWall == null;
   const gammaFlip = gr.gamma_flip != null ? gr.gamma_flip : null;
-  const atmVal = atm.atm != null ? atm.atm : null;
-  const atmTrend = atm.atm_trend || 'stable';
-  const pinRisk = atm.pin_risk != null ? atm.pin_risk : 0;
-  const trendArrow = atmTrend === 'rising' ? '↑' : atmTrend === 'falling' ? '↓' : '→';
-  const badge = regime === 'positive' ? 'green' : regime === 'negative' ? 'red' : regime === 'transitional' ? 'amber' : 'gray';
   const flipClass = spot != null && gammaFlip != null ? (spot > gammaFlip ? 'bullish' : 'bearish') : 'neutral';
+  const badge = regime === 'positive' ? 'green' : regime === 'negative' ? 'red' : regime === 'transitional' ? 'amber' : 'gray';
+
+  // ── Layer 1: ATM Execution Lines (primary — 0DTE trading use) ─────────────
+  const atmVal    = atm.atm != null ? atm.atm : null;
+  const atmTrend  = atm.atm_trend || 'stable';
+  const pinRisk   = atm.pin_risk != null ? atm.pin_risk : 0;
+  const trendArrow = atmTrend === 'rising' ? '↑' : atmTrend === 'falling' ? '↓' : '→';
+  // bull_trigger = ATM+5, bear_trigger = ATM-5 (from atm_trigger_engine)
+  const bullTrig  = lv.bull_trigger != null ? Number(lv.bull_trigger) : null;
+  const bearTrig  = lv.bear_trigger != null ? Number(lv.bear_trigger) : null;
+  const bullTarg  = lv.bull_target_1 != null ? Number(lv.bull_target_1) : null;
+  const bearTarg  = lv.bear_target_1 != null ? Number(lv.bear_target_1) : null;
+  const lockZone  = lv.lock_zone || null;
+  const spotInLock = lv.spot_in_lock_zone ?? true;
+  const lockLow   = lockZone != null ? lockZone[0] : (bearTrig ?? null);
+  const lockHigh  = lockZone != null ? lockZone[1] : (bullTrig ?? null);
+
+  // ── Layer 2: GEX Local Reference (±30pt of spot — informational only) ─────
+  const gexLocalCall = lv.gex_local_call_wall != null ? Number(lv.gex_local_call_wall) : null;
+  const gexLocalPut  = lv.gex_local_put_wall  != null ? Number(lv.gex_local_put_wall)  : null;
+  const hasLocalGex  = gexLocalCall != null || gexLocalPut != null;
+
+  // ── Layer 3: Far Background Walls (>30pt — Radar only, shown as footnote) ──
+  const farCallWall = dw.near_call_wall != null ? Number(dw.near_call_wall) : null;
+  const farPutWall  = dw.near_put_wall  != null ? Number(dw.near_put_wall)  : null;
+  const farCallDist = spot != null && farCallWall != null ? Math.round(farCallWall - spot) : null;
+  const farPutDist  = spot != null && farPutWall  != null ? Math.round(spot - farPutWall)  : null;
+  // Only show far walls if they are genuinely far (>30pt) — otherwise they are already in Layer 2
+  const showFarCall = farCallWall != null && (farCallDist == null || farCallDist > 30);
+  const showFarPut  = farPutWall  != null && (farPutDist  == null || farPutDist  > 30);
+
   return `
     <div class="hud-zone gamma-battlefield">
       <div class="hud-zone-header">
@@ -1369,29 +1392,62 @@ function renderHudZoneGamma(signal) {
           <div class="gamma-regime-score-label">执行置信度</div>
         </div>
       </div>
-      <div class="gamma-flip-bar">
-        <div class="gamma-flip-item">
-          <div class="gamma-flip-label">Gamma Flip</div>
-          <div class="gamma-flip-value ${flipClass}">${gammaFlip != null && gammaFlip !== 0 ? fmtLevel(gammaFlip) : '<span class="data-missing">暂无</span>'}</div>
-          <div class="gamma-flip-sub">${spot != null && gammaFlip != null ? (spot > gammaFlip ? '现价在翻转点上方' : '现价在翻转点下方') : '--'}</div>
+
+      <!-- Layer 1: ATM Execution Lines -->
+      <div class="atm-exec-section">
+        <div class="atm-exec-header">
+          <span class="atm-exec-label">ATM 执行线</span>
+          <span class="atm-exec-badge ${spotInLock ? 'locked' : 'watch'}">${spotInLock ? 'LOCKED' : '监控中'}</span>
         </div>
-        <div class="gamma-flip-item">
-          <div class="gamma-flip-label">Call Wall<span class="wall-source-tag">近端</span></div>
-          <div class="gamma-flip-value bearish">${callWall != null ? fmtLevel(callWall) : '<span class="data-missing gex-wall-missing">GEX 近端墙缺失</span>'}</div>
-          <div class="gamma-flip-sub">${callWall != null ? distanceLabel(spot, callWall) : 'LOCKED · 不做 0DTE'}</div>
+        <div class="gamma-flip-bar">
+          <div class="gamma-flip-item">
+            <div class="gamma-flip-label">Gamma Flip</div>
+            <div class="gamma-flip-value ${flipClass}">${gammaFlip != null && gammaFlip !== 0 ? fmtLevel(gammaFlip) : '<span class="data-missing">暂无</span>'}</div>
+            <div class="gamma-flip-sub">${spot != null && gammaFlip != null ? (spot > gammaFlip ? '现价在翻转点上方' : '现价在翻转点下方') : '--'}</div>
+          </div>
+          <div class="gamma-flip-item">
+            <div class="gamma-flip-label">转多触发<span class="wall-source-tag">ATM+5</span></div>
+            <div class="gamma-flip-value bearish">${bullTrig != null ? fmtLevel(bullTrig) : '<span class="data-missing">--</span>'}</div>
+            <div class="gamma-flip-sub">${bullTrig != null ? (bullTarg != null ? '目标 ' + fmtLevel(bullTarg) : distanceLabel(spot, bullTrig)) : '--'}</div>
+          </div>
+          <div class="gamma-flip-item">
+            <div class="gamma-flip-label">转空触发<span class="wall-source-tag">ATM-5</span></div>
+            <div class="gamma-flip-value bullish">${bearTrig != null ? fmtLevel(bearTrig) : '<span class="data-missing">--</span>'}</div>
+            <div class="gamma-flip-sub">${bearTrig != null ? (bearTarg != null ? '目标 ' + fmtLevel(bearTarg) : distanceLabel(spot, bearTrig)) : '--'}</div>
+          </div>
         </div>
-        <div class="gamma-flip-item">
-          <div class="gamma-flip-label">Put Wall<span class="wall-source-tag">近端</span></div>
-          <div class="gamma-flip-value bullish">${putWall != null ? fmtLevel(putWall) : '<span class="data-missing gex-wall-missing">GEX 近端墙缺失</span>'}</div>
-          <div class="gamma-flip-sub">${putWall != null ? distanceLabel(spot, putWall) : 'LOCKED · 不做 0DTE'}</div>
+        <div class="atm-magnet-row">
+          <span class="atm-magnet-label">ATM 磁吸中轴</span>
+          <span class="atm-magnet-value">${fmtLevel(atmVal)}</span>
+          <span class="atm-magnet-trend">${trendArrow} ${atmTrend === 'rising' ? '上移' : atmTrend === 'falling' ? '下移' : '稳定'}</span>
+          ${lockLow != null && lockHigh != null ? `<span class="lock-zone-inline">锁仓区 ${fmtLevel(lockLow)}–${fmtLevel(lockHigh)}</span>` : ''}
+          ${pinRisk >= 70 ? `<span class="atm-pin-warning">⚠ ATM 吸附 ${pinRisk}/100</span>` : ''}
         </div>
       </div>
-      <div class="atm-magnet-row">
-        <span class="atm-magnet-label">ATM 磁吸中轴</span>
-        <span class="atm-magnet-value">${fmtLevel(atmVal)}</span>
-        <span class="atm-magnet-trend">${trendArrow} ${atmTrend === 'rising' ? '上移' : atmTrend === 'falling' ? '下移' : '稳定'}</span>
-        ${pinRisk >= 70 ? `<span class="atm-pin-warning">⚠ ATM 吸附 ${pinRisk}/100</span>` : ''}
+
+      <!-- Layer 2: GEX Local Reference (±30pt) -->
+      <div class="gex-local-section">
+        <div class="gex-local-header">
+          <span class="gex-local-label">GEX 参考墙</span>
+          <span class="gex-local-note">±30pt 内</span>
+        </div>
+        ${hasLocalGex ? `
+        <div class="gex-local-row">
+          ${gexLocalCall != null ? `<div class="gex-local-item call"><span class="gex-local-tag">GEX 压力</span><span class="gex-local-val">${fmtLevel(gexLocalCall)}</span><span class="gex-local-dist">${distanceLabel(spot, gexLocalCall)}</span></div>` : ''}
+          ${gexLocalPut  != null ? `<div class="gex-local-item put"><span class="gex-local-tag">GEX 支撑</span><span class="gex-local-val">${fmtLevel(gexLocalPut)}</span><span class="gex-local-dist">${distanceLabel(spot, gexLocalPut)}</span></div>` : ''}
+        </div>` : `<div class="gex-local-empty">±30pt 内无显著 GEX 墙</div>`}
       </div>
+
+      <!-- Layer 3: Far Background Walls (footnote, Radar only) -->
+      ${(showFarCall || showFarPut) ? `
+      <div class="gex-far-footnote">
+        <span class="gex-far-label">远端 Gamma 背景（仅 Radar 参考，不作日内触发）</span>
+        <span class="gex-far-vals">
+          ${showFarCall ? `Call ${fmtLevel(farCallWall)} (+${farCallDist}pt)` : ''}
+          ${showFarCall && showFarPut ? ' · ' : ''}
+          ${showFarPut  ? `Put ${fmtLevel(farPutWall)} (-${farPutDist}pt)` : ''}
+        </span>
+      </div>` : ''}
     </div>
   `;
 }
@@ -1405,9 +1461,11 @@ function renderHudZoneExecution(signal) {
   const dw  = signal.dealer_wall_map     || {};
   const spot = pc.live_price != null ? pc.live_price
     : (signal.observation_price?.value ?? null);
-  // Phase 2 fix: ONLY read near walls from dealer_wall_map (no fallback to gamma_regime_engine)
-  const callWall  = dw.near_call_wall != null ? Number(dw.near_call_wall) : null;
-  const putWall   = dw.near_put_wall  != null ? Number(dw.near_put_wall)  : null;
+  // Three-layer fix: ZONE 02 uses gex_local_call_wall (±30pt) for execution boundary
+  // Far walls (7000/7300) are NOT execution walls — they go to Radar only
+  const lv = signal.levels || {};
+  const callWall  = lv.gex_local_call_wall != null ? Number(lv.gex_local_call_wall) : null;
+  const putWall   = lv.gex_local_put_wall  != null ? Number(lv.gex_local_put_wall)  : null;
   const gammaFlip = gr.gamma_flip ?? dw.gamma_flip ?? null;
 
   // Prefer darkpool_behavior_engine levels (SPX-mapped), fallback to legacy gravity

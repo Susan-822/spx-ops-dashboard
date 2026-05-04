@@ -54,6 +54,35 @@ function gammaFlip(sortedRows = []) {
     : { level: null, confidence: 'unavailable' };
 }
 
+// Layer 2: GEX local reference wall — within ±30pt of spot
+// Used for homepage GEX card (informational only, NOT execution trigger)
+// Returns null if no significant GEX strike within ±30pt
+function findGexLocalCallWall(allRows, spot) {
+  if (spot == null || allRows.length === 0) return null;
+  const LOCAL_RANGE = 30;
+  const candidates = allRows
+    .map((row) => ({ ...row, strike: numberOrNull(row.strike ?? row.price ?? row.level) }))
+    .filter((row) => row.strike != null && row.strike > spot && row.strike <= spot + LOCAL_RANGE);
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) =>
+    Math.abs(valueFor(b, ['call_gex', 'call_gamma_oi', 'call_gex_oi', 'call_gamma']) ?? 0)
+    - Math.abs(valueFor(a, ['call_gex', 'call_gamma_oi', 'call_gex_oi', 'call_gamma']) ?? 0)
+  );
+  return candidates[0]?.strike ?? null;
+}
+function findGexLocalPutWall(allRows, spot) {
+  if (spot == null || allRows.length === 0) return null;
+  const LOCAL_RANGE = 30;
+  const candidates = allRows
+    .map((row) => ({ ...row, strike: numberOrNull(row.strike ?? row.price ?? row.level) }))
+    .filter((row) => row.strike != null && row.strike < spot && row.strike >= spot - LOCAL_RANGE);
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) =>
+    Math.abs(valueFor(b, ['put_gex', 'put_gamma_oi', 'put_gex_oi', 'put_gamma']) ?? 0)
+    - Math.abs(valueFor(a, ['put_gex', 'put_gamma_oi', 'put_gex_oi', 'put_gamma']) ?? 0)
+  );
+  return candidates[0]?.strike ?? null;
+}
 // P1-2 fix: near call wall = strictly above spot, within [spot+5, spot+500]
 function findNearCallWall(allRows, spot) {
   if (spot == null || allRows.length === 0) return null;
@@ -118,9 +147,12 @@ export function buildDealerWallMap({
       .map((row) => ({ ...row, strike: numberOrNull(row.strike ?? row.price ?? row.level) }))
       .filter((row) => row.strike != null && Math.abs(row.strike - spot) / spot <= 0.15);
 
-  // P1-2 fix: near walls based on spot position
+  // P1-2 fix: near walls based on spot position (±500pt, for far background)
   const nearCallWall = findNearCallWall(allRows, spot);
   const nearPutWall  = findNearPutWall(allRows, spot);
+  // Layer 2: GEX local reference walls (±30pt, homepage GEX card only)
+  const gexLocalCallWall = findGexLocalCallWall(allRows, spot);
+  const gexLocalPutWall  = findGexLocalPutWall(allRows, spot);
 
   // Global GEX clusters (Radar page only, NOT homepage walls)
   const globalGexClusters = findGlobalGexClusters(allRows);
@@ -171,11 +203,14 @@ export function buildDealerWallMap({
   return {
     spot_price: spot,
     rows_used: rowsUsed,
-    // P1-2: near walls (homepage use only)
+    // Layer 3: far background walls (±500pt, Radar only — NOT homepage execution)
     call_wall:      nearCallWall,
     put_wall:       nearPutWall,
     near_call_wall: nearCallWall,
     near_put_wall:  nearPutWall,
+    // Layer 2: GEX local reference walls (±30pt, homepage GEX card informational only)
+    gex_local_call_wall: gexLocalCallWall,
+    gex_local_put_wall:  gexLocalPutWall,
     // Legacy aliases
     upper_barrier: nearCallWall,
     lower_barrier: nearPutWall,

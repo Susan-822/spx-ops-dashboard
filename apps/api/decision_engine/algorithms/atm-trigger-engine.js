@@ -47,21 +47,23 @@ function fmt(n, d = 0) {
  * Determine if a wall is "near" (within ATM±50) or "far" (>ATM±50)
  * Near walls are shown on homepage; far walls go to Radar only.
  */
+// classifyWall: used ONLY for ATM execution line classification (near = within ATM±50pt)
+// NOTE: This is NOT used for GEX walls on homepage. GEX walls use gex_local_call_wall (±30pt)
+// and far_call_wall (>30pt, Radar only). See dealer-wall-engine.js for GEX layer definitions.
 function classifyWall(wallLevel, atm, side) {
   if (wallLevel == null || atm == null) return { near: null, far: wallLevel };
   const dist = Math.abs(wallLevel - atm);
-  // Phase 2 fix: expanded near-wall threshold from 50pt to 150pt
-  // Rationale: SPX 0DTE walls at ATM+60~120pt are still valid intraday execution walls
-  // (e.g. ATM=7240, Call Wall=7300 → dist=60pt → should be "near", not "far")
-  const NEAR_THRESHOLD = 150;
+  // 50pt threshold: for ATM execution line classification only
+  // (ATM±50 = the range where GEX walls directly affect 0DTE execution)
+  const ATM_EXEC_THRESHOLD = 50;
   if (side === 'call') {
     // Call wall must be above ATM
     if (wallLevel <= atm) return { near: null, far: wallLevel };
-    return dist <= NEAR_THRESHOLD ? { near: wallLevel, far: null } : { near: null, far: wallLevel };
+    return dist <= ATM_EXEC_THRESHOLD ? { near: wallLevel, far: null } : { near: null, far: wallLevel };
   } else {
     // Put wall must be below ATM
     if (wallLevel >= atm) return { near: null, far: wallLevel };
-    return dist <= NEAR_THRESHOLD ? { near: wallLevel, far: null } : { near: null, far: wallLevel };
+    return dist <= ATM_EXEC_THRESHOLD ? { near: wallLevel, far: null } : { near: null, far: wallLevel };
   }
 }
 

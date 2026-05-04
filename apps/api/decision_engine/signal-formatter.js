@@ -355,6 +355,12 @@ function buildLevels(signal) {
     near_call_wall_fmt: nearCallWall != null ? fmt(nearCallWall) : '--',
     near_put_wall_fmt:  nearPutWall  != null ? fmt(nearPutWall)  : '--',
 
+    // ── GEX local reference walls (±30pt of spot, homepage GEX card only) ───
+    gex_local_call_wall: dw.gex_local_call_wall ?? null,
+    gex_local_put_wall:  dw.gex_local_put_wall  ?? null,
+    gex_local_call_wall_fmt: dw.gex_local_call_wall != null ? fmt(dw.gex_local_call_wall) : null,
+    gex_local_put_wall_fmt:  dw.gex_local_put_wall  != null ? fmt(dw.gex_local_put_wall)  : null,
+
     // ── Far walls (Radar only) ─────────────────────────────────────────────
     global_call_wall: globalCallWall,
     global_put_wall:  globalPutWall,
