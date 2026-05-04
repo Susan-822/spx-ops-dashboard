@@ -5,7 +5,7 @@
  *   primary_card     — main trading instruction card (LONG_CALL / SHORT_PUT / LOCKED)
  *   sentiment_bar    — market sentiment 0-100 (bearish=0, bullish=100)
  *   levels           — ATM, bull_trigger, bear_trigger, life_death
- *   money_read       — flow narrative (资金人话)
+ *   market_maker_path — 做市商路径卡（独立节点）
  *   darkpool_read    — dark pool narrative (暗盘人话)
  *   vol_dashboard    — IV/IV30/IV Rank gauge
  *   vix_dashboard    — VIX gauge
@@ -796,22 +796,87 @@ function _isMarketHours() {
   return utcMinutes >= 13 * 60 + 30 && utcMinutes < 20 * 60;
 }
 
+// ── Market Maker Path Card (做市商路径卡) ─────────────────────────────────────
+// 独立模块：与 capital_flow 解耦，专注做市商 Gamma 路径和 ATM 触发线
+export function buildMarketMakerPath(signal) {
+  const fb  = signal.flow_behavior_engine || {};
+  const gr  = signal.gamma_regime_engine  || {};
+  const dw  = signal.dealer_wall_map      || {};
+  const ate = signal.atm_trigger_engine   || {};
+  const pc2 = signal.price_contract       || {};
+  // ── ATM / Wall prices ──────────────────────────────────────────────────────
+  const atmVal  = ate.atm_strike ?? pc2.atm_strike ?? dw.atm_strike ?? null;
+  const cwVal   = dw.gex_local_call_wall ?? dw.near_call_wall ?? dw.call_wall ?? null;
+  const pwVal   = dw.gex_local_put_wall  ?? dw.near_put_wall  ?? dw.put_wall  ?? null;
+  const atmFmt  = atmVal != null ? String(Math.round(atmVal))  : '--';
+  const cwFmt   = cwVal  != null ? String(Math.round(cwVal))   : '--';
+  const pwFmt   = pwVal  != null ? String(Math.round(pwVal))   : '--';
+  const gammaRegime = gr.gamma_regime ?? 'unknown';
+  // ── ATM Trigger Engine lines ───────────────────────────────────────────────
+  const _ateAbsolute = (v) => (v != null && Number.isFinite(Number(v)) && Math.abs(Number(v)) >= 1000) ? String(Math.round(Number(v))) : null;
+  const bull1F = ate.bull_trigger_1_fmt ?? _ateAbsolute(ate.bull_trigger_1) ?? '--';
+  const bull2F = ate.bull_trigger_2_fmt ?? _ateAbsolute(ate.bull_trigger_2) ?? '--';
+  const bear1F = ate.bear_trigger_1_fmt ?? _ateAbsolute(ate.bear_trigger_1) ?? '--';
+  const bear2F = ate.bear_trigger_2_fmt ?? _ateAbsolute(ate.bear_trigger_2) ?? '--';
+  const bt1F   = ate.bull_target_1_fmt  ?? '--';
+  const bt2F   = ate.bull_target_2_fmt  ?? '--';
+  const brt1F  = ate.bear_target_1_fmt  ?? '--';
+  const brt2F  = ate.bear_target_2_fmt  ?? '--';
+  const farCallFmt = ate.global_call_wall_fmt ?? (dw.global_call_gex_cluster != null ? String(Math.round(dw.global_call_gex_cluster)) : '--');
+  const farPutFmt  = ate.global_put_wall_fmt  ?? (dw.global_put_gex_cluster  != null ? String(Math.round(dw.global_put_gex_cluster))  : '--');
+  // ── Gamma 路径文案 ─────────────────────────────────────────────────────────
+  let mmPath = '方向不明，等待数据。';
+  let mmTalk = '做市商路径不明，等待数据改善。';
+  let mmAction = `${atmFmt} ATM 附近不做，等 ${bull1F} 站稳或 ${bear1F} 跌破。`;
+  if (gammaRegime === 'positive') {
+    mmPath   = '正 Gamma 吸回 ATM。';
+    mmTalk   = `做市商更容易把价格吸回 ${atmFmt} 附近，让 Call 和 Put 都磨损。${atmFmt} 附近不要乱做，等 ${bull1F} 站稳或 ${bear1F} 跌破。`;
+    mmAction = `${atmFmt} ATM 附近不做，等 ${bull1F} 站稳或 ${bear1F} 跌破。`;
+  } else if (gammaRegime === 'negative') {
+    mmPath   = '负 Gamma 放大波动。';
+    mmTalk   = `负 Gamma 环境，做市商需要反向对冲，价格波动容易被放大，单边行情概率更高。方向确认后可以跟，但要快进快出。`;
+    mmAction = `方向确认后可以跟，但要快进快出，不要在 ${atmFmt} 附近磨。`;
+  }
+  // ── 5m+15m 双窗口叙事 ─────────────────────────────────────────────────────
+  const dualNarrative = fb.dual_window_narrative ?? null;
+  const flow5mLabel   = fb.flow_5m_label  ?? null;
+  const flow15mLabel  = fb.flow_15m_label ?? null;
+  return {
+    current_path:   mmPath,
+    talk:           mmTalk,
+    current_action: mmAction,
+    bull_scene:     `先看 ${bull1F} / ${bull2F}，不是 ${farCallFmt}。站稳 ${bull2F} 后目标 ${bt1F}–${bt2F}。`,
+    bear_scene:     `先看 ${bear1F} / ${bear2F}，不是 ${farPutFmt}。跌破 ${bear2F} 后目标 ${brt1F}–${brt2F}。`,
+    gamma_regime:   gammaRegime,
+    atm_fmt:        atmFmt,
+    bull_trigger_1: bull1F, bull_trigger_2: bull2F,
+    bear_trigger_1: bear1F, bear_trigger_2: bear2F,
+    bull_target_1:  bt1F,   bull_target_2:  bt2F,
+    bear_target_1:  brt1F,  bear_target_2:  brt2F,
+    far_call_wall:  farCallFmt,
+    far_put_wall:   farPutFmt,
+    far_wall_note:  `远端墙：${farCallFmt} / ${farPutFmt} 只作背景，不作日内触发。`,
+    dual_window_narrative: dualNarrative,
+    flow_5m_label:  flow5mLabel,
+    flow_15m_label: flow15mLabel,
+    dual_window_aligned: fb.dual_window_aligned ?? false
+  };
+}
+
 // ── Main Export ────────────────────────────────────────────────────────────────
 export function buildSignalFormatter(signal) {
-  const moneyRead = buildMoneyRead(signal);
   return {
-    primary_card:  buildPrimaryCard(signal),
-    sentiment_bar: buildSentimentBar(signal),
-    levels:        buildLevels(signal),
-    money_read:    moneyRead,
-    mm_path_card:  moneyRead.mm_path_card ?? null,
-    darkpool_read: buildDarkpoolRead(signal),
-    vol_dashboard: buildVolDashboard(signal),
-    vix_dashboard: buildVixDashboard(signal),
-    forbidden_bar: buildForbiddenBar(signal),
-    data_health:   buildDataHealth(signal),
-    strike_battle: buildStrikeBattle(signal),
-    vanna_charm:   buildVannaCharmTable(signal)
+    primary_card:       buildPrimaryCard(signal),
+    sentiment_bar:      buildSentimentBar(signal),
+    levels:             buildLevels(signal),
+    market_maker_path:  buildMarketMakerPath(signal),
+    darkpool_read:      buildDarkpoolRead(signal),
+    vol_dashboard:      buildVolDashboard(signal),
+    vix_dashboard:      buildVixDashboard(signal),
+    forbidden_bar:      buildForbiddenBar(signal),
+    data_health:        buildDataHealth(signal),
+    strike_battle:      buildStrikeBattle(signal),
+    vanna_charm:        buildVannaCharmTable(signal)
   };
 }
 
@@ -852,7 +917,7 @@ export function buildSignalFormatter(signal) {
 //   gex_local         — GEX 本地参考（±30pt，首页 GEX 卡片）
 //   far_wall_note     — 远端墙脚注（仅文字，不作主控）
 //
-//   money_read        — 资金人话（from money_read, already formatted）
+//   market_maker_path — 做市商路径卡（独立节点）
 //   darkpool_read     — 暗盘人话
 //
 //   four_lines        — 首页四行（可直接渲染）
@@ -862,7 +927,7 @@ export function buildHomeViewModel(signal) {
   // ── Source engines (read ONCE here, never in renderHome) ──────────────────
   const pc  = signal.primary_card         || {};
   const lv  = signal.levels               || {};
-  const mr  = signal.money_read           || {};
+  const mmp = signal.market_maker_path    || {};  // 做市商路径卡（独立节点）
   const dr  = signal.darkpool_read        || {};
   const fb  = signal.flow_behavior_engine || {};
   const ab  = signal.ab_order_engine      || {};
@@ -1063,7 +1128,7 @@ export function buildHomeViewModel(signal) {
     gex_local:         gexLocal,
     far_wall_note:     farWallNote,
     // ── Pre-formatted reads ───────────────────────────────────────────────────
-    money_read:        mr,
+    market_maker_path: mmp,
     darkpool_read:     dr,
     vol_dashboard:     vd,
     vix_dashboard:     vx,

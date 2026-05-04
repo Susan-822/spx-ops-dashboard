@@ -164,7 +164,7 @@ function buildFlowWindows({ fb }) {
 // ── 主引擎 ────────────────────────────────────────────────────────────────────
 export function buildCapitalFlowReading(signal) {
   const fb  = signal.flow_behavior_engine || {};
-  // [v3] money_read 已废弃，所有数据从 fb / gexData 直接读取
+  // [v3] capital_flow 直接从 fb / gexData 读取，不依赖旧字段
   const gexData = signal.dealer_wall_map  || {};
 
   const netPrem    = fb.net_premium      ?? null;

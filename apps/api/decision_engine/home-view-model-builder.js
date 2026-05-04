@@ -9,7 +9,7 @@
  *          ↓
  *  各 engine 计算（dealer-wall / atm-trigger / flow-behavior / ab-order / ...）
  *          ↓
- *  signal_formatter 汇总（primary_card / levels / money_read / ...）
+ *  signal_formatter 汇总（primary_card / levels / market_maker_path / ...）
  *          ↓
  *  home_view_model_builder  ← 本文件
  *          ↓
@@ -37,7 +37,7 @@
  *  formattedSignal 是 signal_formatter 的输出，包含：
  *    .primary_card   — 主控卡片（方向 / 状态 / 预案）
  *    .levels         — ATM 执行线（已格式化）
- *    .money_read     — 资金人话（已格式化）
+ *    .market_maker_path — 做市商路径卡（独立节点）
  *    .darkpool_read  — 暗盘人话（已格式化）
  *    .vol_dashboard  — 波动率仪表盘
  *    .vix_dashboard  — VIX 仪表盘
@@ -68,7 +68,7 @@ export function buildHomeViewModel(formattedSignal) {
 
   const pc  = formattedSignal.primary_card         || {};  // signal_formatter 输出
   const lv  = formattedSignal.levels               || {};  // signal_formatter 输出
-  const mr  = formattedSignal.money_read           || {};  // [legacy] 仅供 mm_path_card 使用
+  const mmp = formattedSignal.market_maker_path    || {};  // 做市商路径卡（独立节点）
   const dr  = formattedSignal.darkpool_read        || {};  // signal_formatter 输出
   const sb  = formattedSignal.sentiment_bar        || {};  // signal_formatter 输出
   const vd  = formattedSignal.vol_dashboard        || {};  // signal_formatter 输出
@@ -261,9 +261,9 @@ export function buildHomeViewModel(formattedSignal) {
     directional_net_premium_fmt: dnpFmt,
     call_premium_abs:           fb.call_premium_abs  ?? null,
     put_premium_abs:            fb.put_premium_abs   ?? null,
-    call_premium_fmt:           cf.day_call  || mr.call_premium_fmt || '--',
-    put_premium_fmt:            cf.day_put   || mr.put_premium_fmt  || '--',
-    net_premium_fmt:            cf.day_net   || mr.net_premium_fmt  || '--',
+    call_premium_fmt:           cf.day_call  || '--',
+    put_premium_fmt:            cf.day_put   || '--',
+    net_premium_fmt:            cf.day_net   || '--',
     flow_5m:                    fb.flow_5m_label     || null,
     flow_15m:                   fb.flow_15m_label    || null,
     dual_window_narrative:      fb.dual_window_narrative || null,
@@ -576,7 +576,7 @@ export function buildHomeViewModel(formattedSignal) {
     order_plan:             (typeof _orderPlan2 !== "undefined" ? _orderPlan2 : null),
 
     // 预格式化读物（透传）
-    money_read:             mr,
+    market_maker_path:      mmp,
     darkpool_read:          dr,
     vol_dashboard:          vd,
     vix_dashboard:          vx,
@@ -595,6 +595,6 @@ export function buildHomeViewModel(formattedSignal) {
     sent_label:             sentLabel,
     sent_sub:               sentSub,
     pc_ratio_fmt:           pcRatioFmt,
-    net_premium_fmt:        cf.day_net || mr.net_premium_fmt || '--',
+    net_premium_fmt:        cf.day_net || '--',
   };
 }

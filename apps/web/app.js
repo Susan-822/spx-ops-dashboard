@@ -2144,7 +2144,7 @@ function renderHome(signal) {
   const pc  = signal.primary_card  || {};
   const sb  = signal.sentiment_bar || {};
   const lv  = signal.levels        || {};
-  const mr  = signal.money_read    || {}; // [legacy] 仅供 mm_path_card 使用，资金分析已迁移到 capital_flow
+  const mmp_card = signal.market_maker_path || null; // 做市商路径卡（独立节点，market_maker_path）
   const dr  = signal.darkpool_read || {};
   const vd  = signal.vol_dashboard || {};
   const vx  = signal.vix_dashboard || {};
@@ -2169,7 +2169,7 @@ function renderHome(signal) {
   const sentLabel  = sb.label || '中性';
   const sentSub    = sb.sub   || '';
   const pcRatio    = sb.put_call_ratio != null ? sb.put_call_ratio.toFixed(2) : '--';
-  const netPremFmt = ((signal.home_view_model || {}).order_plan || {}).capital_flow?.net_premium_fmt || mr.net_premium_fmt || '--'; // [v2] 优先读 capital_flow
+  const netPremFmt = ((signal.home_view_model || {}).order_plan || {}).capital_flow?.net_premium_fmt || '--'; // capital_flow 唯一来源
 
   // ── home_view_model: 首页唯一数据源 ─────────────────────────────────────────
   // renderHome 只读 signal.home_view_model，禁止直接读 engine 字段
@@ -2799,7 +2799,7 @@ function renderHome(signal) {
 
       <!-- MARKET MAKER PATH CARD — v2: ATM trigger lines + far walls + dual window -->
       ${(() => {
-        const mmp = signal.mm_path_card || mr.mm_path_card || null;
+        const mmp = mmp_card; // signal.market_maker_path（安全读取，null check 在外层 if）
         if (!mmp) return '';
         const mmpDual = mmp.dual_window_narrative || null;
         const mmpFarNote = mmp.far_wall_note || null;
