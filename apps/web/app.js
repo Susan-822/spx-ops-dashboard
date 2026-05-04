@@ -2008,6 +2008,35 @@ function renderGexUrgencyChart(signal) {
 </div>`;
 }
 
+
+// ── renderPlanCard: 渲染单个方向预案卡片（主做/备选 Tab 使用）────────────────────
+function renderPlanCard(plan, label, triggerStatus, abStatus) {
+  if (!plan) return '<div class="ab-wait-block"><div class="ab-wait-icon">—</div><div class="ab-wait-title">暂无预案</div></div>';
+  const isBull = (plan.direction || '').toUpperCase() === 'BULLISH' || (plan.direction || '').toUpperCase() === 'LONG';
+  const isBear = (plan.direction || '').toUpperCase() === 'BEARISH' || (plan.direction || '').toUpperCase() === 'SHORT';
+  const colorCls = isBull ? 'plan-bull' : isBear ? 'plan-bear' : 'plan-locked';
+  const iconCls  = isBull ? 'bull' : isBear ? 'bear' : '';
+  const waitLine = isBull
+    ? (plan.wait_long  || plan.action_now || '--')
+    : isBear
+    ? (plan.wait_short || plan.action_now || '--')
+    : (plan.action_now || '--');
+  const doNotList = Array.isArray(plan.do_not) ? plan.do_not : [];
+  const confVal = plan.execution_confidence ?? null;
+  const confCls = confVal != null ? (confVal >= 70 ? 'conf-high' : confVal >= 40 ? 'conf-mid' : 'conf-low') : 'conf-low';
+  const confLbl = confVal != null ? (confVal >= 70 ? '高可信，可执行' : confVal >= 40 ? '中可信，小仓等确认' : '低可信，只观察') : '低可信，只观察';
+  return `<div class="plan-grid ${colorCls}">
+    <div class="plan-row"><span class="plan-icon ${iconCls}">◎</span><span class="plan-key">方向</span><span class="plan-val ${iconCls}">${escapeHtml(label)}</span></div>
+    <div class="plan-row"><span class="plan-icon">◈</span><span class="plan-key">品种</span><span class="plan-val">${escapeHtml(plan.instrument || '--')}</span></div>
+    <div class="plan-row"><span class="plan-icon">⊕</span><span class="plan-key">等什么</span><span class="plan-val entry-val">${escapeHtml(waitLine)}</span></div>
+    <div class="plan-row"><span class="plan-icon">◆</span><span class="plan-key">目标</span><span class="plan-val target-val">${escapeHtml(plan.tp1 || '--')} → ${escapeHtml(plan.tp2 || '--')}</span></div>
+    <div class="plan-row"><span class="plan-icon">⊗</span><span class="plan-key">失效</span><span class="plan-val stop-val">${escapeHtml(plan.invalidation || '--')}</span></div>
+    <div class="plan-row full-row"><span class="plan-icon">⊘</span><span class="plan-key">禁做</span><span class="plan-val forbidden-val">${escapeHtml(plan.forbidden || '--')}</span></div>
+    ${plan.rationale ? `<div class="plan-row full-row"><span class="plan-icon">ℹ</span><span class="plan-key">逻辑</span><span class="plan-val">${escapeHtml(plan.rationale)}</span></div>` : ''}
+    ${doNotList.length > 0 ? `<div class="plan-row full-row"><span class="plan-icon">🚫</span><span class="plan-key">不做</span><span class="plan-val forbidden-val">${escapeHtml(doNotList.slice(0,2).join('；'))}</span></div>` : ''}
+  </div>
+  ${confVal != null ? `<div class="plan-conf-row"><span class="plan-conf-label">可信度</span><span class="plan-conf-val ${confCls}">${confVal}/100</span><span class="plan-conf-desc ${confCls}">${confLbl}</span></div>` : ''}`;
+}
 function renderHome(signal) {
   const pc  = signal.primary_card  || {};
   const sb  = signal.sentiment_bar || {};
@@ -2306,7 +2335,7 @@ function renderHome(signal) {
                   tab2Html += '<div class="ab-wait-block"><div class="ab-wait-icon">—</div><div class="ab-wait-title">当前观望，不开仓</div><div class="ab-wait-reason">' + escapeHtml(waitReason2) + '</div></div>';
                 } else if (isOpposite2) {
                   tab2Html += '<div class="ab-dual-label">双向等待，等方向确认后执行对应单</div>' +
-                    renderPlanCard(planA2, aIsBull2 ? '空单' : '多单', trigStat3, abStatus2);
+                    renderPlanCard(planA2, aIsBull2 ? '多单' : '空单', trigStat3, abStatus2);
                 } else {
                   tab2Html += renderPlanCard(planA2, aIsBull2 ? '多单' : '空单', trigStat3, abStatus2);
                 }
