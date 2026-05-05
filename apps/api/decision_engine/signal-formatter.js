@@ -62,7 +62,7 @@ function buildPrimaryCard(signal) {
 
   // Priority 1: ab_order_engine has a confirmed direction
   if (ab.status !== 'blocked' && ab.plan_a) {
-    const planADir = ab.plan_a.direction ?? '';
+    const planADir = (ab.plan_a.direction ?? '').toLowerCase();
     if (planADir === 'long' || planADir === 'bullish') {
       direction = 'LONG_CALL'; directionLabel = '做 Call'; directionColor = 'green'; badge = 'LONG_CALL';
     } else if (planADir === 'short' || planADir === 'bearish') {
@@ -805,7 +805,7 @@ export function buildMarketMakerPath(signal) {
   const ate = signal.atm_trigger_engine   || {};
   const pc2 = signal.price_contract       || {};
   // ── ATM / Wall prices ──────────────────────────────────────────────────────
-  const atmVal  = ate.atm_strike ?? pc2.atm_strike ?? dw.atm_strike ?? null;
+  const atmVal  = ate.atm ?? ate.atm_strike ?? pc2.atm_5 ?? pc2.atm_strike ?? null;
   const cwVal   = dw.gex_local_call_wall ?? dw.near_call_wall ?? dw.call_wall ?? null;
   const pwVal   = dw.gex_local_put_wall  ?? dw.near_put_wall  ?? dw.put_wall  ?? null;
   const atmFmt  = atmVal != null ? String(Math.round(atmVal))  : '--';

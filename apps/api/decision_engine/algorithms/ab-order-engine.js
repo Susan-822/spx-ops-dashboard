@@ -435,9 +435,9 @@ export function buildAbOrderEngine({
     };
   }
   else if (gamma_regime === 'positive' && flow_behavior === 'call_effective') {
-    judgment = '\u6b63 Gamma \u73af\u5883\u4e2d Call Flow \u6709\u6548\uff0c\u4f46\u963b\u5c3c\u6548\u5e94\u53ef\u80fd\u9650\u5236\u6da8\u5e45\uff0c\u8c28\u614e\u8ffd\u591a\u3002';
-    plan_a = makeBearCallSpreadPlan({ atm, atm_trigger, call_wall, expiry, dp });
-    plan_b = makeBullPutSpreadPlan({ atm, atm_trigger, put_wall, gamma_flip, expiry, dp });
+    judgment = '\u6b63 Gamma \u73af\u5883\u4e2d Call Flow \u6709\u6548\uff0c\u591a\u5934\u52a8\u80fd\u786e\u8ba4\uff0c\u4f46\u6b63 Gamma \u963b\u5c3c\u9650\u5236\u6da8\u5e45\uff0c\u7b49\u56de\u8e29\u627f\u63a5\u5165\u573a\u3002';
+    plan_a = makeBullPutSpreadPlan({ atm, atm_trigger, put_wall, gamma_flip, expiry, dp });
+    plan_b = makeBearCallSpreadPlan({ atm, atm_trigger, call_wall, expiry, dp });
   }
   else if (gamma_regime === 'negative' && flow_behavior === 'put_squeezed') {
     judgment = '\u8d1f Gamma \u73af\u5883\u4e2d Put \u88ab\u5438\u6536\uff0c\u7a7a\u5934\u9677\u9631\u8b66\u544a\uff0c\u7b49\u5f85\u65b9\u5411\u786e\u8ba4\u3002';
