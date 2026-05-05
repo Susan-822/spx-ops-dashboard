@@ -2167,8 +2167,9 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     atm_trend: atmEngine.atm_trend,
     atm_change: atmEngine.atm_change,
     // P1-1 fix: use normalizer's direct put_call_ratio output (abs(put)/abs(call))
-    put_call_ratio: uwApi.uw_factors.flow_factors?.put_call_ratio ?? null,
-    net_premium: uwApi.uw_factors.flow_factors?.net_premium_5m ?? null,
+    // [MOCK INJECT] 支持 mock_flow_factors 覆盖（验收测试用）
+    put_call_ratio: (finalScenario?.mock_flow_factors?.put_call_ratio) ?? uwApi.uw_factors.flow_factors?.put_call_ratio ?? null,
+    net_premium: (finalScenario?.mock_flow_factors?.net_premium_5m) ?? uwApi.uw_factors.flow_factors?.net_premium_5m ?? null,
     pin_risk: atmEngine.pin_risk,
     uw_status: rawNoteV2.uw_conclusion?.status ?? 'unavailable',
     fmp_status: fmpIsReal ? 'real' : 'unavailable'
@@ -2178,7 +2179,12 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   // uwNormalized.flow (decision_engine/algorithms/uw-normalizer.js) does NOT define
   // net_premium_5m / call_premium_5m / put_premium_5m — those fields only exist in
   // /normalizer/uw-api-normalizer.js which is already consumed as uwApi.uw_factors.flow_factors.
-  const _ff = uwApi.uw_factors.flow_factors || {};
+  // [MOCK INJECT] scenario_mode 下允许用 mock_flow_factors 覆盖真实 UW flow 数据
+  // 用途：验收测试精确控制 flow_behavior_engine 输入（逼空/震荡/暴跌三组场景）
+  const _mockFlowFactors = (finalScenario?.scenario_mode === true && finalScenario?.mock_flow_factors)
+    ? finalScenario.mock_flow_factors
+    : null;
+  const _ff = _mockFlowFactors ?? uwApi.uw_factors.flow_factors ?? {};
   const _netPrem5m  = _ff.net_premium_5m  ?? _ff.net_premium ?? null;
   const _callPrem5m = _ff.call_premium_5m ?? _ff.net_call_premium ?? null;
   const _putPrem5m  = _ff.put_premium_5m  ?? _ff.net_put_premium ?? null;
