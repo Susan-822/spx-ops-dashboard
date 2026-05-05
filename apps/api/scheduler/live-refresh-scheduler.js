@@ -33,6 +33,27 @@ import { sendAbTelegramAlerts } from '../alerts/telegram-ab-alert.js';
 import { getCurrentSignal } from '../decision_engine/current-signal.js';
 import { maybeSendPreMarketSnapshot } from '../alerts/pre-market-snapshot.js';
 
+// ─── ET time helper (for warmup window detection) ────────────────────────────
+function _etMinutesNow() {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  // DST start: 2nd Sunday of March at 02:00 ET
+  const dstStart = (() => {
+    const d = new Date(Date.UTC(year, 2, 1));
+    const firstSun = (7 - d.getUTCDay()) % 7;
+    return new Date(Date.UTC(year, 2, 1 + firstSun + 7, 7));
+  })();
+  // DST end: 1st Sunday of November at 02:00 ET
+  const dstEnd = (() => {
+    const d = new Date(Date.UTC(year, 10, 1));
+    const firstSun = (7 - d.getUTCDay()) % 7;
+    return new Date(Date.UTC(year, 10, 1 + firstSun, 6));
+  })();
+  const offsetH = (now >= dstStart && now < dstEnd) ? 4 : 5;
+  const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+  return ((utcMin - offsetH * 60) + 1440) % 1440;
+}
+
 // ─── Fixed intervals for non-UW jobs (milliseconds) ──────────────────────────
 const FIXED_INTERVALS = {
   fmp_price:  60_000,   // FMP SPX spot price  – every 60 s
@@ -331,6 +352,50 @@ export function startLiveRefreshScheduler() {
   });
 
   adaptiveScheduler.start();
+
+  // ── 1b. Cold-start warmup (08:30–09:30 ET = 20:30–21:30 BJ) ─────────────────
+  // If the service starts/restarts during the pre-market window, immediately fire
+  // a full UW refresh to populate the price history buffer so the homepage is
+  // NOT locked when the market opens at 09:30 ET.
+  const UW_WARMUP_ENDPOINTS = [
+    'flow_recent', 'net_prem_ticks', 'market_tide', 'darkpool_spy',
+    'greek_exposure_strike', 'interpolated_iv', 'iv_rank', 'options_volume',
+  ];
+  (async () => {
+    const etMin = _etMinutesNow();
+    const dow = new Date().getUTCDay();
+    const isWeekday = dow >= 1 && dow <= 5;
+    // Warmup window: 08:30–09:30 ET (510–570 min)
+    const inWarmupWindow = etMin >= 8 * 60 + 30 && etMin < 9 * 60 + 30;
+    if (isWeekday && inWarmupWindow) {
+      console.log('[scheduler] Cold-start warmup: firing full UW refresh to populate price buffer...');
+      for (const ep of UW_WARMUP_ENDPOINTS) {
+        try { await runUwEndpointRefresh(ep); console.log(`[scheduler] warmup: ${ep} ok`); }
+        catch (e) { console.warn(`[scheduler] warmup: ${ep} failed: ${e.message}`); }
+      }
+      console.log('[scheduler] Cold-start warmup complete.');
+    }
+  })().catch((e) => console.error('[scheduler] warmup error:', e.message));
+
+  // Daily warmup scheduler: check every 60s, fire once per day at 08:30 ET
+  let _warmupFiredDate = null;
+  setInterval(() => {
+    const now = new Date();
+    const dow = now.getUTCDay();
+    if (dow === 0 || dow === 6) return;
+    const etMin = _etMinutesNow();
+    if (etMin < 8 * 60 + 30 || etMin >= 8 * 60 + 35) return; // 08:30–08:34 ET window
+    const todayET = now.toISOString().slice(0, 10);
+    if (_warmupFiredDate === todayET) return;
+    _warmupFiredDate = todayET;
+    console.log('[scheduler] Daily 08:30 ET warmup: firing full UW refresh...');
+    (async () => {
+      for (const ep of UW_WARMUP_ENDPOINTS) {
+        try { await runUwEndpointRefresh(ep); } catch { /* ignore */ }
+      }
+      console.log('[scheduler] Daily warmup complete.');
+    })().catch(() => {});
+  }, 60_000).unref?.();
 
   // ── 2. Fixed jobs (FMP, Theta) ──────────────────────────────────────────────────────────────────────────────────────
   const fixedJobs = [

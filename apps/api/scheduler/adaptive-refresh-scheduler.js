@@ -72,7 +72,7 @@ function isUsMarketHours() {
   const dow = now.getUTCDay();
   if (dow === 0 || dow === 6) return false;
   const etMin = _etMinutes(now);
-  // 06:40 = 400 min, 16:00 = 960 min
+  // 06:40 = 400 min, 16:00 = 960 min (covers all phases including pre_open 09:00)
   return etMin >= 6 * 60 + 40 && etMin < 16 * 60;
 }
 
@@ -83,21 +83,23 @@ function isUsMarketHours() {
  *   Phase          ET window         Beijing (EDT)   Purpose
  *   oi_burst       06:40–07:00       18:40–19:00     OCC OI update, GEX baseline
  *   trf_burst      07:55–08:35       19:55–20:35     FINRA TRF dark pool flood
- *   open_sprint    09:30–10:30       21:30–22:30     Opening hour, max frequency
- *   midday         10:30–14:30       22:30–02:30+    Lunch lull, conserve quota
+ *   pre_open       09:00–09:25       21:00–21:25     Pre-open direction scout (NEW)
+ *   open_sprint    09:30–09:45       21:30–21:45     Opening 15min, max frequency
+ *   midday         09:45–14:30       21:45–02:30+    Lunch lull, conserve quota
  *   closing        14:30–16:00       02:30–04:00+    0DTE Gamma squeeze window
  *   closed         all other times   —               Zero API calls
  *
  * Quota budget (all active phases, per day):
  *   oi_burst   (20 min):   ~14 req  (GEX/IV only)
  *   trf_burst  (40 min):  ~120 req  (flow + darkpool only)
- *   open_sprint(60 min):  ~714 req  (all endpoints, high freq)
- *   midday    (240 min):  ~344 req  (all endpoints, low freq)
+ *   pre_open   (25 min):   ~77 req  (all endpoints, low freq)
+ *   open_sprint(15 min):  ~201 req  (all endpoints, highest freq)
+ *   midday    (285 min):  ~408 req  (all endpoints, low freq)
  *   closing    (90 min):  ~606 req  (flow + darkpool + GEX elevated)
- *   snapshot   (1 shot):    ~8 req  (09:25 pre-market snapshot)
- *   TOTAL: ~1,806 req/day — 88% buffer vs 15,000 daily limit
+ *   warmup     (1 shot):    ~8 req  (08:30 ET cold-start warmup)
+ *   TOTAL: ~1,434 req/day — 90.4% buffer vs 15,000 daily limit
  *
- * Note: 09:25 snapshot is fired by live-refresh-scheduler, not this function.
+ * Note: 08:30 warmup is fired by live-refresh-scheduler on startup.
  */
 export function getMarketPhase() {
   const now = new Date();
@@ -107,8 +109,9 @@ export function getMarketPhase() {
 
   if (etMin >= 6 * 60 + 40  && etMin < 7 * 60)           return 'oi_burst';    // 06:40–07:00
   if (etMin >= 7 * 60 + 55  && etMin < 8 * 60 + 35)      return 'trf_burst';   // 07:55–08:35
-  if (etMin >= 9 * 60 + 30  && etMin < 10 * 60 + 30)     return 'open_sprint'; // 09:30–10:30
-  if (etMin >= 10 * 60 + 30 && etMin < 14 * 60 + 30)     return 'midday';      // 10:30–14:30
+  if (etMin >= 9 * 60      && etMin < 9 * 60 + 25)       return 'pre_open';    // 09:00–09:25 (NEW)
+  if (etMin >= 9 * 60 + 30  && etMin < 9 * 60 + 45)      return 'open_sprint'; // 09:30–09:45 (15min)
+  if (etMin >= 9 * 60 + 45  && etMin < 14 * 60 + 30)     return 'midday';      // 09:45–14:30
   if (etMin >= 14 * 60 + 30 && etMin < 16 * 60)          return 'closing';     // 14:30–16:00
   return 'closed';
 }
@@ -150,37 +153,54 @@ export const TRF_BURST_INTERVALS = Object.freeze({
 });
 
 /**
- * OPEN_SPRINT intervals — 09:30–10:30 ET (60 min = 3,600s)
- * All endpoints, highest frequency: capture opening flow and GEX shifts.
- * Budget: ~714 req
+ * PRE_OPEN intervals — 09:00–09:25 ET (25 min = 1,500s)
+ * All endpoints, low frequency: direction scout before open.
+ * Budget: ~77 req
  */
-export const SPRINT_INTERVALS = Object.freeze({
-  flow_recent:            15_000,   //  15 s — 240 req
-  net_prem_ticks:         20_000,   //  20 s — 180 req
-  market_tide:            30_000,   //  30 s — 120 req
-  options_volume:         60_000,   //  60 s —  60 req
-  darkpool_spy:           60_000,   //  60 s —  60 req
-  greek_exposure_strike: 120_000,   // 120 s —  30 req
-  interpolated_iv:       300_000,   // 300 s —  12 req
-  iv_rank:               300_000,   // 300 s —  12 req
-  // OPEN_SPRINT TOTAL: ~714 req
+export const PRE_OPEN_INTERVALS = Object.freeze({
+  flow_recent:            60_000,   //  60 s —  25 req  ← early flow direction
+  net_prem_ticks:         90_000,   //  90 s —  17 req
+  market_tide:           120_000,   // 120 s —  12 req
+  options_volume:        null,       // skip — volume not meaningful pre-open
+  darkpool_spy:          120_000,   // 120 s —  12 req  ← overnight dark pool
+  greek_exposure_strike: 300_000,   // 300 s —   5 req
+  interpolated_iv:       600_000,   // 600 s —   2 req
+  iv_rank:               600_000,   // 600 s —   2 req
+  // PRE_OPEN TOTAL: ~77 req
 });
 
 /**
- * MIDDAY intervals — 10:30–14:30 ET (240 min = 14,400s)
- * All endpoints, low frequency: conserve quota during lunch lull.
- * Budget: ~344 req
+ * OPEN_SPRINT intervals — 09:30–09:45 ET (15 min = 900s)
+ * All endpoints, highest frequency: capture first 15min opening flow.
+ * Budget: ~201 req
+ */
+export const SPRINT_INTERVALS = Object.freeze({
+  flow_recent:            15_000,   //  15 s —  60 req
+  net_prem_ticks:         20_000,   //  20 s —  45 req
+  market_tide:            30_000,   //  30 s —  30 req
+  options_volume:         60_000,   //  60 s —  15 req
+  darkpool_spy:           30_000,   //  30 s —  30 req
+  greek_exposure_strike:  60_000,   //  60 s —  15 req
+  interpolated_iv:       300_000,   // 300 s —   3 req
+  iv_rank:               300_000,   // 300 s —   3 req
+  // OPEN_SPRINT TOTAL: ~201 req
+});
+
+/**
+ * MIDDAY intervals — 09:45–14:30 ET (285 min = 17,100s)
+ * All endpoints, low frequency: conserve quota during midday.
+ * Budget: ~408 req
  */
 export const NORMAL_INTERVALS = Object.freeze({
-  flow_recent:           120_000,   // 120 s — 120 req
-  net_prem_ticks:        180_000,   // 180 s —  80 req
-  market_tide:           300_000,   // 300 s —  48 req
-  options_volume:        600_000,   // 600 s —  24 req
-  darkpool_spy:          600_000,   // 600 s —  24 req
-  greek_exposure_strike: 900_000,   // 900 s —  16 req
-  interpolated_iv:       900_000,   // 900 s —  16 req
-  iv_rank:               900_000,   // 900 s —  16 req
-  // MIDDAY TOTAL: ~344 req
+  flow_recent:           120_000,   // 120 s — 142 req
+  net_prem_ticks:        180_000,   // 180 s —  95 req
+  market_tide:           300_000,   // 300 s —  57 req
+  options_volume:        600_000,   // 600 s —  28 req
+  darkpool_spy:          600_000,   // 600 s —  28 req
+  greek_exposure_strike: 900_000,   // 900 s —  19 req
+  interpolated_iv:       900_000,   // 900 s —  19 req
+  iv_rank:               900_000,   // 900 s —  19 req
+  // MIDDAY TOTAL: ~408 req
 });
 
 /**
@@ -463,6 +483,7 @@ export class AdaptiveRefreshScheduler {
     switch (phase) {
       case 'oi_burst':    baseInterval = OI_BURST_INTERVALS[name];    break; // null = skip
       case 'trf_burst':   baseInterval = TRF_BURST_INTERVALS[name];   break; // null = skip
+      case 'pre_open':    baseInterval = PRE_OPEN_INTERVALS[name]  ?? NORMAL_INTERVALS[name]; break; // NEW
       case 'open_sprint': baseInterval = SPRINT_INTERVALS[name]  ?? NORMAL_INTERVALS[name]; break;
       case 'closing':     baseInterval = CLOSING_INTERVALS[name] ?? NORMAL_INTERVALS[name]; break;
       case 'midday':      baseInterval = NORMAL_INTERVALS[name];      break;
@@ -508,11 +529,12 @@ export class AdaptiveRefreshScheduler {
     const state = this._endpointState[name];
     if (!state) return;
     // ── Market-hours gate (6-phase) ────────────────────────────────────────────────────────
-    // 6-phase intervals (all phases, ~1,806 req/day, 88% buffer vs 15,000 limit):
+    // 7-phase intervals (all phases, ~1,434 req/day, 90.4% buffer vs 15,000 limit):
     //   oi_burst    06:40–07:00: GEX/IV only,          ~14 req
     //   trf_burst   07:55–08:35: flow+darkpool only,  ~120 req
-    //   open_sprint 09:30–10:30: all endpoints 15s,   ~714 req
-    //   midday      10:30–14:30: all endpoints 120s,  ~344 req
+    //   pre_open    09:00–09:25: all endpoints 60s,    ~77 req  (NEW)
+    //   open_sprint 09:30–09:45: all endpoints 15s,   ~201 req  (15min only)
+    //   midday      09:45–14:30: all endpoints 120s,  ~408 req
     //   closing     14:30–16:00: flow+dark+GEX 30s,   ~606 req
     //   closed      all other:   zero API calls
     // Allow override via env var UW_IGNORE_MARKET_HOURS=true for testing.
