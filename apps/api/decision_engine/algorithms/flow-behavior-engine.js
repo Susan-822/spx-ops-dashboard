@@ -70,7 +70,8 @@ function computeWindowDirection(queue, windowMs) {
     const windowLabel = windowMs === 5 * 60 * 1000 ? '5m' : '15m';
     // Phase 4 fix: mark fallback data explicitly to prevent misleading display
     return {
-      direction: delta > 5_000_000 ? 'bullish' : delta < -5_000_000 ? 'bearish' : 'flat',
+      // 与主路径保持一致：使用相同的动态阈值
+      direction: delta > 2_000_000 ? 'bullish' : delta < -2_000_000 ? 'bearish' : 'flat',
       delta,
       delta_millions: deltaM,
       is_fallback: true,  // Phase 4: 窗口内数据不足，使用全量历史推算
@@ -91,8 +92,9 @@ function computeWindowDirection(queue, windowMs) {
   const windowLabel = windowMs === 5 * 60 * 1000 ? '5m' : '15m';
   const label = `${sign}$${deltaM != null ? Math.abs(deltaM).toFixed(0) : '--'}M/${windowLabel}`;
 
-  // Threshold: $5M for 5m window, $15M for 15m window
-  const threshold = windowMs <= 5 * 60 * 1000 ? 5_000_000 : 15_000_000;
+  // Threshold: 正Gamma震荡市中机构采用被动挂单，5m内单边净权利金难超$5M
+  // 方案B热修复：5m $2M / 15m $5M，适应低波动率压缩环境
+  const threshold = windowMs <= 5 * 60 * 1000 ? 2_000_000 : 5_000_000;
   const direction = delta > threshold ? 'bullish' : delta < -threshold ? 'bearish' : 'flat';
 
   return { direction, delta, delta_millions: deltaM, label, is_fallback: false };
