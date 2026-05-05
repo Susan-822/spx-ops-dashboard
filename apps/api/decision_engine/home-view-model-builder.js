@@ -85,8 +85,16 @@ export function buildHomeViewModel(formattedSignal) {
   // ── Step 2: 拦截 — 状态门控 ──────────────────────────────────────────────
   // 规则：LOCKED / WAIT / blocked 时强制禁止方向提示
 
+  // [FIX] 接入 market_regime_read.force_wait 门控：
+  //   当 market_regime_read 判断为 BULL_TRAP / BEAR_FLUSH 等高优先级 regime
+  //   且 force_wait=true 时，即使 ab_order_engine.status=ready，
+  //   也必须强制等待，不允许主控卡片给出开仓方向。
+  //   这修复了「盘面解读喊禁止追高，主控卡片却显示 SHORT_READY」的逻辑矛盾。
+  const mrr         = formattedSignal.market_regime_read || {};
+  const mrrForceWait = mrr.force_wait === true;
+
   const rawStatus   = ab.status || 'blocked';
-  const isBlocked   = rawStatus === 'blocked' || rawStatus === 'waiting' || pc.locked === true;
+  const isBlocked   = rawStatus === 'blocked' || rawStatus === 'waiting' || pc.locked === true || mrrForceWait;
   const isWait      = rawStatus === 'waiting' || rawStatus === 'wait';
   const isActive    = rawStatus === 'active' || rawStatus === 'ready';
   const allowTrade  = isActive && !isBlocked;

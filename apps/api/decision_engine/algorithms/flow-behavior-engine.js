@@ -88,7 +88,7 @@ function computeWindowDirection(queue, windowMs) {
 
   const delta = last - first;
   const deltaM = safeMillions(delta);
-  const sign = delta >= 0 ? '+' : '';
+  const sign = delta >= 0 ? '+' : '-';  // [FIX] 负值保留 '-' 符号，修复窗口标签丢失方向的问题
   const windowLabel = windowMs === 5 * 60 * 1000 ? '5m' : '15m';
   const label = `${sign}$${deltaM != null ? Math.abs(deltaM).toFixed(0) : '--'}M/${windowLabel}`;
 
