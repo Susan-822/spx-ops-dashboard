@@ -406,7 +406,9 @@ export function buildHomeViewModel(formattedSignal) {
   // 不允许因为 LOCKED/WAIT 直接丢弃 A单预案
   {
     // 判断执行权（五个条件全满足）
-    const _isReady2        = rawStatus === 'LONG_READY' || rawStatus === 'SHORT_READY';
+    // Fix: rawStatus 来自 ab_order_engine，是小写 'ready'/'active'，不是 'LONG_READY'/'SHORT_READY'
+    // 应使用 displayStatus（已经过 Step 2 状态映射转换为大写带方向的格式）
+    const _isReady2        = displayStatus === 'LONG_READY' || displayStatus === 'SHORT_READY';
     const _flowNormal2     = (flow && flow.flow_quality === 'NORMAL');
     const _allowDir2       = (flow && flow.homepage_allow_direction !== false);
     const _priceOk2        = (pc2 && pc2.spot_gate_open !== false);
