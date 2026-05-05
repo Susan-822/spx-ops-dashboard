@@ -305,7 +305,7 @@ export function buildAbOrderEngine({
       flow_gap_pct: Number(_gapPct),
       pin_warning: null,
       execution_confidence,
-      plan_a: _waitPlan,
+      plan_a: _waitPlanBase,
       plan_b: null,
       atm_triggers: {
         bull1: T.bull1, bull2: T.bull2, bullTgt1: T.bullTgt1, bullTgt2: T.bullTgt2,
@@ -345,7 +345,7 @@ export function buildAbOrderEngine({
       net_gex_value: net_gex,
       pin_warning: null,
       execution_confidence,
-      plan_a: _waitPlan,
+      plan_a: _waitPlanBase2,
       plan_b: null,
       atm_triggers: {
         bull1: T.bull1, bull2: T.bull2, bullTgt1: T.bullTgt1, bullTgt2: T.bullTgt2,
