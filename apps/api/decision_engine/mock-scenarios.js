@@ -292,7 +292,8 @@ const SCENARIO_DEFINITIONS = Object.freeze({
     },
     // [验收测试] 精确注入 spot 和 gamma_flip，强制 gamma_regime=negative
     mock_spot: 7198,          // 跌破 Gamma Flip 7220，触发负 Gamma
-    mock_gamma_flip: 7220     // Gamma Flip 锚点
+    mock_gamma_flip: 7220,    // Gamma Flip 锚点
+    mock_darkpool_state: null  // 中性暗池，不触发 lower_brake_zone 吸收
   }
 });
 

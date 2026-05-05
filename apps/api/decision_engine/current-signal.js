@@ -2211,7 +2211,7 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     premium_queue: premiumAccelerationQueue._queue ?? [],  // NEW: 5m+15m dual window
     gamma_regime: gammaRegimeEngine.gamma_regime,
     spot_position: gammaRegimeEngine.spot_position,
-    darkpool_state: darkpoolGravity.state ?? null,
+    darkpool_state: (finalScenario?.scenario_mode === true && finalScenario?.mock_darkpool_state !== undefined) ? finalScenario.mock_darkpool_state : (darkpoolGravity.state ?? null),
     put_wall: dealerWallMap.put_wall ?? rawNoteV2.uw_conclusion?.put_wall ?? null,
     call_wall: dealerWallMap.call_wall ?? rawNoteV2.uw_conclusion?.call_wall ?? null,
     spot_price: priceContract.live_price
