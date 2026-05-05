@@ -28,16 +28,16 @@ export const UW_API_ENDPOINTS = Object.freeze({
 
   market_tide: { category: 'sentiment', requestedPath: '/api/market/market-tide', path: '/api/market/market-tide', ttlSeconds: 60, core: false },
   top_net_impact: { category: 'sentiment', requestedPath: '/api/market/top-net-impact', path: '/api/market/top-net-impact', ttlSeconds: 60, core: false },
-  net_flow_expiry: { category: 'sentiment', requestedPath: '/api/market/net-flow-expiry', path: '/api/net-flow/expiry', ttlSeconds: 60, core: false },
+  net_flow_expiry: { category: 'sentiment', requestedPath: '/api/market/net-flow-expiry', path: '/api/market/net-flow-expiry', ttlSeconds: 60, core: false },
   total_options_volume: { category: 'sentiment', requestedPath: '/api/market/total-options-volume', path: '/api/market/total-options-volume', ttlSeconds: 60, core: false },
   sector_tide: { category: 'sentiment', requestedPath: '/api/market/sector-tide', path: '/api/market/{sector}/sector-tide', ttlSeconds: 60, core: false, sector: 'Technology' },
   etf_tide: { category: 'sentiment', requestedPath: '/api/market/etf-tide', path: '/api/market/{ticker}/etf-tide', ttlSeconds: 60, core: false, ticker: 'SPY' },
 
   interpolated_iv: { category: 'volatility', requestedPath: '/api/stock/{ticker}/interpolated-iv', path: '/api/stock/{ticker}/interpolated-iv', ttlSeconds: 120, core: false },
   iv_rank: { category: 'volatility', requestedPath: '/api/stock/{ticker}/iv-rank', path: '/api/stock/{ticker}/iv-rank', ttlSeconds: 120, core: false },
-  realized_volatility: { category: 'volatility', requestedPath: '/api/stock/{ticker}/realized-volatility', path: '/api/stock/{ticker}/volatility/realized', ttlSeconds: 120, core: false },
-  volatility: { category: 'volatility', requestedPath: '/api/stock/{ticker}/volatility-statistics', path: '/api/stock/{ticker}/volatility/stats', ttlSeconds: 120, core: false },
-  term_structure: { category: 'volatility', requestedPath: '/api/stock/{ticker}/iv-term-structure', path: '/api/stock/{ticker}/volatility/term-structure', ttlSeconds: 120, core: false },
+  realized_volatility: { category: 'volatility', requestedPath: '/api/stock/{ticker}/realized-volatility', path: '/api/stock/{ticker}/realized-volatility', ttlSeconds: 120, core: false },
+  volatility: { category: 'volatility', requestedPath: '/api/stock/{ticker}/volatility-statistics', path: '/api/stock/{ticker}/volatility-statistics', ttlSeconds: 120, core: false },
+  term_structure: { category: 'volatility', requestedPath: '/api/stock/{ticker}/iv-term-structure', path: '/api/stock/{ticker}/iv-term-structure', ttlSeconds: 120, core: false },
 
   technical_vwap: { category: 'technical', requestedPath: '/api/stock/{ticker}/technical-indicator/{function}', path: '/api/stock/{ticker}/technical-indicator/{function}', ttlSeconds: 120, core: false, function: 'VWAP' },
   technical_atr: { category: 'technical', requestedPath: '/api/stock/{ticker}/technical-indicator/{function}', path: '/api/stock/{ticker}/technical-indicator/{function}', ttlSeconds: 120, core: false, function: 'ATR' },
@@ -50,8 +50,8 @@ export const UW_API_ENDPOINTS = Object.freeze({
   oi_by_strike: { category: 'technical', requestedPath: '/api/stock/{ticker}/oi-per-strike', path: '/api/stock/{ticker}/oi-per-strike', ttlSeconds: 180, core: false },
   oi_by_expiry: { category: 'technical', requestedPath: '/api/stock/{ticker}/oi-per-expiry', path: '/api/stock/{ticker}/oi-per-expiry', ttlSeconds: 180, core: false },
   max_pain: { category: 'technical', requestedPath: '/api/stock/{ticker}/max-pain', path: '/api/stock/{ticker}/max-pain', ttlSeconds: 180, core: false },
-  option_price_levels: { category: 'technical', requestedPath: '/api/stock/{ticker}/option-price-levels', path: '/api/stock/{ticker}/option/stock-price-levels', ttlSeconds: 180, core: false },
-  volume_oi: { category: 'technical', requestedPath: '/api/stock/{ticker}/volume-oi-expiry', path: '/api/stock/{ticker}/option/volume-oi-expiry', ttlSeconds: 180, core: false }
+  option_price_levels: { category: 'technical', requestedPath: '/api/stock/{ticker}/option-price-levels', path: '/api/stock/{ticker}/option-price-levels', ttlSeconds: 180, core: false },
+  volume_oi: { category: 'technical', requestedPath: '/api/stock/{ticker}/volume-oi-expiry', path: '/api/stock/{ticker}/volume-oi-expiry', ttlSeconds: 180, core: false }
 });
 
 const UW_ENDPOINT_GROUPS = Object.freeze({
