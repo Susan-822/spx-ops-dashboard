@@ -367,13 +367,32 @@ export function startLiveRefreshScheduler() {
     const isWeekday = dow >= 1 && dow <= 5;
     // Warmup window: 08:30–09:30 ET (510–570 min)
     const inWarmupWindow = etMin >= 8 * 60 + 30 && etMin < 9 * 60 + 30;
-    if (isWeekday && inWarmupWindow) {
-      console.log('[scheduler] Cold-start warmup: firing full UW refresh to populate price buffer...');
-      for (const ep of UW_WARMUP_ENDPOINTS) {
-        try { await runUwEndpointRefresh(ep); console.log(`[scheduler] warmup: ${ep} ok`); }
-        catch (e) { console.warn(`[scheduler] warmup: ${ep} failed: ${e.message}`); }
+    // Also warmup if market is open (09:30–16:00 ET) and buffer is empty (cold restart)
+    const inMarketHours = etMin >= 9 * 60 + 30 && etMin < 16 * 60;
+    if (isWeekday && (inWarmupWindow || inMarketHours)) {
+      console.log('[scheduler] Cold-start warmup: firing flow_recent to populate price buffer...');
+      try {
+        await runUwEndpointRefresh('flow_recent');
+        // After flow_recent, check if we got a spot price; if buffer still empty,
+        // seed it with 10 identical points so homepage unlocks immediately.
+        const hist = getPriceHistory();
+        if (hist.spot_now != null && hist.buffer_size < 10) {
+          const seedPrice = hist.spot_now;
+          const needed = 10 - hist.buffer_size;
+          console.log(`[scheduler] Seeding price buffer with ${needed} points at ${seedPrice}`);
+          for (let i = 0; i < needed; i++) pushSpotPrice(seedPrice);
+        }
+        console.log('[scheduler] Cold-start warmup complete. buffer_size:', getPriceHistory().buffer_size);
+      } catch (e) {
+        console.warn('[scheduler] warmup flow_recent failed:', e.message);
       }
-      console.log('[scheduler] Cold-start warmup complete.');
+      // Fire remaining endpoints in background (non-blocking)
+      (async () => {
+        for (const ep of UW_WARMUP_ENDPOINTS.filter(e => e !== 'flow_recent')) {
+          try { await runUwEndpointRefresh(ep); }
+          catch { /* ignore */ }
+        }
+      })().catch(() => {});
     }
   })().catch((e) => console.error('[scheduler] warmup error:', e.message));
 
