@@ -2576,31 +2576,52 @@ function renderHome(signal) {
         <aside class="aux-sidebar">
           <!-- Narrative Card: 叙事层（优先级决策树输出，三板块结构）-->
           ${(() => {
-            const _narr = (hvm.order_plan || {}).narrative || {};
-            const _nHeadline   = _narr.headline    || '';
-            const _nDetail     = _narr.detail      || '';
-            const _nAction     = _narr.action_plan || '';
-            const _nInvalid    = _narr.invalidation || '';
-            const _nTone       = _narr.tone        || 'neutral';
-            const _nPrimary    = _narr.primary_narrative || 'NEUTRAL';
-            if (!_nHeadline) return '';
-            const _nCardCls = _nTone === 'warning' ? 'narr-warning'
-              : _nTone === 'bearish' ? 'narr-bearish'
-              : _nTone === 'bullish' ? 'narr-bullish'
-              : 'narr-neutral';
+            // ── 市场状态机人话卡（7 种协议，优先级路由）──────────────────────
+            const _mr = hvm.market_regime_read || (hvm.order_plan || {}).narrative || {};
+            const _mrRegime    = _mr.regime    || '';
+            const _mrIcon      = _mr.icon      || '📊';
+            const _mrTitle     = _mr.title     || _mr.headline || '';
+            const _mrHeadline  = _mr.headline  || '';
+            const _mrAction    = _mr.action    || _mr.action_plan || '';
+            const _mrInvalid   = _mr.invalidation || '';
+            const _trueFlow    = _mr.true_flow_fmt || null;
+            const _algoRes     = _mr.algo_resistance || null;
+            const _algoSup     = _mr.algo_support    || null;
+            const _hardStop    = _mr.hard_stop || null;
+            const _regimeLabel = _mrTitle || '';
+            if (!_mrHeadline && !_mrTitle) return '';
+            const _isCritical = ['GAMMA_FLIP','DEFENSE_COLLAPSE','BEAR_FLUSH'].includes(_mrRegime);
+            const _isConflict = ['FLOW_CONFLICT','BULL_TRAP'].includes(_mrRegime);
+            const _isVanna    = _mrRegime === 'VANNA_SQUEEZE' || _mrRegime === 'GRINDER';
+            const _isBull     = _mrRegime === 'INSTITUTIONAL_BUY';
+            const _cardCls    = _isCritical ? 'narr-critical' : _isConflict ? 'narr-warning' : _isVanna ? 'narr-neutral' : _isBull ? 'narr-bullish' : 'narr-neutral';
+            const _titleCls   = _isCritical ? 'regime-critical' : _isConflict ? 'regime-warning' : _isBull ? 'regime-bull' : 'regime-neutral';
+            // 使用字符串拼接避免嵌套模板字符串
+            let _metaRows = '';
+            if (_trueFlow) {
+              const _flowDir = (_mr.true_net_flow_m > 0) ? 'cf-bull' : (_mr.true_net_flow_m < 0) ? 'cf-bear' : '';
+              _metaRows += '<div class="narr-meta-row"><span class="narr-meta-label">真实资金</span><span class="narr-meta-val ' + _flowDir + '">' + escapeHtml(_trueFlow) + '</span></div>';
+            }
+            if (_algoRes) {
+              _metaRows += '<div class="narr-meta-row"><span class="narr-meta-label">上方算法盖板</span><span class="narr-meta-val cf-bear">' + escapeHtml(String(_algoRes.level || '--')) + ' <small>' + escapeHtml(_algoRes.strength || '') + '</small></span></div>';
+            }
+            if (_algoSup) {
+              _metaRows += '<div class="narr-meta-row"><span class="narr-meta-label">下方算法承接</span><span class="narr-meta-val cf-bull">' + escapeHtml(String(_algoSup.level || '--')) + ' <small>' + escapeHtml(_algoSup.strength || '') + '</small></span></div>';
+            }
+            if (_hardStop) {
+              _metaRows += '<div class="narr-meta-row narr-hard-stop"><span class="narr-meta-label">⊗ 绝对风控</span><span class="narr-meta-val">' + escapeHtml(_hardStop.label || '--') + '<br><small>' + escapeHtml(_hardStop.note || '') + '</small></span></div>';
+            }
             return `
-          <section class="aux-card narrative-card ${_nCardCls}">
+          <section class="aux-card narrative-card ${_cardCls}">
             <div class="narr-header">
-              <span class="narr-icon">${_nTone === 'warning' ? '⚠️' : _nTone === 'bearish' ? '📉' : _nTone === 'bullish' ? '📈' : '📊'}</span>
+              <span class="narr-icon">${_mrIcon}</span>
               <span class="narr-title">盘面解读</span>
             </div>
-            <!-- 板块A：一句话定调 -->
-            <div class="narr-headline">${escapeHtml(_nHeadline)}</div>
-            <!-- 板块B：底层数据揭秘 -->
-            <div class="narr-detail">${escapeHtml(_nDetail)}</div>
-            <!-- 板块C：执行预案 + 失效条件 -->
-            ${_nAction ? `<div class="narr-action">${escapeHtml(_nAction)}</div>` : ''}
-            ${_nInvalid ? `<div class="narr-invalidation">${escapeHtml(_nInvalid)}</div>` : ''}
+            <div class="narr-regime-title ${_titleCls}">${escapeHtml(_regimeLabel)}</div>
+            <div class="narr-headline">${escapeHtml(_mrHeadline)}</div>
+            ${_mrAction ? '<div class="narr-action">' + escapeHtml(_mrAction) + '</div>' : ''}
+            <div class="narr-meta-grid">${_metaRows}</div>
+            ${_mrInvalid ? '<div class="narr-invalidation">' + escapeHtml(_mrInvalid) + '</div>' : ''}
           </section>`;
           })()}
           <!-- Darkpool Read -->
@@ -2725,10 +2746,49 @@ function renderHome(signal) {
           ? `<div class="capital-inval-row"><span class="inval-label">⊗ 失效条件：</span><span class="inval-val">${escapeHtml(_invalNotes.join(' / '))}</span></div>`
           : '';
 
+      // ── 读取 market_regime_read 用于资金实况卡顶部人话 ──────────────────
+      const _mr2 = hvm.market_regime_read || {};
+      const _mr2Regime   = _mr2.regime || '';
+      const _mr2Icon     = _mr2.icon   || '📊';
+      const _mr2Title    = _mr2.title  || '';
+      const _mr2Headline = _mr2.headline || _headline;
+      const _mr2Action   = _mr2.action  || '';
+      const _mr2TrueFlow = _mr2.true_flow_fmt || null;
+      const _mr2TrueFlowVal = _mr2.true_net_flow_m ?? null;
+      const _mr2AlgoRes  = _mr2.algo_resistance || null;
+      const _mr2AlgoSup  = _mr2.algo_support    || null;
+      const _mr2HardStop = _mr2.hard_stop        || null;
+      // 状态机横幅颜色
+      const _mr2Critical = ['GAMMA_FLIP','DEFENSE_COLLAPSE','BEAR_FLUSH'].includes(_mr2Regime);
+      const _mr2Conflict = ['FLOW_CONFLICT','BULL_TRAP'].includes(_mr2Regime);
+      const _mr2Bull     = _mr2Regime === 'INSTITUTIONAL_BUY';
+      const _mr2BannerCls = _mr2Critical ? 'regime-banner-critical' : _mr2Conflict ? 'regime-banner-warning' : _mr2Bull ? 'regime-banner-bull' : 'regime-banner-neutral';
+      // 真实流向横幅（替代旧的 Call/Put 总量背离横幅）
+      const _trueFlowBanner = _mr2TrueFlow ? `
+        <div class="capital-true-flow-banner ${_mr2TrueFlowVal > 0 ? 'flow-bull' : _mr2TrueFlowVal < 0 ? 'flow-bear' : 'flow-neutral'}">
+          <span class="flow-label">真实吃单净流向</span>
+          <span class="flow-val">${escapeHtml(_mr2TrueFlow)}</span>
+          <span class="flow-note">${_mr2TrueFlowVal > 5 ? '机构主动买入' : _mr2TrueFlowVal < -5 ? '机构主动抛售' : _mr2TrueFlowVal > 2 ? '微弱买入' : _mr2TrueFlowVal < -2 ? '微弱抛压' : '方向不明'}</span>
+        </div>` : _divBanner;
+      // 机器盖子/垫子行
+      const _algoWallRow = (_mr2AlgoRes || _mr2AlgoSup) ? `
+        <div class="capital-algo-walls">
+          ${_mr2AlgoRes ? `<span class="algo-wall-item bear">⬆ 算法盖板 ${escapeHtml(String(_mr2AlgoRes.level || '--'))} <small>${escapeHtml(_mr2AlgoRes.strength || '')}</small></span>` : ''}
+          ${_mr2AlgoSup ? `<span class="algo-wall-item bull">⬇ 算法承接 ${escapeHtml(String(_mr2AlgoSup.level || '--'))} <small>${escapeHtml(_mr2AlgoSup.strength || '')}</small></span>` : ''}
+        </div>` : '';
+      // 行情定性 + 人话标题
+      const _regimeBanner = _mr2Title ? `
+        <div class="capital-regime-banner ${_mr2BannerCls}">
+          <span class="regime-icon">${escapeHtml(_mr2Icon)}</span>
+          <span class="regime-label">${escapeHtml(_mr2Title)}</span>
+        </div>` : '';
       return `
-        ${_divBanner}
-        <div class="capital-headline">${escapeHtml(_headline)}</div>
-        <div class="capital-detail">${escapeHtml(_detail)}</div>
+        ${_trueFlowBanner}
+        ${_regimeBanner}
+        ${_algoWallRow}
+        <div class="capital-headline">${escapeHtml(_mr2Headline)}</div>
+        ${_mr2Action ? `<div class="capital-action-line">${escapeHtml(_mr2Action)}</div>` : `<div class="capital-detail">${escapeHtml(_detail)}</div>`}
+        ${_mr2HardStop ? `<div class="capital-hard-stop-row"><span class="hard-stop-label">⊗ 绝对风控</span><span class="hard-stop-val">${escapeHtml(_mr2HardStop.label || '--')}</span><span class="hard-stop-note">${escapeHtml(_mr2HardStop.note || '')}</span></div>` : ''}
         ${_gateBanner}
         <div class="capital-flow-grid">
           <div class="cf-row">

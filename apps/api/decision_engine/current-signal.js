@@ -61,6 +61,7 @@ import { evaluate0dteMicrostructure, buildMicrostructureRead } from './algorithm
 import { globalFlowRecentQueue } from '../scheduler/flow-recent-queue.js';
 import { buildSignalFormatter } from './signal-formatter.js';
 import { buildHomeViewModel } from './home-view-model-builder.js';
+import { runMarketRegimeEngine } from './algorithms/market-regime-engine.js';
 
 export {
   buildProjectionPrices,
@@ -2476,6 +2477,30 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
     finalOutput.microstructure_read.queue_stats = globalFlowRecentQueue.getStats();
   } catch (e) {
     finalOutput.microstructure_read = { status: 'error', reason: e.message };
+  }
+
+  // ── market_regime_read: 7 种状态机协议（优先级路由 + 人话输出）─────────────
+  try {
+    const _ms  = finalOutput.microstructure_read || {};
+    const _gr  = finalOutput.gamma_regime_engine || {};
+    const _pve = finalOutput.price_validation_engine || {};
+    const _fb  = finalOutput.flow_behavior_engine || {};
+    const _dw  = finalOutput.dealer_wall_map || {};
+    const _vd  = finalOutput.vol_dashboard || {};
+    const _df  = finalOutput.uw_factors?.dealer_factors || {};
+    const _spot = _pve.spot_now ?? finalOutput.dealer_wall_map?.spot_price ?? null;
+    finalOutput.market_regime_read = runMarketRegimeEngine({
+      microstructureRead: _ms,
+      gammaRegimeEngine:  _gr,
+      priceValidation:    _pve,
+      flowBehavior:       _fb,
+      dealerWallMap:      _dw,
+      volDashboard:       _vd,
+      dealerFactors:      _df,
+      spotPrice:          _spot,
+    });
+  } catch (e) {
+    finalOutput.market_regime_read = { regime: 'NEUTRAL', status: 'error', reason: e.message };
   }
 
   // ── home_view_model: 首页唯一数据模型 ──────────────────────────────────────

@@ -3185,3 +3185,45 @@ details[open] .ab-alt-summary::before { transform: rotate(90deg); }
 .capital-flow-card-fullwidth .cf-sublabel { font-size: 9px; color: #475569; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.3px; }
 @media (max-width: 900px) { .capital-flow-card-fullwidth .capital-flow-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 600px) { .capital-flow-card-fullwidth .capital-flow-grid { grid-template-columns: 1fr 1fr; } }
+
+/* ── 市场状态机（market_regime_read）新增样式 ─────────────────────────────── */
+.narrative-card.narr-critical { border-left: 3px solid #ef4444; background: rgba(239,68,68,0.08); }
+.narr-regime-title { font-size: 13px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; padding: 4px 8px; border-radius: 4px; margin-bottom: 8px; display: inline-block; }
+.narr-regime-title.regime-critical { background: rgba(239,68,68,0.2); color: #fca5a5; }
+.narr-regime-title.regime-warning  { background: rgba(251,191,36,0.15); color: #fcd34d; }
+.narr-regime-title.regime-bull     { background: rgba(34,197,94,0.15); color: #4ade80; }
+.narr-regime-title.regime-neutral  { background: rgba(148,163,184,0.1); color: #94a3b8; }
+.narr-meta-grid { margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+.narr-meta-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 11.5px; }
+.narr-meta-label { color: #64748b; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.3px; }
+.narr-meta-val   { font-weight: 700; color: #e2e8f0; }
+.narr-meta-val small { font-size: 9.5px; color: #94a3b8; margin-left: 4px; }
+.narr-meta-row.narr-hard-stop .narr-meta-label { color: #f87171; }
+.narr-meta-row.narr-hard-stop .narr-meta-val   { color: #fca5a5; }
+.capital-true-flow-banner { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px; font-size: 12px; }
+.capital-true-flow-banner.flow-bull { background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.25); }
+.capital-true-flow-banner.flow-bear { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.25); }
+.capital-true-flow-banner.flow-neutral { background: rgba(148,163,184,0.08); border: 1px solid rgba(148,163,184,0.15); }
+.flow-label { color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
+.flow-val   { font-weight: 800; font-size: 14px; }
+.flow-bull .flow-val { color: #4ade80; }
+.flow-bear .flow-val { color: #f87171; }
+.flow-neutral .flow-val { color: #94a3b8; }
+.flow-note  { font-size: 10.5px; color: #94a3b8; margin-left: auto; }
+.capital-regime-banner { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 5px; margin-bottom: 6px; font-size: 12px; font-weight: 700; }
+.regime-banner-critical { background: rgba(239,68,68,0.15); color: #fca5a5; }
+.regime-banner-warning  { background: rgba(251,191,36,0.12); color: #fcd34d; }
+.regime-banner-bull     { background: rgba(34,197,94,0.12); color: #4ade80; }
+.regime-banner-neutral  { background: rgba(148,163,184,0.08); color: #94a3b8; }
+.regime-icon { font-size: 14px; }
+.regime-label { letter-spacing: 0.03em; }
+.capital-algo-walls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.algo-wall-item { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 600; }
+.algo-wall-item.bear { background: rgba(239,68,68,0.1); color: #fca5a5; border: 1px solid rgba(239,68,68,0.2); }
+.algo-wall-item.bull { background: rgba(34,197,94,0.1); color: #86efac; border: 1px solid rgba(34,197,94,0.2); }
+.algo-wall-item small { font-size: 9.5px; opacity: 0.8; margin-left: 3px; }
+.capital-action-line { font-size: 12.5px; color: #cbd5e1; line-height: 1.5; margin-bottom: 8px; padding: 6px 10px; background: rgba(255,255,255,0.03); border-radius: 5px; border-left: 2px solid rgba(148,163,184,0.3); }
+.capital-hard-stop-row { display: flex; align-items: baseline; gap: 8px; padding: 5px 10px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 5px; margin-bottom: 8px; font-size: 11.5px; }
+.hard-stop-label { color: #f87171; font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: 0.3px; white-space: nowrap; }
+.hard-stop-val   { color: #fca5a5; font-weight: 700; }
+.hard-stop-note  { color: #94a3b8; font-size: 10.5px; margin-left: auto; }

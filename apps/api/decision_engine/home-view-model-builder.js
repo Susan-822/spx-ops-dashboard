@@ -598,5 +598,7 @@ export function buildHomeViewModel(formattedSignal) {
     sent_sub:               sentSub,
     pc_ratio_fmt:           pcRatioFmt,
     net_premium_fmt:        cf.day_net || '--',
+    // 市场状态机（7 种协议，优先级路由）
+    market_regime_read:     formattedSignal.market_regime_read || null,
   };
 }
