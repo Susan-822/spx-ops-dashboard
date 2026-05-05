@@ -289,7 +289,10 @@ const SCENARIO_DEFINITIONS = Object.freeze({
       put_call_ratio: 1.83,         // P/C > 1.5，空头信号
       net_premium: -15000000,
       directional_net_premium: -15000000
-    }
+    },
+    // [验收测试] 精确注入 spot 和 gamma_flip，强制 gamma_regime=negative
+    mock_spot: 7198,          // 跌破 Gamma Flip 7220，触发负 Gamma
+    mock_gamma_flip: 7220     // Gamma Flip 锚点
   }
 });
 

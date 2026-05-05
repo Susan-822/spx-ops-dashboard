@@ -2139,14 +2139,18 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
 
   // 1. Price Contract — canonical SPX price with contamination detection
   // P0-1 fix: pass uw_raw so UW flow-recent/spot_gex can be used as primary spot source
+  // [MOCK INJECT] scenario_mode 下允许用 mock_spot 覆盖真实 FMP 现价（验收测试用）
+  const _mockSpot = (finalScenario?.scenario_mode === true && finalScenario?.mock_spot != null)
+    ? finalScenario.mock_spot
+    : null;
   const priceContract = buildPriceContract({
     uw_raw: uwApi?.uw_raw ?? null,
-    fmp_price: fmpSnapshot.price?.price ?? null,
-    fmp_is_real: fmpIsReal,
-    tv_price: rawNoteV2.tv_sentinel?.price ?? null,
-    tv_is_fresh: tvIsReal,
+    fmp_price: _mockSpot ?? fmpSnapshot.price?.price ?? null,
+    fmp_is_real: _mockSpot != null ? true : fmpIsReal,
+    tv_price: _mockSpot ?? rawNoteV2.tv_sentinel?.price ?? null,
+    tv_is_fresh: _mockSpot != null ? true : tvIsReal,
     darkpool_mapped_spx: darkpoolGravity.mapped_spx ?? null,
-    manual_override: null
+    manual_override: _mockSpot ?? null
   });
 
   // 2. ATM Engine
@@ -2157,9 +2161,13 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   });
 
   // 3. Gamma Regime Engine
+  // [MOCK INJECT] scenario_mode 下允许用 mock_gamma_flip 覆盖真实 Theta flip level
+  const _mockGammaFlip = (finalScenario?.scenario_mode === true && finalScenario?.mock_gamma_flip != null)
+    ? finalScenario.mock_gamma_flip
+    : null;
   const gammaRegimeEngine = buildGammaRegimeEngine({
     spot_price: priceContract.live_price,
-    gamma_flip: dealerWallMap.gamma_flip ?? rawNoteV2.uw_conclusion?.zero_gamma ?? null,
+    gamma_flip: _mockGammaFlip ?? dealerWallMap.gamma_flip ?? rawNoteV2.uw_conclusion?.zero_gamma ?? null,
     net_gex: rawNoteV2.uw_conclusion?.net_gex ?? null,
     call_wall: dealerWallMap.call_wall ?? rawNoteV2.uw_conclusion?.call_wall ?? null,
     put_wall: dealerWallMap.put_wall ?? rawNoteV2.uw_conclusion?.put_wall ?? null,
