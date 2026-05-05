@@ -29,6 +29,7 @@ import {
   getAdaptiveScheduler,
 } from './adaptive-refresh-scheduler.js';
 import { detectAbStateChange } from '../state/ab-state-watcher.js';
+import { globalFlowRecentQueue } from './flow-recent-queue.js';
 import { sendAbTelegramAlerts } from '../alerts/telegram-ab-alert.js';
 import { getCurrentSignal } from '../decision_engine/current-signal.js';
 import { maybeSendPreMarketSnapshot } from '../alerts/pre-market-snapshot.js';
@@ -234,6 +235,16 @@ async function runUwEndpointRefresh(endpointName) {
   const norm = snapshot?.normalized;
   const uwRaw = norm?.uw_raw || {};
   const flowRecentRows = _unwrapArray(uwRaw.flow_recent);
+
+  // 方案A：将逐笔数据追加到内存队列（去重 + 断点恢复）
+  if (flowRecentRows.length > 0) {
+    const { appended, skipped } = globalFlowRecentQueue.append(flowRecentRows);
+    if (appended > 0) {
+      // 仅在有新数据时打印（避免日志洪泛）
+      // console.debug(`[flow-queue] +${appended} new ticks, ${skipped} deduped, queue=${globalFlowRecentQueue.size}`);
+    }
+  }
+
   let spot = null;
   for (const row of flowRecentRows) {
     const p = Number(row?.underlying_price);

@@ -57,6 +57,8 @@ import {
 } from './algorithms/index.js';
 import { getPriceHistory } from '../state/price-history-buffer.js';
 import { getLiveRefreshLog } from '../scheduler/live-refresh-scheduler.js';
+import { evaluate0dteMicrostructure, buildMicrostructureRead } from './algorithms/microstructure-validation-engine.js';
+import { globalFlowRecentQueue } from '../scheduler/flow-recent-queue.js';
 import { buildSignalFormatter } from './signal-formatter.js';
 import { buildHomeViewModel } from './home-view-model-builder.js';
 
@@ -2445,6 +2447,36 @@ export async function getCurrentSignal(requestedScenario, options = {}) {
   finalOutput.data_health   = signalFormatter.data_health;
   finalOutput.strike_battle = signalFormatter.strike_battle;
   finalOutput.vanna_charm   = signalFormatter.vanna_charm;
+
+  // ── microstructure_read: 0DTE 微观结构交叉验证（方案A）────────────────────────
+  // 使用 flow_recent 内存队列的高频逐笔数据，重构真实净流向（aggressor_side）
+  // 并叠加做市商 Charm 否决权，输出比 dual_window_aligned 更灵敏的方向判断
+  try {
+    const greekRows = (() => {
+      const raw = finalOutput.uw_raw?.greek_exposure_strike;
+      if (!raw) return [];
+      const d = raw.data;
+      if (Array.isArray(d)) return d;
+      if (Array.isArray(d?.data)) return d.data;
+      return [];
+    })();
+    const netGex = finalOutput.uw_factors?.dealer_factors?.net_gex ?? 0;
+    const spotNow = finalOutput.price_validation_engine?.spot_now ?? null;
+    const ifvgBreached = finalOutput.price_validation_engine?.ifvg_breached ?? false;
+    const flowTicks = globalFlowRecentQueue.getWindow(5 * 60 * 1000);
+    const msResult = evaluate0dteMicrostructure({
+      flowRecentTicks: flowTicks,
+      greekRows,
+      netGex,
+      spotPrice: spotNow,
+      ifvgBreached,
+      windowMs: 5 * 60 * 1000,
+    });
+    finalOutput.microstructure_read = buildMicrostructureRead(msResult);
+    finalOutput.microstructure_read.queue_stats = globalFlowRecentQueue.getStats();
+  } catch (e) {
+    finalOutput.microstructure_read = { status: 'error', reason: e.message };
+  }
 
   // ── home_view_model: 首页唯一数据模型 ──────────────────────────────────────
   // buildHomeViewModel 只做收口/拦截/降级/四行生成，不重算任何指标
