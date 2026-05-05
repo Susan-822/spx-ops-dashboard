@@ -156,7 +156,8 @@ export function runMarketRegimeEngine({
 } = {}) {
 
   // ── 提取关键信号 ──────────────────────────────────────────────────────────
-  const trueNetFlow   = microstructureRead.true_net_flow_m ?? null;   // 真实净吃单（M）
+  const _rawTrueFlow  = microstructureRead.true_net_flow_m ?? null;
+  const trueNetFlow   = _rawTrueFlow != null ? parseFloat(_rawTrueFlow) : null;  // 真实净吃单（M），parseFloat 处理字符串格式
   const msStatus      = microstructureRead.status ?? 'no_data';
   const mmVeto        = microstructureRead.mm_upside_veto === true;
   const upsideCharm   = microstructureRead.upside_charm_m ?? null;    // 上方 Charm 敞口（M）
@@ -167,8 +168,8 @@ export function runMarketRegimeEngine({
   const zeroGamma     = gammaRegimeEngine.zero_gamma_level ?? null;
 
   const ifvgBreached  = priceValidation.ifvg_breached === true;
-  const delta5m       = priceValidation.delta_5m ?? null;             // 5m 价格变化
-  const spotNow       = spotPrice ?? priceValidation.spot_now ?? null;
+  const delta5m       = priceValidation.price_context?.delta_5m ?? priceValidation.delta_5m ?? null;  // 5m 价格变化（price_context 嵌套层优先）
+  const spotNow       = spotPrice ?? priceValidation.price_context?.spot_now ?? priceValidation.spot_now ?? null;
 
   const ivCollapsing  = flowBehavior.iv_collapsing === true;
   const iv30          = volDashboard.iv30 ?? null;
