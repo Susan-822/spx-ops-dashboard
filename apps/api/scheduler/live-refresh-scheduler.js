@@ -115,12 +115,25 @@ function extractPriceContext(snapshot) {
     const norm = snapshot.normalized;
     if (!norm) return {};
 
-    const flow    = norm.flow_factors   || {};
-    const dealer  = norm.dealer_factors || {};
-    const dark    = norm.darkpool_factors || {};
+    // snapshot.normalized = { uw_raw: {...}, uw_factors: { flow_factors, dealer_factors, darkpool_factors, ... } }
+    const uwFactors = norm.uw_factors || {};
+    const flow    = uwFactors.flow_factors    || {};
+    const dealer  = uwFactors.dealer_factors  || {};
+    const dark    = uwFactors.darkpool_factors || {};
 
-    // Spot price from flow_recent underlying_price
-    const spot = flow.underlying_price ?? null;
+    // Spot price from uw_raw.flow_recent[0].underlying_price
+    // flow_recent is stored as { path, status, fetched_at, data: [...] } wrapper
+    const uwRawCtx = norm.uw_raw || {};
+    const _fr = uwRawCtx.flow_recent;
+    const flowRecentCtx = Array.isArray(_fr) ? _fr
+      : Array.isArray(_fr?.data?.data) ? _fr.data.data
+      : Array.isArray(_fr?.data) ? _fr.data
+      : [];
+    let spot = null;
+    for (const row of flowRecentCtx) {
+      const p = Number(row?.underlying_price);
+      if (Number.isFinite(p) && p >= 3000 && p <= 12000) { spot = p; break; }
+    }
 
     // ATM from conclusion
     const conclusion = norm.conclusion || {};
@@ -205,9 +218,35 @@ async function runUwEndpointRefresh(endpointName) {
   }
 
   // Extract spot price and push to price history buffer
+  // snapshot.normalized.uw_raw stores raw endpoint responses as wrapper objects:
+  //   { path, status, fetched_at, data: [...] }  (UW API format)
+  // Use the same asArray-style unwrapping as uw-api-normalizer.js
+  function _unwrapArray(value) {
+    if (Array.isArray(value)) return value;
+    if (!value || typeof value !== 'object') return [];
+    const d = value.data;
+    if (d !== undefined) {
+      if (Array.isArray(d?.data)) return d.data;
+      if (Array.isArray(d)) return d;
+    }
+    return [];
+  }
   const norm = snapshot?.normalized;
-  const flow = norm?.flow_factors || {};
-  const spot = flow.underlying_price;
+  const uwRaw = norm?.uw_raw || {};
+  const flowRecentRows = _unwrapArray(uwRaw.flow_recent);
+  let spot = null;
+  for (const row of flowRecentRows) {
+    const p = Number(row?.underlying_price);
+    if (Number.isFinite(p) && p >= 3000 && p <= 12000) { spot = p; break; }
+  }
+  // Fallback: spot_gex rows
+  if (spot == null) {
+    const spotGexRows = _unwrapArray(uwRaw.spot_gex);
+    for (const row of spotGexRows) {
+      const p = Number(row?.price);
+      if (Number.isFinite(p) && p >= 3000 && p <= 12000) { spot = p; break; }
+    }
+  }
   if (typeof spot === 'number' && spot > 0) {
     pushSpotPrice(spot);
   }
